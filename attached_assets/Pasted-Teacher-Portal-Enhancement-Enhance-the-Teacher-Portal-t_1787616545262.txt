@@ -1,0 +1,132 @@
+Teacher Portal Enhancement
+Enhance the Teacher Portal to support meaningful collaboration between teachers and the clinical team while maintaining a simple, classroom-friendly user experience.
+The Teacher Portal should focus on helping teachers understand the student's communication, contribute observations, and support carryover across environments.
+Student Profile
+Add a dedicated Student Profile section visible to teachers.
+Display:
+Interests
+Examples:
+Trains
+Dinosaurs
+Space
+Animals
+Minecraft
+Allow teachers to:
+Add new interests
+Edit existing interests
+Suggest interests for clinician review
+Track:
+Date added
+User who added it
+Sensory Regulation Profile
+Display clinician-entered sensory information including:
+Sensory seeking behaviors
+Sensory avoidance patterns
+Regulation supports
+Known triggers
+Helpful strategies
+Examples:
+Sensory Seeking
+Deep pressure
+Movement
+Head pressure
+Helpful Supports
+Movement breaks
+Visual schedule
+Preferred topics
+Allow teachers to contribute observations for clinician review.
+Frequent Phrases & Meanings
+Create a section called:
+Frequently Used Phrases
+Display:
+Phrase	Possible Meaning	Context
+Let's go!	Excitement	Transitions
+Come on!	Wants participation	Play
+Teachers should be able to quickly reference phrases when supporting communication.
+Display:
+Phrase frequency
+Last observed date
+Meaning notes
+Clinician-approved interpretations
+Log a Phrase Feature
+Add a prominent button:
++ Log a Phrase
+This should be one of the most visible actions in the Teacher Portal.
+When selected, open a simple form:
+Phrase Heard
+Example:
+"Let's save the city!"
+Context
+Examples:
+Recess
+Reading group
+Lunch
+Transition
+Free play
+What Was Happening?
+Free text field.
+Possible Meaning (Optional)
+Teacher observation only.
+Communication Function (Optional)
+Dropdown:
+Requesting
+Commenting
+Social Interaction
+Self-Regulation
+Shared Joy
+Other
+Date & Time
+Auto-populated.
+Child Dictionary Integration
+All logged phrases should automatically contribute to the child's communication dictionary.
+For each phrase:
+Store:
+Phrase
+Context
+Environment
+Date observed
+Teacher notes
+Frequency count
+If the phrase already exists:
+Increment frequency
+Add new context information
+Update last observed date
+If the phrase is new:
+Mark as "New Phrase Observed"
+Notify assigned clinician
+Teacher Insights
+Display:
+New Since Last Visit
+Newly added phrases
+New interests
+New observations
+Collaboration Features
+Allow teachers to submit:
+Questions for Clinician
+Examples:
+What does this phrase usually mean?
+How should I respond?
+Should I model something different?
+These should appear in the SLP portal for review.
+Permissions
+Teachers should:
+✅ View:
+Student profile
+Interests
+Sensory supports
+Frequent phrases
+Approved meanings
+Classroom recommendations
+✅ Add:
+New phrases
+New interests
+Observations
+Questions
+Teachers should NOT have access to:
+SOAP notes
+Clinical documentation
+NLA stage classifications
+AI confidence scores
+Detailed clinical assessments
+Goal
+The Teacher Portal should function as a quick classroom communication guide and observation tool that helps teachers understand the student's language while contributing valuable real-world data to the child's communication profile.

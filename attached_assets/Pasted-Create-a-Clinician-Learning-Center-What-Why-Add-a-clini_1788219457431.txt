@@ -1,0 +1,78 @@
+Create a Clinician Learning Center
+What & Why
+Add a clinician-facing Learning Center that serves as EchoMap's professional development and implementation hub. Unlike the Parent Learning Center, this workspace should support clinical decision-making, language-sample interpretation, NLA-informed observation, AAC planning, communication-partner coaching, and EchoMap workflow training.
+The goal is to help clinicians consistently apply EchoMap's methodology while maintaining clear boundaries between educational resources and clinical judgment.
+Done Looks Like
+A new Clinician Learning Center appears under Resources for authorized clinicians.
+Learning Center content is organized into structured modules.
+Modules can contain text, examples, clinical notes, downloadable resources, videos, reference guides, and implementation checklists.
+Clinicians can bookmark modules and mark them complete.
+Progress persists across devices and sessions.
+Resources are searchable by topic.
+Content is organized into categories:
+EchoMap Foundations
+Turning Communication into Shared Understanding
+Communication Dictionary Framework
+Evidence Review Workflow
+Child Language Review Process
+Natural Language Acquisition (NLA)
+NLA Overview
+Stage 0–6 Reference Guide
+Mitigation Examples
+Mini-Chunk Guidance
+Stage Decision Support
+Common Scoring Errors
+Gestalt Language Processing
+Identifying Gestalts
+Working Meanings
+Context Analysis
+Script Recognition
+Longitudinal Tracking
+Language Sampling
+Reviewing Child Utterances
+Handling Unintelligible Speech
+Communication Function Identification
+Context Collection
+Reliability Considerations
+AAC Implementation
+AAC Planning Workflow
+Selecting Vocabulary Candidates
+Core vs Fringe Vocabulary
+Moving Dictionary Phrases to AAC Planning
+Family Collaboration Strategies
+Communication Partner Coaching
+Declarative Language Strategies
+Reducing Prompt Dependency
+Question vs Comment Analysis
+Environmental Supports
+Home-School-Therapy Consistency
+EchoMap Workflow Training
+Recording Sessions
+Child Language Review
+Phrase Inbox
+Dictionary Management
+Session Summary Creation
+Reports & Documentation
+Clinical Reference Tools
+Include quick-reference tools clinicians can access while reviewing language:
+NLA Stage Guide
+Communication Function Guide
+Working Meaning Examples
+AAC Vocabulary Selection Checklist
+Declarative vs Imperative Language Guide
+Gestalt Identification Guide
+Safety Requirements
+Educational content only.
+No automatic diagnostic recommendations.
+No automatic stage assignment.
+No treatment recommendations generated from resources.
+Resources never modify child records.
+Resources remain separate from clinical documentation.
+Nice-to-Have Enhancements
+"Referenced During Review" links from utterance review screens.
+Context-sensitive help icons.
+Searchable examples library.
+Downloadable clinician handouts.
+Case examples showing how reviewed language moves through EchoMap.
+Vision
+The Clinician Learning Center should function as an integrated professional handbook that teaches clinicians how to interpret and use EchoMap data, while keeping clinical decisions firmly under clinician control.

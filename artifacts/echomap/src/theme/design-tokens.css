@@ -1,0 +1,91 @@
+/*
+ * EchoMap visual language
+ * Warm, child-centered, and calm without becoming pale or corporate.
+ * All values are HSL channels so the app's Tailwind semantic utilities stay
+ * composable and can be audited for contrast in one place.
+ */
+:root {
+  /* Brand palette */
+  --brand-forest-950: 161 42% 12%;
+  --brand-forest-900: 161 38% 16%;
+  --brand-forest-800: 161 34% 21%;
+  --brand-forest-700: 160 32% 27%;
+  --brand-forest-600: 159 29% 34%;
+  --brand-sage-200: 132 24% 82%;
+  --brand-sage-100: 132 28% 91%;
+  --brand-sage-50: 128 30% 96%;
+  --brand-gold-600: 42 76% 44%;
+  --brand-gold-500: 44 75% 54%;
+  --brand-gold-400: 46 76% 61%;
+  --brand-gold-100: 46 73% 88%;
+  --brand-cream-50: 42 41% 95%;
+  --brand-cream-25: 40 33% 98%;
+  --brand-cream-100: 40 29% 91%;
+
+  /* Semantic roles */
+  --background: var(--brand-cream-50);
+  --foreground: var(--brand-forest-800);
+  --card: var(--brand-cream-25);
+  --card-foreground: var(--brand-forest-800);
+  --popover: var(--brand-cream-25);
+  --popover-foreground: var(--brand-forest-800);
+  --primary: var(--brand-forest-800);
+  --primary-foreground: var(--brand-cream-50);
+  --secondary: var(--brand-sage-100);
+  --secondary-foreground: var(--brand-forest-800);
+  --muted: 42 23% 89%;
+  --muted-foreground: 160 21% 38%;
+  --accent: var(--brand-gold-400);
+  --accent-foreground: var(--brand-forest-950);
+  --destructive: 0 67% 46%;
+  --destructive-foreground: 42 41% 98%;
+  --border: 158 18% 80%;
+  --input: 158 18% 76%;
+  --ring: var(--brand-gold-600);
+  --primary-border: var(--brand-forest-700);
+  --secondary-border: var(--brand-sage-200);
+  --destructive-border: 0 58% 39%;
+
+  /* Navigation roles */
+  --sidebar: var(--brand-forest-950);
+  --sidebar-foreground: var(--brand-cream-50);
+  --sidebar-border: var(--brand-forest-700);
+  --sidebar-primary: var(--brand-gold-400);
+  --sidebar-primary-foreground: var(--brand-forest-950);
+  --sidebar-accent: var(--brand-forest-700);
+  --sidebar-accent-foreground: var(--brand-gold-400);
+
+  --radius: 1rem;
+  --app-font-sans: 'DM Sans', sans-serif;
+  --app-font-serif: 'Fraunces', serif;
+  --app-font-mono: 'Space Mono', monospace;
+}
+
+.dark {
+  --background: var(--brand-forest-950);
+  --foreground: var(--brand-cream-50);
+  --card: var(--brand-forest-900);
+  --card-foreground: var(--brand-cream-50);
+  --popover: var(--brand-forest-900);
+  --popover-foreground: var(--brand-cream-50);
+  --primary: var(--brand-gold-400);
+  --primary-foreground: var(--brand-forest-950);
+  --secondary: var(--brand-forest-800);
+  --secondary-foreground: var(--brand-cream-50);
+  --muted: var(--brand-forest-800);
+  --muted-foreground: 42 24% 76%;
+  --accent: var(--brand-gold-400);
+  --accent-foreground: var(--brand-forest-950);
+  --border: var(--brand-forest-700);
+  --input: var(--brand-forest-700);
+  --ring: var(--brand-gold-400);
+  --primary-border: var(--brand-gold-500);
+  --secondary-border: var(--brand-forest-600);
+  --sidebar: var(--brand-forest-950);
+  --sidebar-foreground: var(--brand-cream-50);
+  --sidebar-border: var(--brand-forest-800);
+  --sidebar-primary: var(--brand-gold-400);
+  --sidebar-primary-foreground: var(--brand-forest-950);
+  --sidebar-accent: var(--brand-forest-800);
+  --sidebar-accent-foreground: var(--brand-gold-400);
+}

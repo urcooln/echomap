@@ -1,0 +1,79 @@
+Add: Evidence Transparency
+Done looks like
+Every statement in the generated Session Summary can be traced back to reviewed evidence.
+Clinicians can expand a summary section to view the specific confirmed Child utterances, phrase candidates, or dictionary entries that contributed to that statement.
+Generated observations clearly distinguish:
+Directly observed language
+Longitudinal comparisons
+AI-generated interpretations
+Interpretation sections display a visible label:
+AI-generated clinical observation
+Clinician review required
+Why
+Clinicians need to understand why EchoMap generated an observation rather than treating it as a black box.
+Add: Communication Growth Snapshot
+Done looks like
+The Session Summary includes a dedicated section:
+Communication Growth Snapshot
+When supported by reviewed evidence, summarize:
+New phrases observed this session
+Repeated phrases observed across sessions
+New communication functions observed
+Previously documented phrases reused in new contexts
+Emerging flexibility or recombination
+Increased frequency of meaningful communication
+All comparisons use cautious language such as:
+"A previously undocumented phrase was observed."
+"This phrase has now been observed across multiple sessions."
+"Language may be becoming more flexible across contexts."
+Why
+This is often the first thing clinicians want to know after a session:
+What was new?
+What changed?
+What should I pay attention to?
+Add: Family & Team Shareable Highlights
+Done looks like
+Generate a separate optional section:
+Family & Team Highlights
+Provide 3–5 plain-language observations suitable for sharing with caregivers or educational teams.
+Examples:
+"The child used several phrases to request help during the session."
+"A new phrase was observed that had not been documented previously."
+"The child repeatedly used language to share attention with others."
+This section:
+Uses non-clinical language
+Avoids NLA terminology
+Avoids diagnostic language
+Requires clinician review before sharing
+Never automatically sends to anyone
+Why
+SLPs frequently need a quick summary they can adapt for parents and teachers.
+Add: Dictionary & AAC Opportunities
+Done looks like
+EchoMap highlights:
+Dictionary Candidates
+Novel phrases
+Frequently repeated phrases
+Clinically meaningful phrases
+AAC Opportunities
+High-frequency functional phrases
+Requests
+Regulation phrases
+Social interaction phrases
+These remain suggestions only and never modify AAC Planning or the Communication Dictionary automatically.
+Why
+This turns the summary into a practical workflow tool rather than just documentation.
+Add: Session-to-Session Continuity
+Done looks like
+When previous reviewed sessions exist, EchoMap generates:
+Since Last Reviewed Session
+Newly observed phrases
+Phrases not observed this session
+Phrases increasing in frequency
+Phrases decreasing in frequency
+Communication functions appearing for the first time
+Use cautious wording and only reviewed evidence.
+Why
+This aligns directly with the broader EchoMap goal:
+Turning communication into shared understanding across home, school, and therapy.
+The most valuable thing EchoMap can tell a clinician isn't just what happened today—it's how today's communication compares with what has been happening over time.

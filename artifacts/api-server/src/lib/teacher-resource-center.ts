@@ -1,0 +1,48 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { and, asc, eq } from "drizzle-orm";
+import { db, teacherResourceItemsTable, teacherResourcesTable } from "@workspace/db";
+import type { TeacherResourceSection } from "@workspace/db";
+import { storeClinicalKnowledgeObject } from "./clinical-knowledge-object-storage";
+
+export const TEACHER_RESOURCE_KEY = "teacher-resource-center";
+export const TEACHER_RESOURCE_VERSION = "1.0";
+export const TEACHER_RESOURCE_PDF = "echomap-teacher-resources_1788216080991.pdf";
+export const TEACHER_RESOURCE_DISCLAIMER = "These resources are educational classroom supports, not clinical records, diagnosis, treatment recommendations, or a replacement for individualized guidance from a child’s care team.";
+type Definition = { resourceKey: string; category: string; position: number; title: string; summary: string; readingMinutes: number; sections: TeacherResourceSection[]; format?: string };
+type TeacherResourceBundle = {
+  resource: typeof teacherResourcesTable.$inferSelect;
+  items: Array<typeof teacherResourceItemsTable.$inferSelect>;
+};
+const section = (heading: string, body: string, bullets: string[] = []): TeacherResourceSection => ({ heading, body, bullets });
+export const teacherResourceDefinitions: Definition[] = [
+  { resourceKey: "what-is-glp", category: "Understanding Gestalt Language Processing", position: 1, title: "Understanding Gestalt Language Processing", summary: "A welcoming introduction to gestalts, scripts, and communication progress.", readingMinutes: 4, sections: [section("What is GLP?", "Gestalt language processors may learn language in meaningful chunks connected to experiences, songs, shows, or relationships. Those chunks can be communication, even when the words are not yet flexible."), section("What does progress look like?", "Progress is individual and can include more flexible combinations, new ways to express ideas, and stronger participation—not a score or a race."), section("Common myths", "Echolalia is not meaningless, and every communication form deserves respect. Follow the child’s lead, model naturally, and avoid requiring repetition.")], format: "guide" },
+  { resourceKey: "declarative-language-cheat-sheet", category: "Classroom Communication Supports", position: 2, title: "Declarative Language Cheat Sheet", summary: "Turn question-heavy moments into invitations for shared attention and participation.", readingMinutes: 3, sections: [section("Try noticing instead of testing", "Use comments that describe what is happening or share your own perspective.", ["“The blocks are getting tall.”", "“I’m wondering what comes next.”", "“We found the blue one.”"]), section("Build in wait time", "After a model, pause with a relaxed face and body. A child may respond with speech, AAC, gesture, movement, or a look.", ["Reduce back-to-back questions.", "Follow the child’s focus.", "Celebrate connection rather than correctness."])], format: "cheat-sheet" },
+  { resourceKey: "regulation-sensory-supports", category: "Regulation & Sensory Supports", position: 3, title: "Regulation & Sensory Supports Guide", summary: "Recognize dysregulation and make the classroom easier to access.", readingMinutes: 5, sections: [section("Recognize the signal", "Changes in movement, voice, attention, or access to communication can signal that the environment or demand needs adjusting."), section("Modify the environment", "Offer predictable routines, a quieter option, movement, visual cues, and enough time to transition.", ["Lower competing noise and visual clutter.", "Preview changes without repeated demands.", "Keep a calm, available adult nearby."]), section("Support co-regulation", "Regulation is relational. Use a steady voice, fewer words, and genuine choices; do not treat distress as defiance.")], format: "guide" },
+  { resourceKey: "aac-modeling-classroom", category: "AAC Support Strategies", position: 4, title: "AAC Modeling in the Classroom", summary: "Model language on the student’s system without pressure to perform.", readingMinutes: 5, sections: [section("Model without pressure", "Point to a few meaningful words while you speak naturally. The student does not need to imitate, answer, or hand over the device."), section("Respect all communication", "Honor AAC, speech, signs, gestures, movement, facial expression, and writing as communication.", ["Keep the device charged and available.", "Add vocabulary naturally during real routines.", "Pause and allow response time."]), section("Across settings", "Share successful words, access supports, and device routines with the care team while protecting the student’s privacy.")], format: "guide" },
+  { resourceKey: "peer-connections", category: "Building Peer Connections", position: 5, title: "Building Peer Connections", summary: "Create authentic, inclusive opportunities to participate with peers.", readingMinutes: 4, sections: [section("Make participation real", "Offer shared interests, cooperative jobs, and flexible ways to join without forcing eye contact, speech, or turn-taking."), section("Support peers", "Teach peers to wait, notice all communication, and respond to a classmate’s interests.")], format: "guide" },
+  { resourceKey: "transitions-routines", category: "Supporting Transitions & Routines", position: 6, title: "Supporting Transitions & Routines", summary: "Make changes more predictable and communication-accessible.", readingMinutes: 3, sections: [section("Before the change", "Use a visual cue, concrete language, and a little extra time. Offer a meaningful choice where possible."), section("During the change", "Reduce words and provide a consistent way to ask for help, more time, or a break.")], format: "checklist" },
+  { resourceKey: "language-modeling-examples", category: "Language Modeling Examples", position: 7, title: "Language Modeling Examples", summary: "Practical classroom examples for declarative language and script expansion.", readingMinutes: 5, sections: [section("Question to declarative", "“What do you need?” can become “I see you’re looking for something.” “Do you want help?” can become “I can help.”"), section("Expand with care", "Add one small, meaningful idea to a child’s communication without correcting or demanding a repeat.", ["Honor the original message.", "Keep the model connected to the moment.", "Allow multimodal responses."]), section("Real classroom moments", "Use arrival, snack, play, group work, and cleanup as natural opportunities to model.")], format: "examples" },
+  { resourceKey: "teacher-faq", category: "Frequently Asked Questions", position: 8, title: "Frequently Asked Questions", summary: "Clear answers to common classroom questions about communication support.", readingMinutes: 4, sections: [section("Should I correct echolalia?", "No. Treat it as meaningful communication, observe context, and respond to the child’s message."), section("Should a student use AAC only when speech is difficult?", "No. AAC should remain available across the day and alongside every communication form."), section("What if I am unsure?", "Slow down, make the environment more accessible, document observable context, and ask the child’s care team for support without sharing unnecessary private details.")], format: "faq" },
+];
+
+const inFlight = new Map<number, Promise<TeacherResourceBundle>>();
+export const ensureTeacherResourceCenter = async (organizationId: number): Promise<TeacherResourceBundle> => {
+  const prior = inFlight.get(organizationId); if (prior) return prior;
+  const work = (async () => {
+    await db.insert(teacherResourcesTable).values({ organizationId, resourceKey: TEACHER_RESOURCE_KEY, title: "Teacher Resource Center", description: "Classroom-ready supports for communication, regulation, AAC, and connection.", contentVersion: TEACHER_RESOURCE_VERSION }).onConflictDoNothing({ target: [teacherResourcesTable.organizationId, teacherResourcesTable.resourceKey] });
+    const [resource] = await db.select().from(teacherResourcesTable).where(and(eq(teacherResourcesTable.organizationId, organizationId), eq(teacherResourcesTable.resourceKey, TEACHER_RESOURCE_KEY))).limit(1);
+    if (!resource) throw new Error("Teacher Resource Center could not be initialized.");
+    for (const item of teacherResourceDefinitions) await db.insert(teacherResourceItemsTable).values({ resourceId: resource.id, ...item }).onConflictDoNothing({ target: [teacherResourceItemsTable.resourceId, teacherResourceItemsTable.resourceKey] });
+    let current = resource;
+    if (!current.pdfObjectPath) {
+      const data = await readFile(path.resolve(process.cwd(), "dist", "parent-resources", TEACHER_RESOURCE_PDF));
+      const stored = await storeClinicalKnowledgeObject({ organizationId, key: `teacher-resources/${TEACHER_RESOURCE_PDF}`, contentType: "application/pdf", data });
+      const [updated] = await db.update(teacherResourcesTable).set({ pdfObjectPath: stored.key, pdfContentType: stored.contentType, pdfSizeBytes: stored.sizeBytes, updatedAt: new Date() }).where(eq(teacherResourcesTable.id, current.id)).returning();
+      if (updated) current = updated;
+    }
+    const items = await db.select().from(teacherResourceItemsTable).where(eq(teacherResourceItemsTable.resourceId, current.id)).orderBy(asc(teacherResourceItemsTable.position));
+    return { resource: current, items };
+  })();
+  inFlight.set(organizationId, work); try { return await work; } finally { inFlight.delete(organizationId); }
+};

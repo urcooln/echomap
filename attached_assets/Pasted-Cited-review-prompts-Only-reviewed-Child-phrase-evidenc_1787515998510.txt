@@ -1,0 +1,114 @@
+Cited review prompts
+Only reviewed Child phrase evidence is eligible. Drafts never become SOAP or dictionary evidence automatically.
+Generate review prompts
+longitudinal growth
+65/100 · MEDIUM
+DRAFT
+Compare the current reviewed evidence with earlier sessions for changes in phrase variety, flexibility, function, and context. Treat any change as a trend to review, not proof of a stage transition.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 1 · NLA Stages 1–6 Clinical Reference · GLP Information p. 3 · "Time to go to the "Time to fly!" or "Time to tickle!" Trimming down to a semi-flexible · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 1 · Environmental Setup and Sensory Profiling: The "Lead SLP" Guidelines
+Accept as-is
+Dismiss
+soap insight
+65/100 · MEDIUM
+DRAFT
+SOAP draft prompt: document the reviewed evidence around the reviewed phrase “fresh reviewed child phrase”, the observed function/context, and what remains uncertain. Edit this into the clinician’s own assessment rather than copying it as a conclusion.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 6 · Template A: Stage 1 (Variety Focus) · GLP Information p. 4 · SOAP Note Template Examples · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 6 · 6. Clinical Documentation: SOAP & Progress Note
+Accept as-is
+Dismiss
+parent coaching
+65/100 · MEDIUM
+DRAFT
+Offer the care team a reflective coaching prompt: notice the situation around the reviewed phrase “fresh reviewed child phrase”, acknowledge the message, and record what happened next. Adapt wording to the family and clinician’s plan.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 4 · 6. Parent Coaching & Classroom Support Library · GLP Information p. 1 · NLA Stages 1–6 Clinical Reference · GLP Information p. 4 · 7. Clinical Documentation Insights
+Accept as-is
+Dismiss
+Possible stage indicator
+65/100 · MEDIUM
+DRAFT
+Possible NLA indicator only: review the form, flexibility, and context of the reviewed phrase “fresh reviewed child phrase” alongside “NLA Stages 1–6 Clinical Reference”. Do not assign a definitive stage from this suggestion.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 1 · NLA Stages 1–6 Clinical Reference · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 4 · When selecting 2-3 potential models to use without expectation, verify the following: · GLP Information p. 3 · "Time to go to the "Time to fly!" or "Time to tickle!" Trimming down to a semi-flexible
+Accept as-is
+Dismiss
+mitigation observation
+65/100 · MEDIUM
+DRAFT
+Observe whether changes in partner language, timing, sensory load, or transition support affect how the reviewed phrase “fresh reviewed child phrase” is used. This is an observation prompt, not a prescriptive intervention.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 4 · When selecting 2-3 potential models to use without expectation, verify the following: · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 6 · 6. Clinical Documentation: SOAP & Progress Note · GLP Information p. 4 · 6. Parent Coaching & Classroom Support Library
+Accept as-is
+Dismiss
+communication function
+65/100 · MEDIUM
+DRAFT
+Consider whether the reviewed phrase “fresh reviewed child phrase” may be serving a communication function related to commenting. Compare the documented use in testing with the cited source before confirming a function.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 3 · "Time to go to the "Time to fly!" or "Time to tickle!" Trimming down to a semi-flexible · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 1 · Environmental Setup and Sensory Profiling: The "Lead SLP" Guidelines · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 4 · When selecting 2-3 potential models to use without expectation, verify the following:
+Accept as-is
+Dismiss
+gestalt identification
+65/100 · MEDIUM
+DRAFT
+Review whether the reviewed phrase “fresh reviewed child phrase” is functioning as a whole gestalt in context, using “NLA Stages 1–6 Clinical Reference” as a comparison point. Keep the clinician’s interpretation rather than treating this as an identification.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 1 · NLA Stages 1–6 Clinical Reference · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 4 · When selecting 2-3 potential models to use without expectation, verify the following: · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 2 · Stage Delayed Use of whole gestalts (intonationally defined units) to
+Accept as-is
+Dismiss
+longitudinal growth
+65/100 · MEDIUM
+DRAFT
+Compare the current reviewed evidence with earlier sessions for changes in phrase variety, flexibility, function, and context. Treat any change as a trend to review, not proof of a stage transition.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 1 · NLA Stages 1–6 Clinical Reference · GLP Information p. 3 · "Time to go to the "Time to fly!" or "Time to tickle!" Trimming down to a semi-flexible · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 1 · Environmental Setup and Sensory Profiling: The "Lead SLP" Guidelines
+Accept as-is
+Dismiss
+soap insight
+65/100 · MEDIUM
+DRAFT
+SOAP draft prompt: document the reviewed evidence around the reviewed phrase “fresh reviewed child phrase”, the observed function/context, and what remains uncertain. Edit this into the clinician’s own assessment rather than copying it as a conclusion.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 6 · Template A: Stage 1 (Variety Focus) · GLP Information p. 4 · SOAP Note Template Examples · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 6 · 6. Clinical Documentation: SOAP & Progress Note
+Accept as-is
+Dismiss
+parent coaching
+65/100 · MEDIUM
+DRAFT
+Offer the care team a reflective coaching prompt: notice the situation around the reviewed phrase “fresh reviewed child phrase”, acknowledge the message, and record what happened next. Adapt wording to the family and clinician’s plan.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 4 · 6. Parent Coaching & Classroom Support Library · GLP Information p. 1 · NLA Stages 1–6 Clinical Reference · GLP Information p. 4 · 7. Clinical Documentation Insights
+Accept as-is
+Dismiss
+Possible stage indicator
+65/100 · MEDIUM
+DRAFT
+Possible NLA indicator only: review the form, flexibility, and context of the reviewed phrase “fresh reviewed child phrase” alongside “NLA Stages 1–6 Clinical Reference”. Do not assign a definitive stage from this suggestion.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 1 · NLA Stages 1–6 Clinical Reference · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 4 · When selecting 2-3 potential models to use without expectation, verify the following: · GLP Information p. 3 · "Time to go to the "Time to fly!" or "Time to tickle!" Trimming down to a semi-flexible
+Accept as-is
+Dismiss
+mitigation observation
+65/100 · MEDIUM
+DRAFT
+Observe whether changes in partner language, timing, sensory load, or transition support affect how the reviewed phrase “fresh reviewed child phrase” is used. This is an observation prompt, not a prescriptive intervention.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 4 · When selecting 2-3 potential models to use without expectation, verify the following: · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 6 · 6. Clinical Documentation: SOAP & Progress Note · GLP Information p. 4 · 6. Parent Coaching & Classroom Support Library
+Accept as-is
+Dismiss
+communication function
+65/100 · MEDIUM
+DRAFT
+Consider whether the reviewed phrase “fresh reviewed child phrase” may be serving a communication function related to commenting. Compare the documented use in testing with the cited source before confirming a function.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 3 · "Time to go to the "Time to fly!" or "Time to tickle!" Trimming down to a semi-flexible · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 1 · Environmental Setup and Sensory Profiling: The "Lead SLP" Guidelines · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 4 · When selecting 2-3 potential models to use without expectation, verify the following:
+Accept as-is
+Dismiss
+gestalt identification
+65/100 · MEDIUM
+DRAFT
+Review whether the reviewed phrase “fresh reviewed child phrase” is functioning as a whole gestalt in context, using “NLA Stages 1–6 Clinical Reference” as a comparison point. Keep the clinician’s interpretation rather than treating this as an identification.
+Grounded in the reviewed phrase “fresh reviewed child phrase” and 3 cited source excerpts. This is an evidence-based suggestion for clinician review, not a diagnosis, definitive stage assignment, or treatment recommendation.
+Sources: GLP Information p. 1 · NLA Stages 1–6 Clinical Reference · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 4 · When selecting 2-3 potential models to use without expectation, verify the following: · EchoMap AI_ Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors.pdf p. 2 · Stage Delayed Use of whole gestalts (intonationally defined units) to
+Accept as-is

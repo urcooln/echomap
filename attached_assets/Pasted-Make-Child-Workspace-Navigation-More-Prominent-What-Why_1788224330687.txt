@@ -1,0 +1,80 @@
+Make Child Workspace Navigation More Prominent
+What & Why
+The child workspace tabs are currently difficult to discover and do not visually communicate that they are the primary navigation for a child's profile. Clinicians should immediately understand they are viewing a child-specific workspace and be able to move between sections without searching.
+Done Looks Like
+The child name becomes a prominent workspace header.
+Navigation tabs are visually grouped into a dedicated Child Workspace Navigation bar.
+The active tab is immediately obvious through color, weight, and visual emphasis.
+Navigation remains visible while scrolling.
+The workspace feels like a dedicated child dashboard rather than a collection of pages.
+Design Changes
+1. Add a Child Workspace Header
+Instead of:
+Emma Burlington
+Use:
+Emma Burlington
+Communication Profile & Shared Language Map
+Then below:
+Dictionary Count
+Frequent Scripts Count
+AAC Candidates Count
+Last Session Date
+Example:
+Emma Burlington
+Communication Profile & Shared Language Map
+📖 34 Dictionary Phrases | 🔄 8 Frequent Scripts | 💬 12 AAC Candidates | 🕒 Last Session Aug 28
+2. Convert Tabs Into Pill Navigation
+Current:
+Overview | Dictionary | AAC Planning | Timeline | Insights
+Replace with:
+[Overview]
+[Dictionary]
+[AAC Planning]
+[Timeline]
+[Insights]
+[Unclear Speech]
+[Team]
+[Documentation]
+Active tab:
+Filled EchoMap gold
+Dark text
+Slight shadow
+Inactive tabs:
+Light gray background
+Hover effect
+3. Make Navigation Sticky
+When scrolling:
+Child header remains visible
+Tab bar remains pinned below header
+This prevents users from getting lost.
+4. Add Icons
+Overview → Home icon
+Dictionary → Book icon
+AAC Planning → Message icon
+Timeline → Clock icon
+Insights → Lightbulb icon
+Unclear Speech → Audio/Waveform icon
+Team → People icon
+Documentation → Clipboard icon
+Icons dramatically improve recognition speed.
+5. Add Section Descriptions
+When a tab is selected, show a short description:
+Dictionary
+"Clinician-reviewed phrases, meanings, and communication evidence across settings."
+AAC Planning
+"Vocabulary candidates being considered for communication systems."
+Insights
+"Patterns and trends identified from reviewed language."
+This helps new users understand each area.
+6. Add Child Workspace Progress Indicators
+Optional but powerful:
+Dictionary: 34
+AAC Planning: 12
+Unclear Speech: 6
+Review Queue: 4
+Displayed as badges on tabs.
+Example:
+Dictionary (34)
+AAC Planning (12)
+Review Queue (4)
+The biggest improvement would be a sticky pill-style navigation bar with badges and icons. That alone would make the child workspace feel significantly more modern and easier to navigate.

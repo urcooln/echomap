@@ -1,0 +1,72 @@
+Additional Enhancements
+Clinical Quick Reference Hub
+Provide a pinned Quick Reference area that clinicians can access from anywhere in EchoMap without leaving their workflow.
+Done looks like
+A clinician can open Quick References from Session Review, Child Language Review, Dictionary Review, AAC Planning, Session Summary, and Reports.
+Quick References include:
+NLA Stage Guide (0–6)
+Stage 2 Mitigation Examples
+Mini-Chunk Guidance
+Working Meaning Examples
+Communication Function Reference
+Declarative vs Imperative Examples
+AAC Vocabulary Selection Checklist
+Child Language Review Decision Guide
+References open in a side panel and never interrupt workflow progress.
+References are educational only and never automatically classify language.
+Case-Based Learning Library
+Provide practical examples so clinicians can see how concepts are applied.
+Done looks like
+Modules include anonymized example sessions.
+Examples show:
+Transcript excerpt
+Child-language identification
+Working meaning development
+Communication-function selection
+Dictionary entry creation
+AAC planning decisions
+Session-summary examples
+Examples are clearly labeled as educational demonstrations rather than clinical templates.
+Workflow Coaching Mode
+Support onboarding and consistency for new clinicians.
+Done looks like
+A clinician may optionally enable Workflow Coaching.
+Coaching provides contextual guidance throughout:
+Recording
+Child Language Review
+Phrase Inbox
+Dictionary Review
+AAC Planning
+Session Summary
+Guidance explains why a step matters.
+Coaching can be disabled at any time.
+Searchable Clinical Examples
+Done looks like
+Clinicians can search:
+Gestalts
+Mitigations
+Mini-chunks
+Communication functions
+Working meanings
+Declarative language examples
+AAC vocabulary examples
+Results link directly to relevant Learning Center content.
+Resource Connections Throughout EchoMap
+Done looks like
+Relevant Learning Center resources automatically appear alongside workflows.
+Examples:
+During Child Language Review → “Review NLA Stage Reference”
+During Working Meaning entry → “See Working Meaning Examples”
+During AAC Planning → “AAC Vocabulary Selection Guide”
+During Session Summary creation → “Observed Language Documentation Examples”
+Resources never auto-complete workflow decisions.
+Clinical Consistency Safeguards
+Done looks like
+Learning Center content is educational only.
+Resources never:
+assign NLA stages,
+determine communication functions,
+create dictionary entries,
+generate clinical conclusions,
+recommend treatment plans.
+Clinician judgment remains the source of truth for all clinical decisions.

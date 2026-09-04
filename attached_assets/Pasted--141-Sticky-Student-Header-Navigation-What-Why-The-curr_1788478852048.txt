@@ -1,0 +1,63 @@
+#141 - Sticky Student Header Navigation
+What & Why
+The current mobile student profile separates the student name from the profile navigation tabs (Student Overview, Phrase Dictionary, Shared Moments, etc.).
+This creates unnecessary scrolling and weakens context. Teachers should always know which student they are viewing and have immediate access to student-specific sections.
+Move the student navigation directly beneath the student name and keep it visible as the user scrolls.
+Done looks like
+Student Header
+At the top of the profile:
+Emma Burlington
+Pre-School • BCSS
+Communication Snapshot:
+AAC User
+Gestalt Language Processor
+TouchChat WordPower
+Last Updated Aug 2025
+Actions:
+[ Log Phrase ]
+[ Add Shared Moment ]
+[ Message Team ]
+Student Navigation
+Immediately beneath the student header:
+Emma Burlington
+
+[ Overview ]
+[ Phrase Dictionary ]
+[ Shared Moments ]
+[ Team Notes ]
+[ AAC Info ]
+Mobile Behavior
+Tabs sit directly below the student's name.
+Tabs remain visible while scrolling (sticky behavior).
+Active tab is clearly highlighted.
+Horizontal scrolling is allowed if all tabs do not fit.
+Student name remains visible above tabs when possible.
+Tapping a tab smoothly scrolls or switches sections.
+Desktop Behavior
+Student header and tabs appear together as a unified profile navigation area.
+Example:
+Emma Burlington
+Pre-School • BCSS
+[ Overview ] [ Phrase Dictionary ] [ Shared Moments ] [ Team Notes ] [ AAC Info ]
+Overview content...
+Navigation Rules
+Student Overview becomes the default tab.
+Phrase Dictionary opens directly inside the student profile.
+Shared Moments opens directly inside the student profile.
+Team Notes opens directly inside the student profile.
+AAC Information opens directly inside the student profile.
+No separate navigation routes are required for these sections.
+Visual Design
+Use EchoMap styling:
+Cream background
+Forest green active state
+Sage inactive tabs
+Gold highlight for selected tab
+Rounded segmented-control appearance
+UX Goal
+A teacher should always be able to answer:
+"Which student am I viewing?"
+and
+"How do I get to this student's phrases, shared moments, or AAC information?"
+without scrolling back to the top of the page.
+The student identity and student navigation should function as a single, unified header.

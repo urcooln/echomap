@@ -1,0 +1,34 @@
+#137A - Add Communication Modality to AAC Profile
+What & Why
+AAC device and vocabulary information provides important context, but care teams also need a simple way to understand how a child currently communicates across settings. Add a structured Communication Modalities section to the AAC Information profile so clinicians, teachers, and families can quickly see the communication methods currently used by the child without implying assessment results, proficiency, preference, or clinical conclusions.
+Done looks like
+The AAC Information profile includes a Communication Modalities section.
+Authorized users can view the child's currently documented communication modalities.
+The profile supports multiple selections:
+AAC
+Spoken Language
+Sign Language
+Gestures
+Written Language
+Other (with optional custom label)
+Clinicians can create and update modalities as part of the AAC Information workflow.
+Teacher and Parent editing follows the same role-policy used for the AAC profile and never exceeds existing authorization boundaries.
+Communication modalities are presented as descriptive profile context only and never as clinical evidence, assessment results, communication-function determinations, NLA indicators, AAC recommendations, diagnoses, or treatment conclusions.
+Session summaries, AAC Planning, Parent Resources, Teacher Resources, and Learning Centers may reference documented modalities as profile context but may not automatically generate recommendations or clinical interpretations from them.
+Changes appear in AAC profile history with actor, timestamp, and changed values.
+Out of scope
+Measuring communication proficiency.
+Assigning primary or preferred communication methods automatically.
+Determining eligibility for AAC services.
+Generating clinical recommendations from selected modalities.
+Replacing language sampling, communication-function review, or AAC planning workflows.
+Additional UI Example
+Communication Modalities
+
+☑ AAC
+☑ Spoken Language
+☐ Sign Language
+☑ Gestures
+☐ Written Language
+☐ Other
+Relevant files

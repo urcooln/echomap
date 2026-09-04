@@ -1,0 +1,71 @@
+# See https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files for more about ignoring files.
+
+# compiled output
+dist
+tmp
+out-tsc
+*.tsbuildinfo
+.expo
+.expo-shared
+
+# dependencies
+node_modules
+
+# IDEs and editors
+/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# misc
+/.sass-cache
+/connect.lock
+/coverage
+/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/typings
+
+# environment and generated credentials
+/.env
+/.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+gha-creds-*.json
+
+# System Files
+.DS_Store
+Thumbs.db
+
+.cursor/rules/nx-rules.mdc
+.github/instructions/nx.instructions.md
+
+# Replit
+.cache/
+.local/
+
+# Local assistant/agent state
+.agents/
+.codex/
+
+# Local runtime state
+.config/
+.data/
+**/.data/
+
+# EchoMap development recordings and session-store state are runtime data.
+# They may contain private therapy content and must never enter source control.
+artifacts/api-server/.data/echomap-sessions/

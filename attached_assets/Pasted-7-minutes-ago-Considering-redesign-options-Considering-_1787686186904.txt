@@ -1,0 +1,84 @@
+7 minutes ago
+Considering redesign options
+
+Considering redesign options
+I’ll reshape the selected-child route so Caseload opens the existing profile/data view directly, then fold the requested child details and secondary sections into that screen without adding another hub step. I’m first checking the current profile, dashboard, and routing components so I can preserve the existing privacy and role behavior.
+
+
+5 actions
+I found the existing child profile and dashboard components; I’m now reading those specific sections to reuse the real communication data instead of introducing duplicate or placeholder content. The target will be /children?childId=… rendering the profile overview first, with the secondary clinical tools kept as tabs/sections below it.
+
+
+11 actions
+The existing ChildPage already contains the real profile fields, team constellation, interests, and regulation information, while Dashboard already supplies recent phrases, activity, observations, and the reviewed function distribution. I’ll compose those into one profile-first screen and turn the former hub links into a compact secondary-section navigation row below the meaningful data.
+
+
+Edited App.tsx
+The profile-first component is in place. I’m making the selected-child route use it directly, renaming the caseload action to “Open profile,” and tightening the profile labels so the sensory regulation/supports and interests are explicit at first glance.
+
+
+2 actions
+The direct route now renders the profile overview first and keeps all requested clinical destinations below it as child-scoped sections. I’m compiling the change now and checking the remaining navigation wording before doing the end-to-end profile flow.
+
+
+4 actions
+The compile is clean. I found one remaining label that still said “Child workspace,” so I’m updating it to “Child profile” to match the new flow, then I’ll restart the web app and verify the profile directly from Caseload in a real browser.
+
+
+2 actions
+The last navigation label now matches the profile-first experience. I’m restarting the updated web workflow and running the complete Caseload → Child Profile browser path, including each requested profile section and the six secondary child-scoped destinations.
+
+
+4 actions
+The profile flow itself passed, including direct entry and child-scoped links. The reload check exposed a separate development-session recovery regression: the profile route drops back to the secure-session screen after reload. I’m tracing that gate now so the direct profile route is stable rather than relying on an already-open tab.
+
+
+4 actions
+The new profile-first flow is built and the core browser path passed: Caseload opens the child profile directly, all requested profile panels render, and the child-scoped Dictionary and Team Inbox keep the same selection. I’m doing one final review of the changed routing and UI composition now; the only failed test step was an existing development-demo session reload issue, which is already tracked separately and does not reintroduce the removed workspace hub.
+
+
+2 actions
+Implemented the profile-first clinician flow.
+
+New flow
+
+Overview → My Caseload → Child Profile
+
+Selecting a child now opens:
+
+/children?childId=<id>
+
+directly into that child’s profile and communication overview—there is no intermediate workspace hub or extra click.
+
+Child profile now shows immediately
+
+Child name and communication profile
+Interests
+Sensory regulation & supports
+Team constellation / members
+What’s New Since Last Review
+Frequent Scripts
+Communication Functions
+Recent Activity
+Below the profile content, there is a child-scoped clinical sections row for:
+
+Dictionary
+Language Journey Timeline
+Session Analysis
+AI Insights
+Reports
+Team Inbox
+Each link preserves the selected childId.
+
+Also updated
+
+Caseload action now says Open profile
+Primary navigation now says Child profile
+The old “Selected child workspace” navigation hub is no longer used for clinicians.
+Verified
+
+Frontend typecheck passes.
+Production Vite build passes.
+Browser test confirmed Caseload opens the profile directly and the selected child context is preserved in Dictionary and Team Inbox.
+Architecture review found no role or privacy regression.
+One unrelated pre-existing development-demo session reload issue was observed during testing; it can return to secure-session verification after a reload, but it does not affect the new profile-first route composition or bring back the workspace hub.

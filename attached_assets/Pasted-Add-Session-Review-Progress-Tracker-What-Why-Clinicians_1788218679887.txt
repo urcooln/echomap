@@ -1,0 +1,59 @@
+Add Session Review Progress Tracker
+What & Why
+Clinicians need immediate visibility into how much transcript review work remains after a recording is processed. The Child Language Review workflow should provide clear progress indicators so clinicians can quickly understand review status, estimate remaining effort, and confidently pause and resume sessions.
+Done looks like
+A persistent Review Progress card appears at the top of the Child Language Review page.
+The progress card is visible immediately after transcription completes and remains visible throughout review.
+The card displays:
+Child: X
+Not Child: X
+Unsure: X
+Unintelligible: X
+Remaining: X
+A visual progress bar shows:
+Reviewed utterances
+Total reviewable utterances
+Percent complete
+Counts update immediately after each clinician decision.
+Progress persists across refreshes, logout, browser sessions, and device changes.
+Progress restores correctly when a clinician returns to a partially reviewed session.
+Remaining count always reflects unresolved utterances only.
+Progress is calculated from clinician decisions, not AI suggestions or speaker-grouping results.
+Speaker-grouping failures do not affect progress calculations.
+The component is responsive and remains usable on desktop and mobile devices.
+Example
+Review Progress
+18 of 42 reviewed (43%)
+████████░░░░░░░░░░░░
+Child: 12
+Not Child: 4
+Unsure: 2
+Unintelligible: 0
+Remaining: 24
+Session Status
+Transcript Complete ✓
+Speaker Identification Unavailable
+Review Can Continue
+UX Requirements
+Place the Review Progress card directly beneath the page title and above the first review item.
+Make progress visible without scrolling.
+Use positive completion language:
+"18 of 42 reviewed"
+"24 remaining"
+Avoid presenting unresolved items as errors.
+Allow clinicians to safely stop and resume review at any time.
+Out of scope
+Automatic utterance classification.
+Clinical interpretation.
+NLA stage assignment.
+Dictionary updates.
+Session note generation.
+Success Criteria
+Clinicians can answer these questions within one second of opening the review page:
+How many utterances have I reviewed?
+How many are left?
+How much of the session is complete?
+Can I safely leave and come back later?
+I would also add a small completion message when the review reaches 100%:
+Review Complete
+All utterances have been reviewed. Continue to Child Phrase Inbox → Session Summary.

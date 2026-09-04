@@ -1,0 +1,161 @@
+SLP Workspace Redesign: Caseload Command Center
+
+Redesign the SLP experience so clinicians manage their entire caseload from one centralized dashboard before entering individual child workspaces.
+
+Primary Goal
+
+When an SLP logs in, they should immediately understand:
+
+* Which children have updates
+* What changed since their last login
+* Which children require review
+* Which team members contributed new information
+
+The dashboard should function as a clinical command center.
+
+⸻
+
+SLP Home Dashboard (Default Landing Page)
+
+Welcome Header
+
+Good Morning, [Clinician Name]
+
+You currently support:
+
+* Total Active Clients: XX
+* New Updates Since Last Login: XX
+* Children with New Phrases: XX
+* Children with New Team Contributions: XX
+* Children Requiring Review: XX
+
+⸻
+
+What’s New Since Last Sign-In
+
+This should be the most prominent section on the page.
+
+Display updates grouped by child.
+
+Oliver Bennett
+
+🆕 4 new phrases added
+
+🧩 New communication function identified
+
+🏫 Teacher submitted observation
+
+📅 Last activity: Today
+
+[View Child Workspace]
+
+⸻
+
+Emma Carter
+
+🆕 2 new phrases added
+
+📈 Possible emerging mitigation
+
+👨‍👩‍👧 Parent submitted observation
+
+📅 Last activity: Yesterday
+
+[View Child Workspace]
+
+⸻
+
+Requirements:
+
+* Sort by most recent activity
+* Show only changes since last login
+* Allow marking updates as reviewed
+* Remove reviewed updates from the notification feed
+
+⸻
+
+Priority Alerts
+
+Create a high-visibility review section.
+
+Examples:
+
+🚨 New phrase cluster detected
+
+🚨 Significant increase in phrase frequency
+
+🚨 New communication function identified
+
+🚨 Parent requested review
+
+🚨 Teacher requested support
+
+🚨 New phrase observed across multiple environments
+
+🚨 Potential language flexibility indicator detected
+
+Selecting an alert should open the relevant child workspace.
+
+⸻
+
+Recent Team Activity
+
+Display a communication feed across the entire caseload.
+
+Example:
+
+Teacher:
+“Observed ‘Let’s save the city!’ during recess.”
+
+Parent:
+“Used phrase during pretend play.”
+
+SLP:
+“Added interpretation.”
+
+OT:
+“Observed phrase after sensory regulation.”
+
+Display:
+
+* Contributor role
+* Child name
+* Date/time
+* Activity summary
+
+Allow filtering by:
+
+* Parent
+* Teacher
+* SLP
+* OT
+* PT
+* BCBA
+
+⸻
+
+Caseload Overview
+
+Display all active children as cards.
+
+Each child card should show:
+
+* Child first name
+* Profile photo (optional)
+* New phrases this week
+* Most frequent script
+* Last activity date
+
+Buttons:
+
+* Open Workspace
+* Add Language Observation
+* View Timeline
+
+Allow:
+
+* Search by child name
+* Sort by activity
+* Sort alphabetically
+* Filter by children with updates
+* Filter by children requiring review

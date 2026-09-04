@@ -1,0 +1,101 @@
+Voice Calibration Redesign
+
+Redesign the speaker-identification calibration workflow to use a standardized, natural voice sample that can be reused across future sessions.
+
+Calibration Screen
+
+Replace the current scripted prompt:
+
+“I am Clinician. Today is Tuesday, August 25, 2026.”
+
+with:
+
+Create Voice Profile
+
+Please read the sentence below aloud:
+
+“Hello, this is my EchoMap voice sample. My name is [Clinician Name], and I am beginning today’s session.”
+
+This phrase should automatically populate the clinician’s name from their account profile.
+
+Recording Requirements
+
+* Require 5–10 seconds of speech.
+* Display a visible recording timer.
+* Provide clear start/stop controls.
+* Allow re-recording if desired.
+
+Voice Profile Quality Assessment
+
+After recording, automatically evaluate:
+
+* Recording length
+* Audio clarity
+* Background noise
+* Voice consistency
+* Signal quality
+
+Display one of:
+
+🟢 Excellent Voice Profile
+
+* High confidence for speaker identification
+
+🟢 Good Voice Profile
+
+* Suitable for speaker identification
+
+🟡 Fair Voice Profile
+
+* Speaker identification may be less accurate
+
+🔴 Poor Voice Profile
+
+* Please re-record in a quieter environment
+
+Success State
+
+Display:
+
+✅ Voice Profile Saved
+
+Your voice profile will be used to help EchoMap automatically distinguish clinician speech from child speech during recordings.
+
+Persistence
+
+* Save the voice profile to the clinician account.
+* Do not require calibration before every session.
+* Reuse the saved profile across future recordings.
+* Allow clinicians to update or replace their voice profile at any time from Settings.
+
+Session Workflow
+
+When recording a session:
+
+1. Detect whether a saved clinician voice profile exists.
+2. If a profile exists:
+    * Automatically attempt speaker identification.
+    * Label matching speech as “Clinician.”
+    * Label non-matching speech as “Possible Child Speech.”
+3. Display confidence scores for speaker assignments.
+4. Allow clinicians to quickly correct speaker labels when needed.
+5. Learn from clinician corrections over time to improve future accuracy.
+
+Error Handling
+
+Do not display generic errors.
+
+If calibration fails, specify exactly why:
+
+* Microphone permission denied
+* Recording too short
+* Recording too quiet
+* Excessive background noise
+* Upload failure
+* Speaker model processing error
+
+Provide actionable instructions for resolution.
+
+Design Goal
+
+The experience should feel professional, intuitive, and trustworthy. Clinicians should complete voice setup once and gain meaningful improvement in automatic speaker separation without repeated calibration at each session.

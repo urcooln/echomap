@@ -1,0 +1,34 @@
+Enhance Pattern Context and Flexibility Tracking
+Done looks like
+Each recurring pattern displays a Context Variability Indicator showing the number of distinct settings, activities, communication partners, and reviewed sessions in which the pattern has been observed.
+Patterns can be expanded to show a chronological timeline of verified observations.
+The detail view highlights whether the pattern appears:
+as an exact phrase,
+within longer phrases,
+at the beginning of phrases,
+in the middle of phrases,
+at the end of phrases.
+Clinicians can view all dictionary phrases containing the pattern and sort by most recent, most frequent, or oldest observed.
+The system identifies whether a pattern appears across multiple communication functions when those functions have already been clinician-confirmed elsewhere.
+A pattern may display observational labels such as:
+Used across multiple settings
+Used across multiple communication partners
+Appears in several phrase forms
+Observed across multiple sessions
+Recently increasing
+These labels are descriptive only and must not imply developmental progress, NLA stage, mitigation status, gestalt status, diagnosis, treatment effectiveness, or readiness for intervention.
+Additional Safety Requirements
+Pattern frequency must never inflate counts through duplicate transcript entries, merged phrases, or repeated processing runs.
+Deleted, archived, ignored, or clinician-rejected phrases must not contribute to recurring-pattern calculations.
+All recurring-pattern outputs must be traceable back to underlying reviewed evidence through a clinician-accessible evidence view.
+Future-Proofing
+Store recurring-pattern observations separately from interpretation layers so future NLA, AAC, communication-function, and longitudinal analytics can reuse the same evidence without recalculating fragment relationships.
+Preserve a stable pattern identifier so longitudinal tracking remains consistent as additional reviewed language is added.
+The single most valuable addition is the Context Variability Indicator. Clinicians care less that a fragment occurred 30 times and more that it occurred:
+at home,
+at school,
+during play,
+during regulation,
+with different partners,
+across multiple sessions.
+That turns "frequent phrase" into a much more meaningful communication pattern tracker while staying observational and evidence-based.

@@ -1,0 +1,135 @@
+Prompt Addition: Session Summary Generation
+Generate an Editable Clinical Session Summary
+After the clinician completes utterance review, automatically generate an editable draft summary using:
+Clinician-confirmed Child utterances
+Session metadata
+Communication dictionary history
+Previous observed phrases
+Communication functions
+Existing child profile information
+Interests
+Sensory/regulation supports
+Prior reviewed session data
+The summary must clearly distinguish:
+Observed Language
+Use direct examples of clinician-confirmed Child utterances.
+Include:
+
+Frequently repeated language
+Novel language
+Longer utterances
+Functional language
+Possible gestalts
+Emerging combinations
+Quote actual child language whenever possible.
+Communication Functions Observed
+Summarize evidence of:
+Requesting
+Commenting
+Protesting
+Directing
+Seeking assistance
+Social interaction
+Information sharing
+Self-advocacy
+Regulation/support seeking
+Only include functions supported by reviewed utterances.
+Notable Language Changes
+Compare against prior sessions and dictionary history.
+Identify:
+
+New phrases
+Increased frequency
+Reduced reliance on older scripts
+Emerging flexibility
+New communication functions
+Cross-setting carryover
+Use cautious language.
+Examples:
+
+"A previously unobserved phrase was noted."
+"Several phrases previously documented in the communication dictionary were observed again."
+NLA / Gestalt Insights
+Only when supported.
+Highlight:
+
+Potential gestalts
+Mitigations
+Recombined language
+Emerging novel combinations
+Developmental observations
+Never assign a stage as fact.
+Use wording such as:
+
+"May reflect"
+"Could indicate"
+"Clinician review recommended"
+Session Participation
+Summarize:
+Engagement
+Interaction patterns
+Shared attention
+Responsiveness
+Communication opportunities
+Based only on transcript evidence and session metadata.
+AAC Planning Opportunities
+If relevant:
+List phrases that may warrant AAC consideration.
+
+Examples:
+
+High-frequency phrases
+Functional requests
+Social phrases
+Regulation phrases
+Do not automatically add to AAC Planning.
+Suggested Dictionary Candidates
+List:
+Novel reviewed phrases
+Repeated reviewed phrases
+Clinically meaningful phrases
+Require clinician approval.
+Suggested Follow-Up Targets
+Generate optional clinician-editable suggestions such as:
+Observe phrase across settings
+Gather additional examples
+Monitor frequency
+Consider AAC support
+Continue tracking mitigation patterns
+Never present as treatment recommendations.
+Critical Safety Instructions
+Do not:
+Diagnose
+Assign NLA stages as fact
+Infer intent without evidence
+Generate goals
+Generate treatment recommendations
+Treat Unsure utterances as Child utterances
+Treat Unintelligible utterances as evidence
+Only use:
+Confirmed Child utterances
+Meaning-backed dictionary evidence
+Existing reviewed session history
+What the final output should look like
+Session Summary
+Observed Language
+
+"Let's blast off!" observed 4 times during play.
+"I need help" used during a transition activity.
+"Look at that" used while sharing attention with the clinician.
+Communication Functions
+Requesting assistance
+Shared attention/commenting
+Directing activity
+Notable Changes
+"I need help" was not previously documented.
+Several established phrases were observed across activities.
+Potential AAC Candidates
+I need help
+Look at that
+Possible NLA Observations
+Repeated use of "Let's blast off!" may represent a highly familiar gestalt requiring additional observation.
+Follow-Up Considerations
+Continue monitoring frequency across settings.
+Determine whether "I need help" is emerging as a flexible request.
+This would produce something clinicians can actually edit, save, and use—rather than a generic AI paragraph.

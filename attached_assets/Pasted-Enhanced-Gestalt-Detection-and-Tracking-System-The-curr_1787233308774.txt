@@ -1,0 +1,302 @@
+Enhanced Gestalt Detection and Tracking System
+
+The current recording feature converts audio into a single speech-to-text transcript.
+
+This is not sufficient for EchoMap.
+
+EchoMap should identify, separate, and track individual gestalts within recordings.
+
+⸻
+
+Consent Verification Before Recording
+
+Before any audio recording begins:
+
+Display a required confirmation screen.
+
+Message:
+
+“Audio recordings may contain identifiable information. Please confirm that parental/legal guardian consent has been obtained prior to recording and uploading audio.”
+
+Checkbox:
+
+☐ I confirm appropriate consent has been obtained.
+
+Disable recording until checkbox is selected.
+
+Store:
+
+* User
+* Timestamp
+* Child profile
+* Consent confirmation status
+
+in the database.
+
+⸻
+
+Gestalt Segmentation Engine
+
+When audio is recorded:
+
+Current behavior:
+
+❌ Store one large transcript.
+
+New behavior:
+
+Analyze transcript and automatically segment into likely gestalts.
+
+Example:
+
+Transcript:
+
+“Let’s go! Let’s go! Time for blast off! Let’s go! Here we go!”
+
+System should create:
+
+Gestalt 1:
+“Let’s go!”
+
+Gestalt 2:
+“Time for blast off!”
+
+Gestalt 3:
+“Here we go!”
+
+Group repeated occurrences.
+
+⸻
+
+Automatic Frequency Tracking
+
+For every child:
+
+Track:
+
+* Total occurrences
+* First observed date
+* Last observed date
+* Frequency over time
+
+Example:
+
+“Let’s go!”
+
+Seen:
+
+* 143 times
+
+First seen:
+March 3, 2025
+
+Last seen:
+July 20, 2025
+
+Trend:
+Increasing
+
+⸻
+
+Existing Gestalt Detection
+
+When a new recording is uploaded:
+
+Compare transcript against existing gestalts.
+
+If a phrase already exists:
+
+Do not create duplicate entries.
+
+Instead:
+
+Increase occurrence count.
+
+Example:
+
+Existing:
+
+“Let’s go!”
+
+Frequency:
+23
+
+New recording contains:
+
+“Let’s go!”
+
+System updates:
+
+Frequency:
+24
+
+and logs observation.
+
+⸻
+
+Similar Phrase Detection
+
+Use fuzzy matching.
+
+Detect variations such as:
+
+Existing:
+“Let’s blast off”
+
+New:
+“Blast off”
+
+Existing:
+“Here we go”
+
+New:
+“Here we go now”
+
+Flag:
+
+“Possible related gestalt detected.”
+
+Allow user to:
+
+* Merge
+* Keep separate
+
+⸻
+
+Clinician Alert System
+
+When reviewing recordings:
+
+Show alerts such as:
+
+Frequently Used Gestalt
+
+“Let’s go!”
+Observed 12 times this week.
+
+⸻
+
+Emerging Gestalt
+
+New phrase detected:
+“Let’s do it!”
+
+Observed 4 times in past 3 days.
+
+⸻
+
+Returning Gestalt
+
+“Blast off!”
+Not seen for 3 months.
+Recently observed again.
+
+⸻
+
+Communication Insights Dashboard
+
+Create a dashboard showing:
+
+Most Used Gestalts
+
+Recently Added Gestalts
+
+Returning Gestalts
+
+Emerging Gestalts
+
+Communication Function Distribution
+
+Example:
+
+Requests: 35%
+
+Shared Joy: 40%
+
+Regulation: 15%
+
+Unknown: 10%
+
+⸻
+
+Child Communication Timeline
+
+Create timeline view.
+
+Example:
+
+March:
+“Let’s go”
+
+April:
+“Blast off”
+
+May:
+“It’s bedtime”
+
+June:
+“Here we go”
+
+Allow clinicians to see language evolution over time.
+
+⸻
+
+Recording Review Workflow
+
+After transcription:
+
+Show screen:
+
+Detected Gestalts:
+
+☑ Let’s go
+
+☑ Blast off
+
+☑ Here we go
+
+Allow user to:
+
+* Edit
+* Merge
+* Delete
+* Add meaning
+* Assign communication function
+
+before saving.
+
+⸻
+
+Database Requirements
+
+For every gestalt store:
+
+Phrase
+
+Audio samples
+
+Occurrence count
+
+First observed date
+
+Last observed date
+
+Source
+
+Meaning
+
+Communication function
+
+Contexts
+
+Related gestalts
+
+Notes
+
+⸻
+
+Design Principle
+
+EchoMap should not simply transcribe recordings.
+
+EchoMap should build a living communication profile that tracks the evolution, frequency, and meaning of gestalts across time and environments.

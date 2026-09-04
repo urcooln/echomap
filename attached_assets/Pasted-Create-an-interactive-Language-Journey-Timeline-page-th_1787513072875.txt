@@ -1,0 +1,145 @@
+Create an interactive "Language Journey Timeline" page that visualizes a child's communication development across sessions, weeks, months, and years.
+The purpose is to help clinicians, caregivers, and educational teams understand how language patterns evolve over time.
+The timeline should be one of EchoMap's signature features and prioritize clinical meaning, not just data storage.
+Overview Card
+At the top of the page display:
+Language Journey Snapshot
+Example:
+First Gestalt Recorded: March 14, 2025
+Total Gestalts Collected: 186
+Most Frequent Gestalt: "Let's go!"
+Emerging Mitigations: 14
+Sessions Analyzed: 32
+Communication Functions Observed: 7
+Interactive Timeline
+Display a chronological visual timeline.
+Each milestone should be clickable.
+First Observed Gestalts
+Display:
+Date First Observed
+Example:
+March 14, 2025
+First documented gestalts:
+• Let's go!
+• Come on!
+• Ready, set, go!
+Store:
+Date
+Context
+Session
+Meaning if known
+Most Frequent Gestalts
+Track over time.
+Show:
+Phrase
+Occurrences
+Trend
+Example:
+"Let's go!"
+42 occurrences
+Trending ↓
+"Come on!"
+37 occurrences
+Trending ↑
+Create visual trend lines.
+Emerging Mitigations
+Automatically identify possible mitigations.
+Display:
+Original gestalt:
+"Let's blast off!"
+↓
+Observed variation:
+"Blast off"
+↓
+Observed variation:
+"Off"
+Include:
+First observed date
+Most recent date
+Confidence level
+Supporting evidence
+Display:
+Possible Mitigation Pathway
+rather than definitive conclusions.
+Language Flexibility Indicators
+Create a section titled:
+Possible Language Flexibility Indicators
+Examples:
+Novel combinations observed
+Shortened gestalts
+Recombined phrases
+Increased variety of language
+Increased spontaneous utterances
+New communicative functions
+Display:
+Date observed
+Supporting examples
+Confidence level
+Communication Growth Layer
+Track communication functions across time.
+Display:
+Requesting
+Commenting
+Shared Joy
+Protesting
+Self-Regulation
+Social Interaction
+Information Sharing
+Show visual growth trends month-by-month.
+Meaning Evolution Tracking
+For each gestalt create a timeline.
+Example:
+"We have a cat in our bed"
+2025:
+Possible meaning:
+Overwhelmed
+2026:
+Possible meaning:
+Needs a break
+2026:
+Possible meaning:
+Unexpected event
+Display:
+Possible Meaning Expansion Detected
+when a phrase appears in new contexts.
+Session Milestones
+Automatically identify:
+New Gestalt Milestone
+50 gestalts collected
+Communication Milestone
+New communication function observed
+Mitigation Milestone
+First possible mitigation identified
+Flexibility Milestone
+First novel combination observed
+Growth Summary
+Generate a narrative summary.
+Example:
+"Since March 2025, Oliver has demonstrated increasing variety in communication, several possible mitigation pathways, and expanded use of commenting and social interaction functions."
+Use clinician-friendly language.
+Explainability
+Every timeline event should contain:
+Why This Appears Here
+Display:
+Triggering utterance
+Supporting examples
+Related sessions
+Relevant knowledge-base evidence
+Confidence level
+Visual Requirements
+Use:
+Green for growth indicators
+Gold for milestones
+Neutral colors for observations
+Mobile-friendly timeline
+Expandable cards
+Smooth scrolling
+The timeline should feel like a developmental story rather than a spreadsheet.
+Critical Clinical Requirement
+Do not make definitive NLA stage assignments.
+Use:
+Possible Stage Indicators
+Possible Mitigation Observations
+Emerging Flexibility Indicators
+Clinician Review Recommended
+All insights must be generated using the uploaded EchoMap clinical knowledge base and supported by observable language evidence.

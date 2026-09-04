@@ -1,0 +1,112 @@
+Everything looks great. Please make the following changes to the Child Profile Overview screen.
+
+The Overview should be the primary working screen for clinicians and provide immediate access to the most common actions without requiring navigation to other sections.
+
+Quick Actions Bar (Top of Overview)
+
+Place directly below the Communication Snapshot card.
+
+Include prominent action buttons:
+
+🎙 Record Session
+
+* Start a new recording for the selected child
+* Open the recording workflow immediately
+* Use the existing session recording system
+
+➕ Add Phrase
+
+* Quickly add a new phrase observation
+* Available from the Overview without navigating to Dictionary
+* Support clinician, teacher, and parent phrase contributions
+
+💬 Message Team
+
+* Open the child-specific team conversation
+* Show unread count if messages exist
+
+📄 Generate Report
+
+* Quick access to reports for the selected child
+
+⸻
+
+Overview Layout
+
+The Overview should contain:
+
+Communication Snapshot
+
+Display:
+
+* Child Name
+* Age/Grade (if available)
+* Communication Profile Summary
+* Primary Interests
+* Sensory Regulation & Supports
+* Team Constellation
+* Most Recent Session Date
+
+⸻
+
+What’s New Since Last Review
+
+Most prominent section.
+
+Display:
+
+* New gestalts
+* New communication functions
+* New observations
+* Emerging mitigations
+* Notable language changes
+* New team contributions
+
+⸻
+
+Frequent Scripts
+
+Display the top scripts ranked by true observation frequency.
+
+For each script show:
+
+* Phrase
+* Observation count
+* Last observed date
+* Associated communication function
+
+⸻
+
+Script Search
+
+Add a search bar directly above Frequent Scripts.
+
+Search by:
+
+* Phrase text
+* Partial phrase
+* Meaning
+* Communication function
+
+Results should display:
+
+* Phrase
+* Meaning
+* Observation count
+* Last observed date
+* Communication functions
+
+⸻
+
+Design Goal
+
+A clinician should be able to:
+
+* Understand the child in under 30 seconds
+* See what changed since the last visit
+* Start a recording in one tap
+* Add a phrase in one tap
+* Contact the team in one tap
+* Find any known script in seconds
+
+The Overview should feel like a true clinical command center for an individual child rather than a static profile page.

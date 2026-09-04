@@ -1,0 +1,89 @@
+1. Turn "Who is this recording for?" into a Hero Card
+Instead of a plain dropdown:
+New Recording
+
+Select Child
+
+[ Oliver Bennett ▼ ]
+
+Ready to begin a new communication sample.
+Show a child card with:
+Photo/avatar
+Child name
+Age/grade (if available)
+Active AAC indicator (if applicable)
+Last session date
+This immediately creates context.
+2. Add a Recording Dashboard
+Before recording:
+New Recording
+
+✓ Child Selected
+✓ Consent Ready
+
+Estimated Time: 15–30 min
+
+[ Start Recording ]
+It feels intentional rather than empty.
+3. Surface Review Work Visually
+Instead of a plain list:
+Needs Review (3)
+
+🟠 Oliver
+12 utterances remaining
+
+🟡 Emma
+Phrase Inbox pending
+
+🟢 Noah
+Ready for Session Summary
+Use colored status cards.
+4. Add a Progress Snapshot
+Clinicians love quick metrics.
+This Week
+
+Sessions Recorded: 14
+Awaiting Review: 3
+Draft Notes: 2
+Completed Notes: 11
+5. Replace Empty White Space
+Many clinical apps feel unfinished because large portions of the screen are blank.
+If there are no pending reviews:
+You're all caught up 🎉
+
+No recordings currently require review.
+
+[ Start New Recording ]
+6. Make the Record Button the Visual Focus
+Right now recording feels like another action.
+Instead:
+◉ Start Recording
+Large, centered, impossible to miss.
+The primary purpose of the page should be obvious within 2 seconds.
+7. Add a Workflow Header
+Something like:
+Record
+→ Review
+→ Phrase Inbox
+→ Dictionary
+→ Session Summary
+with the current step highlighted.
+This helps clinicians understand where they are in the process.
+8. Use the Child's Name Everywhere
+Instead of:
+Who is this recording for?
+Once selected:
+Recording for Oliver Bennett
+People connect more with names than generic labels.
+My biggest recommendation
+The top of the Recording page should feel like:
+Recording for Oliver Bennett
+
+Ready to begin a new session.
+
+Last session: Aug 28
+Pending reviews: 1
+
+[ Start Recording ]
+and everything else (recent recordings, review queue, drafts) should be secondary below it.
+That single change would make the page feel much more polished and purpose-driven.

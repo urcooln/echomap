@@ -1,0 +1,126 @@
+Proposed Feature: AAC Device & Vocabulary System Profile
+What & Why
+AAC vocabulary systems significantly influence language organization, modeling strategies, communication-partner coaching, vocabulary recommendations, and AAC planning. Parents, teachers, paraprofessionals, and clinicians often know the device but not the language system being used.
+Add structured AAC information to the Child Profile so all authorized team members can quickly identify both the AAC platform and vocabulary system.
+Child Profile Section
+AAC Information
+AAC User
+✓ Yes
+
+Device Type
+TD I-110
+
+Vocabulary System
+TD Snap Motor Plan 60
+
+Access Method
+Direct Touch
+
+Notes
+School-issued device.
+Updated Sept 2025.
+Device Dropdown
+Examples:
+Tobii Dynavox
+TD Snap
+TD I-110
+TD Pilot
+TD Navio
+PRC-Saltillo
+Accent 800
+Accent 1000
+Via Pro
+NovaChat
+iPad
+iPad
+AbleNet
+QuickTalker Freestyle
+Smartbox
+Grid Pad
+Other
+Custom Device
+Unknown Device
+Vocabulary System Dropdown
+Dynamically filtered by device/vendor.
+TD Snap
+TD Snap Motor Plan 30
+TD Snap Motor Plan 60
+TD Snap Motor Plan 108
+TD Snap Aphasia
+TD Snap Adult
+LAMP
+LAMP WFL Full
+LAMP WFL 84
+LAMP WFL 1-Hit
+Unity
+Unity 60
+Unity 84
+Unity 144
+WordPower
+WordPower 42
+WordPower 60
+WordPower 80
+WordPower 108
+TouchChat
+WordPower
+MultiChat
+VocabPC
+Proloquo2Go
+Crescendo
+Grid
+Super Core
+Fast Talker
+Custom Grid
+Other
+Custom Vocabulary System
+Unknown Vocabulary System
+Team Visibility
+Visible to:
+Clinicians
+Teachers
+Parents
+Caregivers
+Read-only for most users if desired.
+Or editable by:
+Clinician
+Teacher
+Parent
+with audit history.
+Additional Fields
+Access Method
+Dropdown:
+Direct Touch
+Keyguard
+Eye Gaze
+Switch Access
+Head Mouse
+Partner Assisted
+Unknown
+Device Ownership
+Dropdown:
+Personal Device
+School Device
+Clinic Device
+Trial Device
+Shared Device
+Last Confirmed
+AAC Information Last Updated:
+September 2025
+By: Sarah Johnson, SLP
+EchoMap-Specific Benefits
+This would allow:
+Session Summaries
+Reference:
+Child currently uses TD Snap Motor Plan 60 vocabulary.
+AAC Planning
+Suggest vocabulary candidates appropriate to the child's system.
+Teacher Resources
+Provide system-specific modeling resources.
+Parent Portal
+Show vocabulary-system-specific coaching materials.
+Team Collaboration
+Everyone knows:
+Device
+Vocabulary system
+Access method
+without searching old notes.

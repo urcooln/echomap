@@ -1,0 +1,34 @@
+## Enhance Family Engagement and Reflection
+
+### Done looks like
+
+- Each learning module includes a brief "Try This at Home" section containing practical, non-prescriptive ideas derived from the handbook content.
+- Each module includes a "What We Noticed" reflection area where family members may optionally save private observations related to the module.
+- Family reflections remain separate from clinical records and are not visible to clinicians unless explicitly shared through existing observation workflows.
+- The Learning Center displays estimated reading time for each module and a progress indicator showing percentage completed across the handbook.
+- Parents can return to their last-viewed module from the Learning Center home page.
+- Modules support accessible reading features including adjustable text size, clear section navigation, and mobile-friendly layouts.
+
+### Family Safety Requirements
+
+- Reflection content is not analyzed for diagnosis, NLA stage, treatment recommendations, or automated clinical interpretation.
+- Learning Center content remains educational and informational even when family observations are present.
+- Completion status, bookmarks, and reflections are isolated per authenticated family account and never shared across unrelated family members without existing authorization.
+
+### Future-Proofing
+
+- Store module progress, bookmarks, and reflections separately from clinical records so future parent-learning resources can reuse the same infrastructure.
+- Support future resource collections without requiring changes to the Parent Coaching Handbook implementation.
+- Preserve stable module identifiers and content-version tracking so progress remains consistent when handbook content is updated.
+
+### Clinical Value
+
+The Learning Center should help families move from:
+
+"I don't understand why my child says this."
+
+to
+
+"I have tools to observe, understand, and support communication."
+
+The goal is to increase confidence, understanding, and collaboration across home, school, and therapy while keeping educational content clearly separate from clinical decision-making and medical records.

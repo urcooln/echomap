@@ -1,0 +1,44 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "EchoMap: Dev",
+      "type": "shell",
+      "command": "pnpm run dev",
+      "isBackground": true,
+      "problemMatcher": [],
+      "detail": "Start the EchoMap API and web app together."
+    },
+    {
+      "label": "EchoMap: API",
+      "type": "shell",
+      "command": "pnpm run dev:api",
+      "isBackground": true,
+      "problemMatcher": [],
+      "detail": "Start only the EchoMap API."
+    },
+    {
+      "label": "EchoMap: Web",
+      "type": "shell",
+      "command": "pnpm run dev:web",
+      "isBackground": true,
+      "problemMatcher": [],
+      "detail": "Start only the EchoMap frontend."
+    },
+    {
+      "label": "EchoMap: Push DB Schema",
+      "type": "shell",
+      "command": "pnpm run db:push",
+      "problemMatcher": [],
+      "detail": "Apply the Drizzle schema using artifacts/api-server/.env."
+    },
+    {
+      "label": "EchoMap: Typecheck",
+      "type": "shell",
+      "command": "pnpm run typecheck",
+      "group": "build",
+      "problemMatcher": "$tsc",
+      "detail": "Run TypeScript checks across the workspace."
+    }
+  ]
+}

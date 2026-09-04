@@ -1,0 +1,153 @@
+Post-Recording Workflow Redesign: Remove Calibration and Switch to Utterance-First Review
+
+Temporarily hide the clinician voice calibration feature from all user-facing workflows.
+
+Reason
+
+Current investigation confirmed that calibration recordings are stored but are not actively used for:
+
+* Speaker diarization
+* Speaker attribution
+* Clinician-role identification
+* Transcript speaker matching
+* Phrase extraction
+* Gestalt analysis
+
+Because calibration is not affecting outcomes today, it should be hidden until operational speaker matching is implemented. Do not delete existing calibration infrastructure; simply remove it from the clinician workflow and UI.
+
+⸻
+
+New Core Principle
+
+A successful recording should always produce a consistent review workflow.
+
+Clinicians should never be blocked from reviewing language because speaker attribution failed.
+
+⸻
+
+Replace Phrase-First Review With Utterance-First Review
+
+Current (remove)
+
+Transcript → Phrase Candidates → Review Phrases
+
+New Workflow
+
+Transcript → Child Utterance Review → Child Phrase Candidates → Dictionary / Insights
+
+⸻
+
+Step 1: Potential Child Utterances
+
+After transcription completes, automatically generate a review queue of utterances.
+
+Display:
+
+Potential Child Utterances
+
+1. “Let’s blast off!”
+2. “Can I close this Word document?”
+3. “I need help.”
+4. “Look at that!”
+
+For each utterance provide:
+
+* Child
+* Not Child
+* Unsure
+
+The clinician should be able to move through utterances rapidly using keyboard shortcuts and mobile-friendly controls.
+
+⸻
+
+Step 2: Build Child Language Set
+
+After utterances are reviewed:
+
+Create a confirmed child-language pool consisting only of utterances marked:
+
+* Child
+
+Exclude:
+
+* Not Child
+* Unsure
+
+from phrase extraction and reporting.
+
+⸻
+
+Step 3: Generate Child Phrase Candidates
+
+Automatically generate phrase candidates only from confirmed child utterances.
+
+Example:
+
+Child Phrase Candidates
+
+Observed 5 times
+
+“Let’s blast off!”
+
+Observed 3 times
+
+“I need help.”
+
+Observed 2 times
+
+“Look at that!”
+
+⸻
+
+Step 4: Clinical Review
+
+For each phrase candidate:
+
+* Add to Dictionary
+* Edit Phrase
+* Ignore Candidate
+* Mark for Later Review
+
+Display:
+
+* Occurrence count
+* First observed date
+* Most recent date
+* Example utterances
+
+⸻
+
+Speaker Attribution Failure Handling
+
+If automatic speaker grouping fails:
+
+Do NOT block review.
+
+Show:
+
+Session Review Ready
+
+Transcript completed successfully.
+
+Speaker identification was unavailable for this recording.
+
+You can continue reviewing potential child utterances below.
+
+[Retry Speaker Identification]
+
+The review workflow should continue normally.
+
+⸻
+
+Expected Benefits
+
+* Consistent workflow regardless of diarization success.
+* Clinicians identify child language before phrase review.
+* Reduced review burden.
+* Higher phrase accuracy.
+* Better alignment with clinical reasoning.
+* Removes dependence on calibration and speaker grouping for productive session review.
+
+⸻
+
+This redesign should become the standard post-recording workflow for all recordings until reliable speaker attribution is available.

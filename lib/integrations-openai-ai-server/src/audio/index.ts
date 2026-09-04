@@ -1,0 +1,15 @@
+export {
+  openai,
+  compressToMp3,
+  detectAudioFormat,
+  convertToWav,
+  ensureCompatibleFormat,
+  type AudioFormat,
+  voiceChat,
+  voiceChatStream,
+  textToSpeech,
+  textToSpeechStream,
+  speechToText,
+  speechToTextWithSpeakers,
+  speechToTextStream,
+} from "./client";

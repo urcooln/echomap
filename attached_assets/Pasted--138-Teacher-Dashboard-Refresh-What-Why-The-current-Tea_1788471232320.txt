@@ -1,0 +1,86 @@
+#138 - Teacher Dashboard Refresh
+What & Why
+The current Teacher Classroom Overview functions correctly but feels administrative and visually flat. Teachers primarily use EchoMap to quickly log phrases they hear, look up phrase meanings, review important communication updates, and access student profiles. The dashboard should prioritize these actions and make them immediately visible.
+Redesign the Teacher Classroom Overview into a more welcoming, action-oriented workspace that highlights phrase logging and phrase lookup while preserving classroom-level awareness.
+Done looks like
+The page uses a clear hero section titled "Classroom Communication Hub" instead of "Your classroom at a glance."
+The two most common teacher actions are immediately visible without scrolling:
+Add Phrase
+Look Up Phrase Meaning
+Add Phrase is the primary visual action on the page using EchoMap's gold accent color and a larger button style.
+Phrase lookup is displayed as a prominent search experience directly beneath or beside Add Phrase.
+Teachers can begin a phrase search immediately from the dashboard without navigating elsewhere.
+The dashboard feels more supportive and communication-focused rather than administrative.
+Hero Section
+Replace the current metric-first layout with:
+Classroom Communication Hub
+Support your students' communication throughout the day.
+Primary actions:
+➕ Add a Phrase
+Large prominent gold button.
+Supporting text:
+Heard something worth sharing? Add a phrase for the care team.
+🔍 What Does This Mean?
+Large phrase search field.
+Supporting text:
+Search a phrase to see if the care team has documented a shared meaning.
+Search should support immediate lookup without opening another workspace first.
+Student Section
+Add a visually accessible My Students section directly beneath the hero.
+Display assigned students as cards showing:
+Student name
+Photo/avatar when available
+Classroom or grade
+Quick Open Student action
+Teachers should be able to reach a student's profile with a single click.
+Classroom Snapshot
+Move operational metrics below the primary actions.
+Include:
+Students Assigned
+New Phrases
+Team Messages
+Needs Attention
+Use compact cards with icons.
+Metrics should support awareness but should not dominate the page.
+Recent Activity
+Add a Recent Activity section showing:
+Newly logged phrases
+Recent clinician reviews
+New shared observations
+Team messages requiring attention
+Display only authorized classroom data.
+Visual Design
+Use existing EchoMap visual language:
+Cream backgrounds
+Forest green headers
+Sage accents
+Gold primary actions
+Improve visual hierarchy through:
+Larger headings
+More whitespace
+Softer card shadows
+Larger icons
+Rounded cards
+Better spacing between sections
+The page should feel warm, approachable, and classroom-friendly rather than administrative.
+Accessibility
+Maintain keyboard navigation.
+Maintain screen-reader support.
+Do not rely solely on color for status indicators.
+Preserve responsive behavior for tablets and smaller screens.
+Out of scope
+Changes to student authorization.
+Changes to phrase review workflows.
+Changes to clinician portals.
+Changes to communication dictionary logic.
+New messaging functionality.
+Success Criteria
+A teacher opening the dashboard should understand within 2–3 seconds how to:
+Add a phrase.
+Look up a phrase meaning.
+Open a student profile.
+These actions should receive the majority of visual emphasis on the page.
+Relevant files
+artifacts/echomap/src/App.tsx
+artifacts/echomap/src/components/role-portals.tsx
+artifacts/echomap/src/index.css

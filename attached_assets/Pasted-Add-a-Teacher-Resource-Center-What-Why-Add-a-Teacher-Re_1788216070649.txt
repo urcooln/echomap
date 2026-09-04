@@ -1,0 +1,63 @@
+Add a Teacher Resource Center
+What & Why
+Add a Teacher Resource Center within the Teacher Portal Resources section that provides classroom-ready communication supports, implementation guides, and professional learning resources. The goal is to help teachers understand, support, and respond to communication differences throughout the school day while maintaining consistency across home, school, and therapy.
+Done looks like
+Teachers have access to a dedicated Resource Center within their portal.
+Resources are organized into practical categories:
+Understanding Gestalt Language Processing
+Classroom Communication Supports
+Regulation & Sensory Supports
+AAC Support Strategies
+Building Peer Connections
+Supporting Transitions & Routines
+Language Modeling Examples
+Frequently Asked Questions
+Each resource can be opened and read directly inside EchoMap.
+Resources support bookmarking and completion tracking.
+Teachers can quickly save favorite resources for later reference.
+Resources are child-safe and educational, not clinical records.
+Resources are available only to authorized teacher accounts.
+Completion and bookmark status persist across devices and sessions.
+Resources can include PDFs, videos, checklists, templates, and classroom handouts.
+Suggested Starter Resources
+Understanding Gestalt Language Processing
+What is GLP?
+What are gestalts?
+What does progress look like?
+Common myths and misconceptions.
+Classroom Communication Supports
+Reduce question overload.
+Use declarative language.
+Wait time and strategic silence.
+Following the child's lead.
+Regulation & Sensory Supports
+Recognizing dysregulation.
+Environmental modifications.
+Supporting co-regulation.
+Sensory-friendly classroom strategies.
+AAC Support Strategies
+Modeling without pressure.
+Adding vocabulary naturally.
+Respecting all communication forms.
+Supporting device access across settings.
+Building Peer Connections
+Inclusive communication opportunities.
+Supporting social participation.
+Facilitating authentic interactions.
+Language Modeling Examples
+Question → Declarative examples.
+Script expansion examples.
+Modeling Stage 1–4 language supports.
+Real classroom scenarios.
+Downloadable Tools
+Declarative Language Cheat Sheet
+AAC Modeling Guide
+Regulation Support Checklist
+Communication Partner Reflection Tool
+Classroom Observation Form
+Future Enhancement (Not Required Now)
+Add a "Recommended for This Child" section that allows clinicians to share specific teacher resources linked to the child's strengths, interests, communication profile, and AAC supports. These remain educational recommendations and do not expose clinical notes or private records.
+For EchoMap specifically, I would prioritize these three teacher resources first because they provide immediate value:
+Declarative Language Cheat Sheet
+Regulation & Sensory Supports Guide
+AAC Modeling in the Classroom

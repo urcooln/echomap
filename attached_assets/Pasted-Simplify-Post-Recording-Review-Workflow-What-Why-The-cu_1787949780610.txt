@@ -1,0 +1,140 @@
+Simplify Post-Recording Review Workflow
+
+What & Why
+
+The current post-recording workflow asks clinicians to make too many decisions before receiving value from a completed recording.
+
+EchoMap should optimize for:
+
+Record → Confirm Child Language → Save Useful Output
+
+rather than:
+
+Record → Speaker Review → Phrase Review → Meaning Review → Function Review → Dictionary Review → Note Creation
+
+The goal is that a clinician can complete a meaningful review of a recording in under two minutes.
+
+⸻
+
+New Core Principle
+
+A successful recording should immediately produce actionable language review.
+
+Clinicians should not be required to:
+
+* Assign working meanings
+* Determine communication functions
+* Complete NLA classifications
+* Write session notes
+* Review speaker groups
+
+before they can save useful information from the session.
+
+⸻
+
+Replace Complex Review With Rapid Phrase Confirmation
+
+After transcription completes:
+
+Display:
+
+Review Child Language
+
+For each phrase or utterance:
+
+Let’s blast off!
+
+Actions:
+
+* Child Phrase
+* Not Child
+* Skip
+
+⸻
+
+I need help.
+
+Actions:
+
+* Child Phrase
+* Not Child
+* Skip
+
+⸻
+
+The objective is rapid identification of child language.
+
+No additional clinical documentation should be required at this stage.
+
+⸻
+
+Create a Child Phrase Inbox
+
+After review:
+
+Display:
+
+New Child Phrases
+
+✓ Let’s blast off!
+
+✓ I need help.
+
+✓ Look at that!
+
+For each phrase:
+
+* Add to Dictionary
+* Review Later
+
+The clinician should be able to save useful language without entering additional information.
+
+⸻
+
+Make Working Meaning Optional
+
+When adding a phrase to the dictionary:
+
+Display:
+
+Phrase
+
+Let’s blast off!
+
+Working Meaning (optional)
+
+⸻
+
+Save
+
+Clinicians may add a working meaning immediately or later.
+
+A working meaning should not be required to save a phrase.
+
+⸻
+
+Generate Draft Session Notes Automatically
+
+After Child Phrase review is complete:
+
+Generate:
+
+Draft Session Summary
+
+Observed Child Language
+
+* Let’s blast off!
+* I need help.
+* Look at that!
+
+Session Overview
+
+AI-generated summary derived from the transcript.
+
+Communication Observations
+
+AI-generated draft observations requiring clinician review.
+
+⸻
+
+The draft note should remain editable and must not become part of the record until the clinician saves it.

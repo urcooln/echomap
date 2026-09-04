@@ -1,0 +1,52 @@
+#109 - Generate Editable Session Summaries
+
+What & Why
+
+Extend EchoMap’s post-review workflow with a structured, editable clinical Session Summary grounded only in reviewed evidence. The summary should help clinicians understand what was observed, what changed, and what may warrant follow-up without turning AI output into an autonomous clinical conclusion.
+
+Done looks like
+
+After Child Language Review, an authorized clinician can generate and edit a structured Session Summary.
+The summary includes clearly separated sections for Observed Language, Communication Functions Observed, Notable Language Changes, NLA / Gestalt Insights, Session Participation, AAC Planning Opportunities, Suggested Dictionary Candidates, and Suggested Follow-Up Targets.
+Observed Language uses direct examples from clinician-confirmed Child utterances and distinguishes repeated, novel, longer, functional, possible gestalt, and emerging-combination language when supported.
+Communication functions include only requesting, commenting, protesting, directing, assistance seeking, social interaction, information sharing, self-advocacy, or regulation/support seeking when reviewed evidence supports them.
+Changes compare the current reviewed session with prior reviewed sessions, dictionary history, and previously observed phrases using cautious, non-definitive wording.
+Gestalt and NLA content is advisory only, uses wording such as “may reflect” or “could indicate,” and never assigns a stage as fact.
+AAC candidates, dictionary candidates, and follow-up considerations remain suggestions requiring clinician action; they do not automatically update AAC planning, the dictionary, treatment plans, or the medical record.
+Session participation is limited to transcript evidence and session metadata, with no invented engagement, intent, or responsiveness claims.
+The draft is editable, survives reload, and requires explicit authenticated clinician review and save before becoming persisted clinical documentation.
+Every generated statement is traceable to the reviewed utterances, phrase candidates, dictionary entries, or prior-session evidence that contributed to it, with expandable source details for clinicians.
+The summary distinguishes directly observed language, longitudinal comparisons, and AI-generated interpretations; interpretation sections visibly say “AI-generated clinical observation” and “Clinician review required.”
+A Communication Growth Snapshot summarizes supported new phrases, repeated phrases, new functions, reused phrases in new contexts, emerging flexibility or recombination, and meaningful frequency changes using cautious language.
+An optional Family & Team Highlights section provides 3–5 plain-language observations suitable for caregiver or educational-team adaptation, excludes NLA and diagnostic language, requires review, and never sends automatically.
+Session-to-session continuity identifies newly observed phrases, phrases not observed this session, increasing or decreasing reviewed frequency, and first-observed communication functions when prior reviewed sessions exist.
+Empty, incomplete, unsupported, provider-error, cross-child, cross-organization, and unauthorized cases fail explicitly without generating unsupported content.
+API, persistence, and browser coverage verifies Child-only evidence, longitudinal comparisons, edit/save behavior, required labels, privacy isolation, and prohibited diagnostic or treatment language.
+Out of scope
+
+Diagnoses, definitive NLA stage assignment, treatment recommendations, therapy goals, or autonomous clinical decisions.
+Treating Not Child, Unsure, Unintelligible, pending inbox items, raw transcript text, or unconfirmed phrases as evidence.
+Automatically adding phrases to the Communication Dictionary or AAC Planning.
+Automatically sharing Family & Team Highlights with caregivers, educators, or other team members.
+Replacing the existing Child Language Review, SOAP workspace, Communication Passport, or team-messaging workflows.
+Exporting to an external EHR or introducing a new sharing workflow.
+Steps
+
+Define the structured summary contract -- Specify the evidence-backed sections, cautious labels, expandable source references, growth snapshot, shareable highlights, empty states, and editable fields so each output is distinguishable from a finalized clinical record.
+Assemble reviewed longitudinal context -- Combine the current session’s confirmed Child evidence with approved dictionary history, prior reviewed phrases, child profile context, interests, sensory/regulation supports, session metadata, and supported communication-function evidence while preserving provenance, comparison windows, and exclusions.
+Generate and validate the draft -- Produce constrained structured output through the existing AI boundary, reject unsupported or incomplete provider output, and visibly label generated interpretation as draft and clinician-review required.
+Expose evidence and sharing boundaries -- Let clinicians expand summary content to inspect its reviewed sources and edit plain-language Family & Team Highlights without mixing shareable text into internal clinical interpretation or sending anything automatically.
+Add clinician editing and explicit save -- Persist the editable draft separately from finalized notes, preserve edits across reload and regeneration, and require an authorized clinician transition before saving clinical documentation.
+Verify privacy and safety -- Add endpoint, persistence, and browser tests for evidence traceability, Child-only evidence, longitudinal comparisons, growth and sharing sections, empty/partial review, provider failures, organization and child isolation, edit/save behavior, and prohibited claims.
+Relevant files
+
+artifacts/echomap/src/App.tsx
+artifacts/api-server/src/routes/echomap.ts
+artifacts/api-server/src/lib/documentation-draft.ts
+artifacts/api-server/src/lib/clinical-knowledge-engine.ts
+artifacts/api-server/test/session-transcription.test.ts
+lib/db/src/schema/core-domain.ts
+lib/db/src/schema/session-transcripts.ts
+lib/api-spec/openapi.yaml
+lib/api-client-react/src/generated/api.ts
+lib/api-zod/src/generated/api.ts

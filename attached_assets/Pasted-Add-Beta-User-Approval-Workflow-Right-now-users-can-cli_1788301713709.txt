@@ -1,0 +1,71 @@
+Add: Beta User Approval Workflow
+Right now users can click Request Beta Access, but the spec doesn't define what happens next.
+Add to Done Looks Like
+Beta access requests create a pending request record.
+Requests contain:
+Name
+Email
+Role (Clinician, Teacher, Parent)
+Organization
+Optional message
+Requests do not create an account, organization membership, or child access.
+Platform administrators can review, approve, reject, or archive requests.
+Approval creates an invitation through the existing invitation system.
+Rejection does not reveal internal approval criteria.
+This gives you a manageable waitlist while testing.
+Add: Beta User Limit Controls
+As you onboard testers, you may want to throttle growth.
+Add to Done Looks Like
+Platform administrators can temporarily disable new invitation creation.
+Platform administrators can restrict invitations to approved organizations.
+Invitation issuance can be limited by organization or beta cohort.
+This prevents one clinician from inviting dozens of users unexpectedly.
+Add: Beta Agreement
+Before first login:
+Beta Participation Notice
+EchoMap is currently in private beta testing.
+Features, workflows, and AI-assisted outputs may change during testing.
+Clinical decisions remain the responsibility of the clinician or care team.
+Done Looks Like
+Users must acknowledge the beta notice once.
+Acceptance is stored with timestamp and version.
+Future notice updates can require re-acceptance.
+Add: Emergency Access Revocation
+For beta testing, you need a fast kill switch.
+Done Looks Like
+Platform administrators can immediately:
+Disable a user
+Disable an organization
+Revoke all active invitations
+Revocation immediately prevents new sessions and blocks future access.
+This is invaluable if you discover a privacy issue during testing.
+Add: Audit Visibility
+You'll inevitably need to answer:
+"Who invited this parent?"
+Done Looks Like
+Invitation audit details include:
+Inviter
+Invitee email
+Role granted
+Organization
+Child assignment
+Creation date
+Acceptance date
+Revocation date
+Without exposing raw invitation secrets.
+Add: Child Access Validation
+This is the one I'd consider most important.
+Critical constraint
+A parent invitation must be tied to at least one authorized child before activation.
+A teacher invitation must be tied to either:
+specific children
+specific classrooms
+approved organization scope
+A clinician invitation must be tied to:
+organization membership
+approved clinician role
+No accepted account should enter EchoMap without an explicitly defined access scope.
+One final beta recommendation
+Since you're dealing with recordings and child communication data, I'd add this banner throughout the beta:
+EchoMap Private Beta
+Access is restricted to authorized users. Do not share recordings, transcripts, or child information outside approved care-team workflows.

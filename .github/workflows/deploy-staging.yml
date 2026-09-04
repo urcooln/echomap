@@ -1,0 +1,90 @@
+name: Deploy Staging
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}/echomap:${{ github.sha }}
+
+jobs:
+  deploy:
+    name: Build and deploy Cloud Run staging
+    runs-on: ubuntu-latest
+    environment: staging
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v3
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker "${{ vars.GCP_REGION }}-docker.pkg.dev" --quiet
+
+      - name: Build container
+        run: |
+          docker build \
+            --build-arg BASE_PATH=/ \
+            --build-arg VITE_CLERK_PUBLISHABLE_KEY="${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}" \
+            --build-arg VITE_CLERK_PROXY_URL=/api/__clerk \
+            --build-arg VITE_ENABLE_DEVELOPMENT_DEMO=true \
+            --tag "$IMAGE" \
+            .
+
+      - name: Push container
+        run: docker push "$IMAGE"
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        uses: google-github-actions/deploy-cloudrun@v3
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          region: ${{ vars.GCP_REGION }}
+          service: ${{ vars.CLOUD_RUN_SERVICE }}
+          image: ${{ env.IMAGE }}
+          env_vars: |-
+            NODE_ENV=production
+            PORT=8080
+            PUBLIC_APP_ORIGIN=${{ vars.PUBLIC_APP_ORIGIN }}
+            ALLOWED_APP_ORIGINS=${{ vars.ALLOWED_APP_ORIGINS }}
+            ECHOMAP_AUTH_MODE=clerk
+            ECHOMAP_AUDIO_STORAGE_DRIVER=gcs
+            GCS_PRIVATE_BUCKET=${{ vars.GCS_PRIVATE_BUCKET }}
+            GCS_PRIVATE_OBJECT_PREFIX=${{ vars.GCS_PRIVATE_OBJECT_PREFIX }}
+            ECHOMAP_ENABLE_DEMO_LOGIN=true
+            ECHOMAP_LEGACY_S3_MIGRATION_COMPLETE=true
+            CLERK_PUBLISHABLE_KEY=${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
+            VITE_CLERK_PROXY_URL=/api/__clerk
+          secrets: |-
+            DATABASE_URL=${{ vars.SECRET_DATABASE_URL }}:latest
+            SESSION_SECRET=${{ vars.SECRET_SESSION_SECRET }}:latest
+            ECHOMAP_DATA_ENCRYPTION_KEY=${{ vars.SECRET_DATA_ENCRYPTION_KEY }}:latest
+            CLERK_SECRET_KEY=${{ vars.SECRET_CLERK_SECRET_KEY }}:latest
+            AI_INTEGRATIONS_OPENAI_BASE_URL=${{ vars.SECRET_OPENAI_BASE_URL }}:latest
+            AI_INTEGRATIONS_OPENAI_API_KEY=${{ vars.SECRET_OPENAI_API_KEY }}:latest
+          flags: >-
+            --allow-unauthenticated
+            --port=8080
+            --memory=1Gi
+            --cpu=1
+            --min-instances=0
+            --max-instances=5
+            --service-account=${{ vars.CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT }}
+
+      - name: Show service URL
+        run: echo "${{ steps.deploy.outputs.url }}"

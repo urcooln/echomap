@@ -1,0 +1,116 @@
+#138 - Student-Centered Teacher Workspace
+What & Why
+The Teacher experience should be organized around students, not tools.
+Currently, Phrase Dictionary and Shared Moments exist as standalone navigation destinations. This creates an unnecessary workflow where teachers must navigate to a tool first and then find a student.
+
+Instead, teachers should begin in Classroom Overview, select a student, and access all student-specific communication supports within that student's profile.
+
+This creates a more intuitive workflow and mirrors how teachers naturally think about classroom support.
+
+Done looks like
+Classroom Overview remains the teacher landing page.
+My Students remains the primary student-management view.
+Phrase Dictionary is removed from the left navigation.
+Shared Moments is removed from the left navigation.
+Selecting a student opens a Student Workspace/Profile.
+The Student Workspace contains dedicated sections for:
+Student Overview
+Phrase Dictionary
+Shared Moments
+Team Notes
+AAC Information (if available)
+Communication Profile
+Classroom Supports
+All Phrase Dictionary searches are scoped to the selected student.
+All Shared Moments are scoped to the selected student.
+Teachers never need to leave the student profile to access student-specific communication information.
+The interface clearly indicates which student is currently selected.
+Navigation becomes:
+Classroom Overview
+Resources
+Inbox
+My Students
+Settings
+Student Profile Layout
+Hero Section
+Student photo/avatar
+Emma Burlington
+Pre-School • BCSS
+
+Communication Snapshot:
+
+AAC User
+Spoken Language
+Gestalt Language Processor
+TouchChat WordPower 60
+Last updated Aug 2025
+Actions:
+[ Log Phrase ]
+[ Add Shared Moment ]
+[ Message Team ]
+Phrase Dictionary Section
+What Does This Mean?
+Student dropdown:
+Select Student
+▼ Emma Burlington
+
+Search:
+"What does this phrase mean?"
+
+[ Search ]
+
+Recent phrases:
+
+"Let's go on an adventure"
+"It's not working"
+"I need help"
+View Meaning →
+Log New Phrase →
+
+Shared Moments Section
+Recent classroom observations.
+Examples:
+
+Successful peer interaction
+New spontaneous phrase
+AAC navigation breakthrough
+Regulation strategy success
+[ Add Shared Moment ]
+Team Notes
+Recent communication between:
+Teacher
+SLP
+Parent
+[ View All Notes ]
+AAC Information
+Device:
+TouchChat
+Vocabulary:
+WordPower 60 Basic
+
+Access:
+Direct Touch
+
+Ownership:
+School Device
+
+Empty State
+If no student is selected:
+"Select a student to view their communication profile, phrase dictionary, shared moments, and AAC information."
+
+[ Open My Students ]
+
+Out of scope
+Changing phrase review workflows.
+Changing shared-moment permissions.
+Modifying clinical documentation.
+Altering existing student authorization rules.
+UX Goal
+The Teacher experience should feel like:
+Classroom → Student → Communication Supports
+
+instead of:
+
+Tool → Student → Information
+
+That matches how teachers naturally work and reduces navigation friction.

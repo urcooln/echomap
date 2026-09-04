@@ -1,0 +1,93 @@
+Teacher Communication Helper
+Create a prominent feature on the Teacher Dashboard called:
+"What Does This Mean?"
+The purpose is to help teachers quickly understand student communication and know how to respond in the classroom.
+This feature should be designed for busy educators and use simple, actionable language rather than clinical terminology.
+Search Experience
+Provide a search bar at the top of the Teacher Dashboard.
+Placeholder text:
+Enter a phrase you've heard the student say...
+Examples:
+"Let's save the city!"
+"Come on!"
+"We have a cat in our bed!"
+"Blast off!"
+Results
+When a phrase is entered, search the student's Communication Dictionary, Gestalt Library, Session History, Team Notes, and approved clinician insights.
+Display:
+Possible Meaning
+Show 1–3 likely interpretations.
+Example:
+Phrase
+"Let's save the city!"
+Possible Meaning
+Excitement
+Shared pretend play
+Invitation to interact
+Suggested Response
+Provide classroom-friendly recommendations.
+Example:
+Suggested Response
+✓ Join the play theme
+✓ Expand the idea naturally
+✓ Follow the student's lead
+✓ Add language without requiring imitation
+Where This Phrase Has Been Seen
+Display:
+Classroom
+Speech session
+Home
+Recess
+Small group
+Example:
+Observed:
+6 times in speech sessions
+3 times during recess
+2 times at home
+Related Interests
+Display:
+Associated Interests:
+Superheroes
+Pretend Play
+Rescue Themes
+This helps teachers join the student's interests.
+Team Insights
+Show approved observations from clinicians and caregivers.
+Example:
+SLP Note
+This phrase is frequently used during exciting pretend play activities.
+Parent Note
+Often heard during superhero games at home.
+Confidence Indicator
+Display:
+High Confidence
+Moderate Confidence
+Low Confidence
+If confidence is low:
+Display:
+Multiple possible meanings may apply. Consider adding context or contacting the team.
+Quick Actions
+Provide buttons:
+Log New Observation
+Ask the Team
+Save to Classroom Notes
+Mark as Heard Today
+Unknown Phrase Workflow
+If the phrase is not found:
+Display:
+This phrase has not been documented yet.
+Buttons:
+Add New Phrase
+Ask the Team About This Phrase
+Notify Assigned Clinician
+Automatically create a phrase review request.
+Design Requirements
+The Teacher Dashboard should feel like:
+A communication support tool
+A classroom resource
+A quick-reference guide
+It should NOT feel like:
+A clinical documentation system
+An assessment platform
+A therapy report
+Minimize jargon and maximize practical classroom guidance.

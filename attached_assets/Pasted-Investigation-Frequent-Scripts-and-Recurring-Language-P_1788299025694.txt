@@ -1,0 +1,75 @@
+Investigation: Frequent Scripts and Recurring Language Patterns Not Appearing
+What & Why
+Clinicians are observing repeated language that should qualify for either Frequent Scripts or Recurring Language Patterns, but both sections are displaying empty states.
+Example:
+Confirmed Child phrases include:
+Ready, set, go
+I'm ready
+Ready for school
+Get ready
+The child clearly uses the fragment "ready" repeatedly, yet:
+Frequent Scripts shows no evidence
+Recurring Language Patterns shows no patterns
+Determine exactly where the evidence pipeline is failing.
+Questions to answer
+For the selected child and time window:
+Frequent Scripts
+How many confirmed dictionary phrases exist?
+How many verified phrase observations exist?
+How many reviewed Child utterances exist?
+What data source is Frequent Scripts currently querying?
+Does it require exact phrase repetition?
+Is it using dictionary entries only?
+Is it using reviewed session evidence?
+Is a time-window filter excluding valid evidence?
+Are counts being calculated but filtered before display?
+Recurring Language Patterns
+Are pattern calculations running?
+Are phrase fragments being extracted?
+What minimum threshold is required?
+Does the system require multiple dictionary phrases?
+Does it require multiple sessions?
+Does it require verified observations?
+Are stop-word filters incorrectly removing fragments?
+Is normalization removing valid tokens such as "ready"?
+Specific validation
+For the fragment:
+"ready"
+Report:
+Number of dictionary phrases containing it
+Number of reviewed Child utterances containing it
+Number of verified observations containing it
+Whether it was excluded
+Exact exclusion reason if excluded
+Expected behavior
+If the following phrases exist:
+Ready, set, go
+I'm ready
+Ready for school
+Get ready
+Then Recurring Language Patterns should display:
+Pattern: ready
+Occurrences: 4
+Distinct Phrases: 4
+Example phrases:
+Ready, set, go
+I'm ready
+Ready for school
+Get ready
+unless a documented threshold explicitly prevents it.
+Deliverables
+Provide:
+Exact query used for Frequent Scripts.
+Exact query used for Recurring Language Patterns.
+Record counts at every stage.
+The precise stage where evidence is being filtered out.
+Whether the issue is:
+missing evidence
+dictionary linkage failure
+observation linkage failure
+time-window filtering
+fragment extraction failure
+UI rendering issue
+authorization filtering
+aggregation logic error
+Do not implement fixes. Return the verified root cause and the smallest safe remediation plan.
