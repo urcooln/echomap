@@ -59,7 +59,6 @@ jobs:
           image: ${{ env.IMAGE }}
           env_vars: |-
             NODE_ENV=production
-            PORT=8080
             PUBLIC_APP_ORIGIN=${{ vars.PUBLIC_APP_ORIGIN }}
             ALLOWED_APP_ORIGINS=${{ vars.ALLOWED_APP_ORIGINS }}
             ECHOMAP_AUTH_MODE=clerk
