@@ -41,7 +41,7 @@ jobs:
           docker build \
             --build-arg BASE_PATH=/ \
             --build-arg VITE_CLERK_PUBLISHABLE_KEY="${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}" \
-            --build-arg VITE_CLERK_PROXY_URL=/api/__clerk \
+            --build-arg VITE_CLERK_PROXY_URL="" \
             --build-arg VITE_ENABLE_DEVELOPMENT_DEMO=true \
             --tag "$IMAGE" \
             .
@@ -68,7 +68,6 @@ jobs:
             ECHOMAP_ENABLE_DEMO_LOGIN=true
             ECHOMAP_LEGACY_S3_MIGRATION_COMPLETE=true
             CLERK_PUBLISHABLE_KEY=${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
-            VITE_CLERK_PROXY_URL=/api/__clerk
           secrets: |-
             DATABASE_URL=${{ vars.SECRET_DATABASE_URL }}:latest
             SESSION_SECRET=${{ vars.SECRET_SESSION_SECRET }}:latest
