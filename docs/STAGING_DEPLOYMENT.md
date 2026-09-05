@@ -43,6 +43,7 @@ environment variables:
 | `GCS_PRIVATE_OBJECT_PREFIX`         | `staging`                                                                            |
 | `VITE_CLERK_PUBLISHABLE_KEY`        | `pk_test_...`                                                                        |
 | `SECRET_DATABASE_URL`               | `echomap-staging-database-url`                                                       |
+| `SECRET_DATABASE_MIGRATION_URL`     | `echomap-staging-database-direct-url`                                                |
 | `SECRET_SESSION_SECRET`             | `echomap-staging-session-secret`                                                     |
 | `SECRET_DATA_ENCRYPTION_KEY`        | `echomap-staging-data-encryption-key`                                                |
 | `SECRET_CLERK_SECRET_KEY`           | `echomap-staging-clerk-secret-key`                                                   |
@@ -90,9 +91,10 @@ openssl rand -base64 32 # ECHOMAP_DATA_ENCRYPTION_KEY
 ```
 
 For the first staging database, the lowest-friction option is a managed
-PostgreSQL URL that GitHub Actions can reach over TLS. Later production can move
-to Cloud SQL private connectivity once the infrastructure is managed more
-formally.
+PostgreSQL database that GitHub Actions can reach over TLS. Use a pooled URL for
+the running Cloud Run service and a direct URL for schema changes. Later
+production can move to Cloud SQL private connectivity once the infrastructure
+is managed more formally.
 
 ## Bucket CORS
 

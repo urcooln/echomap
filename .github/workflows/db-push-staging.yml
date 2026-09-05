@@ -40,5 +40,5 @@ jobs:
 
       - name: Push schema
         run: |
-          DATABASE_URL="$(gcloud secrets versions access latest --secret="${{ vars.SECRET_DATABASE_URL }}" --project="${{ vars.GCP_PROJECT_ID }}")" \
+          DATABASE_URL="$(gcloud secrets versions access latest --secret="${{ vars.SECRET_DATABASE_MIGRATION_URL }}" --project="${{ vars.GCP_PROJECT_ID }}")" \
             pnpm -C lib/db run push
