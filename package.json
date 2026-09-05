@@ -9,6 +9,7 @@
     "dev": "node tools/dev.mjs",
     "dev:api": "node tools/run-with-env.mjs artifacts/api-server/.env pnpm --filter @workspace/api-server dev",
     "dev:web": "node tools/run-with-env.mjs artifacts/echomap/.env pnpm --filter @workspace/echomap dev",
+    "db:migrate": "node tools/run-with-env.mjs artifacts/api-server/.env pnpm -C lib/db run migrate",
     "db:push": "node tools/run-with-env.mjs artifacts/api-server/.env pnpm -C lib/db run push",
     "seed:dev": "node tools/seed-dev.mjs",
     "typecheck:libs": "tsc --build",

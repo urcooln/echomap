@@ -122,7 +122,7 @@ gcloud storage buckets update gs://echomap-staging-private --cors-file=cors.json
 
 1. Push the repo to GitHub.
 2. Confirm the `CI` workflow passes.
-3. Run `DB Push Staging` once to create/update the staging schema.
+3. Run `DB Push Staging` to apply pending versioned migrations.
 4. Run `Deploy Staging`, or push to `main`.
 5. Open the Cloud Run URL printed by the workflow.
 6. Map the custom domain in Cloud Run after the service is healthy.
@@ -135,7 +135,6 @@ testing.
 
 Before real production data:
 
-- replace `db:push` with versioned migrations,
 - move the database to a production-grade PostgreSQL plan,
 - keep staging and production in separate projects or at least separate
   service accounts, databases, buckets, and Clerk instances,
