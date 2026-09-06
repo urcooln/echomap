@@ -1,13 +1,13 @@
 #138 - Teacher Dashboard Refresh
 What & Why
-The current Teacher Classroom Overview functions correctly but feels administrative and visually flat. Teachers primarily use EchoMap to quickly log phrases they hear, look up phrase meanings, review important communication updates, and access student profiles. The dashboard should prioritize these actions and make them immediately visible.
+The current Teacher Classroom Overview functions correctly but feels administrative and visually flat. Teachers primarily use ChildLed to quickly log phrases they hear, look up phrase meanings, review important communication updates, and access student profiles. The dashboard should prioritize these actions and make them immediately visible.
 Redesign the Teacher Classroom Overview into a more welcoming, action-oriented workspace that highlights phrase logging and phrase lookup while preserving classroom-level awareness.
 Done looks like
 The page uses a clear hero section titled "Classroom Communication Hub" instead of "Your classroom at a glance."
 The two most common teacher actions are immediately visible without scrolling:
 Add Phrase
 Look Up Phrase Meaning
-Add Phrase is the primary visual action on the page using EchoMap's gold accent color and a larger button style.
+Add Phrase is the primary visual action on the page using ChildLed's gold accent color and a larger button style.
 Phrase lookup is displayed as a prominent search experience directly beneath or beside Add Phrase.
 Teachers can begin a phrase search immediately from the dashboard without navigating elsewhere.
 The dashboard feels more supportive and communication-focused rather than administrative.
@@ -50,7 +50,7 @@ New shared observations
 Team messages requiring attention
 Display only authorized classroom data.
 Visual Design
-Use existing EchoMap visual language:
+Use existing ChildLed visual language:
 Cream backgrounds
 Forest green headers
 Sage accents
@@ -81,6 +81,6 @@ Look up a phrase meaning.
 Open a student profile.
 These actions should receive the majority of visual emphasis on the page.
 Relevant files
-artifacts/echomap/src/App.tsx
-artifacts/echomap/src/components/role-portals.tsx
-artifacts/echomap/src/index.css
+artifacts/childled/src/App.tsx
+artifacts/childled/src/components/role-portals.tsx
+artifacts/childled/src/index.css

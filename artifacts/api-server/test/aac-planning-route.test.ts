@@ -15,7 +15,7 @@ import {
   pool,
   usersTable,
 } from "@workspace/db";
-import router from "../src/routes/echomap";
+import router from "../src/routes/childled";
 import type { ResolvedCareTeamActor } from "../src/lib/auth-context";
 
 test.after(async () => {
@@ -85,7 +85,7 @@ test("AAC planning transitions stay child-scoped and preserve dictionary evidenc
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.echomapActor = currentActor;
+    req.childledActor = currentActor;
     next();
   });
   app.use(router);

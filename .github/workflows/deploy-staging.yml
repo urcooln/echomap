@@ -11,7 +11,7 @@ permissions:
   id-token: write
 
 env:
-  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}/echomap:${{ github.sha }}
+  IMAGE: ${{ vars.GCP_REGION }}-docker.pkg.dev/${{ vars.GCP_PROJECT_ID }}/${{ vars.ARTIFACT_REGISTRY_REPOSITORY }}/childled:${{ github.sha }}
 
 jobs:
   deploy:
@@ -61,17 +61,17 @@ jobs:
             NODE_ENV=production
             PUBLIC_APP_ORIGIN=${{ vars.PUBLIC_APP_ORIGIN }}
             ALLOWED_APP_ORIGINS=${{ vars.ALLOWED_APP_ORIGINS }}
-            ECHOMAP_AUTH_MODE=clerk
-            ECHOMAP_AUDIO_STORAGE_DRIVER=gcs
+            CHILDLED_AUTH_MODE=clerk
+            CHILDLED_AUDIO_STORAGE_DRIVER=gcs
             GCS_PRIVATE_BUCKET=${{ vars.GCS_PRIVATE_BUCKET }}
             GCS_PRIVATE_OBJECT_PREFIX=${{ vars.GCS_PRIVATE_OBJECT_PREFIX }}
-            ECHOMAP_ENABLE_DEMO_LOGIN=true
-            ECHOMAP_LEGACY_S3_MIGRATION_COMPLETE=true
+            CHILDLED_ENABLE_DEMO_LOGIN=true
+            CHILDLED_LEGACY_S3_MIGRATION_COMPLETE=true
             CLERK_PUBLISHABLE_KEY=${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
           secrets: |-
             DATABASE_URL=${{ vars.SECRET_DATABASE_URL }}:latest
             SESSION_SECRET=${{ vars.SECRET_SESSION_SECRET }}:latest
-            ECHOMAP_DATA_ENCRYPTION_KEY=${{ vars.SECRET_DATA_ENCRYPTION_KEY }}:latest
+            CHILDLED_DATA_ENCRYPTION_KEY=${{ vars.SECRET_DATA_ENCRYPTION_KEY }}:latest
             CLERK_SECRET_KEY=${{ vars.SECRET_CLERK_SECRET_KEY }}:latest
             AI_INTEGRATIONS_OPENAI_BASE_URL=${{ vars.SECRET_OPENAI_BASE_URL }}:latest
             AI_INTEGRATIONS_OPENAI_API_KEY=${{ vars.SECRET_OPENAI_API_KEY }}:latest

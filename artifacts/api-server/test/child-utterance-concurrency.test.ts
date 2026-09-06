@@ -36,7 +36,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { eq, inArray } from "drizzle-orm";
-import router from "../src/routes/echomap";
+import router from "../src/routes/childled";
 import type { ResolvedCareTeamActor } from "../src/lib/auth-context";
 
 type Fixture = {
@@ -206,7 +206,7 @@ const createTestApp = (actor: ResolvedCareTeamActor) => {
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.echomapActor = actor;
+    req.childledActor = actor;
     next();
   });
   app.use(router);

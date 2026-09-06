@@ -1,7 +1,7 @@
 Create a Clinician Learning Center
 What & Why
-Add a clinician-facing Learning Center that serves as EchoMap's professional development and implementation hub. Unlike the Parent Learning Center, this workspace should support clinical decision-making, language-sample interpretation, NLA-informed observation, AAC planning, communication-partner coaching, and EchoMap workflow training.
-The goal is to help clinicians consistently apply EchoMap's methodology while maintaining clear boundaries between educational resources and clinical judgment.
+Add a clinician-facing Learning Center that serves as ChildLed's professional development and implementation hub. Unlike the Parent Learning Center, this workspace should support clinical decision-making, language-sample interpretation, NLA-informed observation, AAC planning, communication-partner coaching, and ChildLed workflow training.
+The goal is to help clinicians consistently apply ChildLed's methodology while maintaining clear boundaries between educational resources and clinical judgment.
 Done Looks Like
 A new Clinician Learning Center appears under Resources for authorized clinicians.
 Learning Center content is organized into structured modules.
@@ -10,7 +10,7 @@ Clinicians can bookmark modules and mark them complete.
 Progress persists across devices and sessions.
 Resources are searchable by topic.
 Content is organized into categories:
-EchoMap Foundations
+ChildLed Foundations
 Turning Communication into Shared Understanding
 Communication Dictionary Framework
 Evidence Review Workflow
@@ -46,7 +46,7 @@ Reducing Prompt Dependency
 Question vs Comment Analysis
 Environmental Supports
 Home-School-Therapy Consistency
-EchoMap Workflow Training
+ChildLed Workflow Training
 Recording Sessions
 Child Language Review
 Phrase Inbox
@@ -73,6 +73,6 @@ Nice-to-Have Enhancements
 Context-sensitive help icons.
 Searchable examples library.
 Downloadable clinician handouts.
-Case examples showing how reviewed language moves through EchoMap.
+Case examples showing how reviewed language moves through ChildLed.
 Vision
-The Clinician Learning Center should function as an integrated professional handbook that teaches clinicians how to interpret and use EchoMap data, while keeping clinical decisions firmly under clinician control.
+The Clinician Learning Center should function as an integrated professional handbook that teaches clinicians how to interpret and use ChildLed data, while keeping clinical decisions firmly under clinician control.

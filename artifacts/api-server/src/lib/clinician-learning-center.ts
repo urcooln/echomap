@@ -39,20 +39,20 @@ const section = (
 
 const baseClinicianLearningModuleDefinitions: Definition[] = [
   {
-    moduleKey: "echomap-foundations",
-    category: "EchoMap Foundations",
+    moduleKey: "childled-foundations",
+    category: "ChildLed Foundations",
     kind: "guide",
     position: 1,
     title: "Turning Communication into Shared Understanding",
-    summary: "How reviewed observations move through EchoMap without replacing clinical judgment.",
+    summary: "How reviewed observations move through ChildLed without replacing clinical judgment.",
     readingMinutes: 6,
     tags: ["foundations", "evidence", "dictionary", "workflow"],
     workflowContexts: ["session", "child-language-review", "dictionary", "reports"],
     sections: [
-      section("Why EchoMap exists", "Communication is observed across home, school, therapy, and everyday life. Important language can be scattered across recordings, notes, conversations, and team members.\n\nEchoMap helps organize those observations into a shared, reviewable record so families, educators, and clinicians can recognize patterns over time while preserving clinician judgment."),
-      section("The evidence boundary", "EchoMap separates captured language, clinician review, shared dictionary entries, AAC planning, and documentation so each transition remains visible and intentional.", ["Before language becomes part of a child's communication record:", "Language must be captured.", "Child language must be reviewed.", "Evidence must be confirmed.", "Working meanings must be considered in context.", "Clinical decisions remain under clinician control.", "Each step creates a clear trail from observation to documentation."]),
-      section("What EchoMap helps organize", "EchoMap helps teams:", ["Track communication across settings.", "Preserve reviewed language examples.", "Build a shared communication dictionary.", "Identify recurring phrases and language patterns.", "Support AAC vocabulary planning.", "Compare communication over time.", "Create draft documentation from reviewed evidence."], "EchoMap organizes information so meaningful language is easier to find and discuss."),
-      section("Shared understanding, not automatic conclusions", "EchoMap does not determine what a child means, diagnose a language profile, assign an NLA stage, select treatment targets, or make clinical decisions.\n\nA workflow status describes what has been reviewed—not what a clinician should conclude.\n\nClinical interpretation remains the responsibility of the care team."),
+      section("Why ChildLed exists", "Communication is observed across home, school, therapy, and everyday life. Important language can be scattered across recordings, notes, conversations, and team members.\n\nChildLed helps organize those observations into a shared, reviewable record so families, educators, and clinicians can recognize patterns over time while preserving clinician judgment."),
+      section("The evidence boundary", "ChildLed separates captured language, clinician review, shared dictionary entries, AAC planning, and documentation so each transition remains visible and intentional.", ["Before language becomes part of a child's communication record:", "Language must be captured.", "Child language must be reviewed.", "Evidence must be confirmed.", "Working meanings must be considered in context.", "Clinical decisions remain under clinician control.", "Each step creates a clear trail from observation to documentation."]),
+      section("What ChildLed helps organize", "ChildLed helps teams:", ["Track communication across settings.", "Preserve reviewed language examples.", "Build a shared communication dictionary.", "Identify recurring phrases and language patterns.", "Support AAC vocabulary planning.", "Compare communication over time.", "Create draft documentation from reviewed evidence."], "ChildLed organizes information so meaningful language is easier to find and discuss."),
+      section("Shared understanding, not automatic conclusions", "ChildLed does not determine what a child means, diagnose a language profile, assign an NLA stage, select treatment targets, or make clinical decisions.\n\nA workflow status describes what has been reviewed—not what a clinician should conclude.\n\nClinical interpretation remains the responsibility of the care team."),
     ],
   },
   {
@@ -97,7 +97,7 @@ const baseClinicianLearningModuleDefinitions: Definition[] = [
     workflowContexts: ["child-language-review", "dictionary"],
     sections: [
       section("Observe before assigning", "NLA terminology can organize questions about form and flexibility, but a single utterance or transcript cannot establish a stage.", ["Consider patterns across contexts and time.", "Separate repetition, mitigation, and flexible generation from assumptions about intent.", "Document uncertainty when evidence is mixed."]),
-      section("Common scoring errors", "Avoid assigning a stage from length alone, treating every repetition as a gestalt, or using a suggested label as a durable clinical decision.", [], "EchoMap never assigns an NLA stage automatically."),
+      section("Common scoring errors", "Avoid assigning a stage from length alone, treating every repetition as a gestalt, or using a suggested label as a durable clinical decision.", [], "ChildLed never assigns an NLA stage automatically."),
     ],
   },
   {
@@ -142,7 +142,7 @@ const baseClinicianLearningModuleDefinitions: Definition[] = [
     workflowContexts: ["aac-planning", "dictionary"],
     sections: [
       section("Start from meaningful communication", "Vocabulary candidates should reflect reviewed communication, access needs, participation priorities, and the child’s current system—not frequency alone."),
-      section("Keep planning collaborative", "Document a candidate, rationale, and decision status so the team can review it with the AAC user and relevant partners.", ["Balance personally meaningful fringe vocabulary with broadly useful core words.", "Protect access to existing vocabulary.", "Do not add, remove, or reorganize device vocabulary from EchoMap."]),
+      section("Keep planning collaborative", "Document a candidate, rationale, and decision status so the team can review it with the AAC user and relevant partners.", ["Balance personally meaningful fringe vocabulary with broadly useful core words.", "Protect access to existing vocabulary.", "Do not add, remove, or reorganize device vocabulary from ChildLed."]),
     ],
   },
   {
@@ -295,23 +295,23 @@ const baseClinicianLearningModuleDefinitions: Definition[] = [
       body: "The same reviewed phrase can inform separate planning and documentation decisions without automatically causing either.",
       example: {
         dictionaryEntry: "“Different one” observed across two reviewed sessions during selection activities.",
-        aacPlanningDecision: "Candidate for team review because it may support choice-making; no device change occurs in EchoMap.",
+        aacPlanningDecision: "Candidate for team review because it may support choice-making; no device change occurs in ChildLed.",
         sessionSummary: "Observed the exact phrase in two selection contexts. Working meaning remains provisional and was not generalized beyond the sample.",
       },
     }],
   },
   {
-    moduleKey: "echomap-workflow-training",
-    category: "EchoMap Workflow Training",
+    moduleKey: "childled-workflow-training",
+    category: "ChildLed Workflow Training",
     kind: "guide",
     position: 18,
-    title: "EchoMap Workflow Training",
+    title: "ChildLed Workflow Training",
     summary: "A practical map of recording, review, Phrase Inbox, dictionary, AAC planning, and documentation.",
     readingMinutes: 8,
     tags: ["recording", "phrase inbox", "dictionary", "AAC", "reports"],
     workflowContexts: ["session", "child-language-review", "phrase-inbox", "dictionary", "aac-planning", "reports"],
     sections: [
-      section("Move forward deliberately", "Each EchoMap area answers a different question: what was captured, whose turn it was, what may be meaningful, what belongs in the shared dictionary, what warrants AAC planning, and what can be documented."),
+      section("Move forward deliberately", "Each ChildLed area answers a different question: what was captured, whose turn it was, what may be meaningful, what belongs in the shared dictionary, what warrants AAC planning, and what can be documented."),
       section("Use coaching when learning the workflow", "Workflow Coaching adds educational prompts beside relevant tools. It can be disabled at any time and never completes a decision."),
     ],
   },
@@ -323,7 +323,7 @@ const coverageTags: Record<string, string[]> = {
   "language-sampling-reliability": ["reviewing child utterances", "handling unintelligible speech", "context collection"],
   "aac-implementation-workflow": ["selecting vocabulary candidates", "dictionary-to-AAC handoff", "moving dictionary phrases to AAC planning"],
   "communication-partner-coaching": ["questions vs comments", "home-school-therapy consistency"],
-  "echomap-workflow-training": ["recording sessions", "Child Language Review", "Phrase Inbox", "dictionary management", "session summary creation", "reports and documentation"],
+  "childled-workflow-training": ["recording sessions", "Child Language Review", "Phrase Inbox", "dictionary management", "session summary creation", "reports and documentation"],
 };
 
 export const clinicianLearningModuleDefinitions: Definition[] = baseClinicianLearningModuleDefinitions.map((module) => ({
@@ -333,7 +333,7 @@ export const clinicianLearningModuleDefinitions: Definition[] = baseClinicianLea
     ...item,
     sectionKey: `${module.moduleKey}-${index + 1}`,
     clinicalNote: item.clinicalNote ?? (index === 0 && module.kind !== "case"
-      ? "Apply this educational reference to the available evidence and document your own clinical reasoning; EchoMap does not complete the decision."
+      ? "Apply this educational reference to the available evidence and document your own clinical reasoning; ChildLed does not complete the decision."
       : undefined),
     checklist: item.checklist ?? (index === module.sections.length - 1
       ? [
@@ -377,13 +377,13 @@ export const ensureClinicianLearningCenter = async (organizationId: number) => {
       organizationId,
       resourceKey: CLINICIAN_LEARNING_RESOURCE_KEY,
       title: "Clinician Learning Center",
-      description: "Professional learning, clinical quick references, and workflow coaching for evidence-aware EchoMap practice.",
+      description: "Professional learning, clinical quick references, and workflow coaching for evidence-aware ChildLed practice.",
       contentVersion: CLINICIAN_LEARNING_CONTENT_VERSION,
     }).onConflictDoUpdate({
       target: [clinicianLearningResourcesTable.organizationId, clinicianLearningResourcesTable.resourceKey],
       set: {
         title: "Clinician Learning Center",
-        description: "Professional learning, clinical quick references, and workflow coaching for evidence-aware EchoMap practice.",
+        description: "Professional learning, clinical quick references, and workflow coaching for evidence-aware ChildLed practice.",
         contentVersion: CLINICIAN_LEARNING_CONTENT_VERSION,
         updatedAt: new Date(),
       },
@@ -414,7 +414,7 @@ export const ensureClinicianLearningCenter = async (organizationId: number) => {
 };
 
 export const clinicianLearningHandbookText = () => [
-  "ECHOMAP CLINICIAN LEARNING CENTER",
+  "CHILDLED CLINICIAN LEARNING CENTER",
   CLINICIAN_LEARNING_DISCLAIMER,
   "",
   ...clinicianLearningModuleDefinitions.flatMap((module) => [

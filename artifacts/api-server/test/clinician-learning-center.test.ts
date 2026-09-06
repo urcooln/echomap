@@ -66,7 +66,7 @@ test("provides stable reader sections, implementation checklists, clinical notes
 });
 
 test("accepts only section progress owned by the selected module and derives an integer percentage", () => {
-  const module = clinicianLearningModuleDefinitions.find((entry) => entry.moduleKey === "echomap-foundations")!;
+  const module = clinicianLearningModuleDefinitions.find((entry) => entry.moduleKey === "childled-foundations")!;
   const firstKey = module.sections[0]!.sectionKey!;
   const expected = Math.round(100 / module.sections.length);
   assert.deepEqual(resolveClinicianLearningSectionProgress(module.sections, firstKey, expected), {

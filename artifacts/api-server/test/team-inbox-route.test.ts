@@ -15,7 +15,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { and, eq, inArray } from "drizzle-orm";
-import router from "../src/routes/echomap";
+import router from "../src/routes/childled";
 import type { ResolvedCareTeamActor } from "../src/lib/auth-context";
 
 const makeActor = (
@@ -176,7 +176,7 @@ test("team inbox only exposes and mutates messages for assigned children", async
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.echomapActor = currentActor;
+    req.childledActor = currentActor;
     next();
   });
   app.use(router);

@@ -48,7 +48,7 @@ Team Notes opens directly inside the student profile.
 AAC Information opens directly inside the student profile.
 No separate navigation routes are required for these sections.
 Visual Design
-Use EchoMap styling:
+Use ChildLed styling:
 Cream background
 Forest green active state
 Sage inactive tabs

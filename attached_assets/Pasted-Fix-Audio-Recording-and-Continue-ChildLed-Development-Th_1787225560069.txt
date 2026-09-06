@@ -1,0 +1,179 @@
+Fix Audio Recording and Continue ChildLed Development
+
+The audio recording feature is currently broken.
+
+Audio Recording Requirements
+
+When the user clicks the Record button:
+
+1. Request microphone permission from the browser.
+2. Start recording audio immediately.
+3. Display a visual recording indicator.
+4. Display a running timer.
+5. Change the button to “Stop Recording”.
+6. When stopped:
+    * Save the recording.
+    * Upload it to storage.
+    * Attach it to the associated gestalt entry.
+7. Display an audio player after recording.
+8. Allow playback directly within the gestalt card.
+9. Allow deletion and re-recording.
+
+Supported browsers:
+
+* Chrome
+* Safari
+* Edge
+* Firefox
+
+Use:
+
+* MediaRecorder API
+* Proper error handling
+* Graceful handling if microphone permission is denied
+
+Show user-friendly error messages.
+
+⸻
+
+ChildLed Product Vision
+
+ChildLed is NOT simply a note-taking application.
+
+It is a collaborative communication platform for Gestalt Language Processors (GLPs).
+
+The primary purpose is:
+
+“Helping parents, teachers, therapists, and caregivers understand the meaning behind a child’s communication.”
+
+The application should prioritize communication understanding over data collection.
+
+⸻
+
+Core Workflow
+
+Parent hears a new gestalt.
+
+Parent opens ChildLed.
+
+Parent taps:
+
+* Add New Gestalt
+
+Parent can:
+
+* Record audio
+* Type approximation of phrase
+* Add context
+* Add meaning
+* Add observations
+
+Teacher and SLP can immediately view this information.
+
+Everyone stays aligned.
+
+⸻
+
+Each Gestalt Entry Must Include
+
+Phrase
+
+Text field
+
+Example:
+“Blast off!”
+
+⸻
+
+Audio Recording
+
+Record or upload audio.
+
+Audio should be prominently displayed.
+
+Audio is a primary feature because many scripts are difficult to understand from text alone.
+
+⸻
+
+Meaning
+
+Most important field.
+
+Example:
+
+Literal Phrase:
+“It’s bedtime”
+
+Actual Meaning:
+“I don’t want to leave”
+
+The meaning should be highlighted visually.
+
+⸻
+
+Communication Function
+
+Dropdown:
+
+* Request
+* Protest
+* Shared Joy
+* Comment
+* Transition
+* Regulation
+* Self-Advocacy
+* Unknown
+
+⸻
+
+Context
+
+* Home
+* School
+* Therapy
+* Community
+
+Multiple selections allowed.
+
+⸻
+
+Emotional / Regulation State
+
+* Regulated
+* Excited
+* Frustrated
+* Dysregulated
+* Tired
+* Unknown
+
+⸻
+
+Source
+
+Optional.
+
+Examples:
+
+* Bluey
+* Paw Patrol
+* Frozen
+* YouTube
+* Unknown
+
+⸻
+
+Team Notes
+
+Allow:
+
+Parent Notes
+
+Teacher Notes
+
+SLP Notes
+
+Each note should display:
+
+* User name
+* Role
+* Timestamp

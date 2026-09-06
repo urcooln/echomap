@@ -11,8 +11,8 @@ FROM base AS deps
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json tsconfig.json ./
 COPY artifacts/api-server/package.json artifacts/api-server/package.json
-COPY artifacts/echomap/package.json artifacts/echomap/package.json
-COPY artifacts/echomap-command-center/package.json artifacts/echomap-command-center/package.json
+COPY artifacts/childled/package.json artifacts/childled/package.json
+COPY artifacts/childled-command-center/package.json artifacts/childled-command-center/package.json
 COPY artifacts/mockup-sandbox/package.json artifacts/mockup-sandbox/package.json
 COPY lib/api-client-react/package.json lib/api-client-react/package.json
 COPY lib/api-spec/package.json lib/api-spec/package.json
@@ -43,7 +43,7 @@ FROM node:24-bookworm-slim AS runtime
 
 ENV NODE_ENV=production
 ENV PORT=8080
-ENV ECHOMAP_STATIC_DIR=/app/artifacts/api-server/dist/public
+ENV CHILDLED_STATIC_DIR=/app/artifacts/api-server/dist/public
 
 WORKDIR /app
 
@@ -55,7 +55,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/artifacts/api-server/node_modules ./artifacts/api-server/node_modules
 COPY --from=build /app/lib ./lib
 COPY --from=build /app/artifacts/api-server/dist ./artifacts/api-server/dist
-COPY --from=build /app/artifacts/echomap/dist/public ./artifacts/api-server/dist/public
+COPY --from=build /app/artifacts/childled/dist/public ./artifacts/api-server/dist/public
 COPY package.json pnpm-workspace.yaml ./
 COPY artifacts/api-server/package.json artifacts/api-server/package.json
 

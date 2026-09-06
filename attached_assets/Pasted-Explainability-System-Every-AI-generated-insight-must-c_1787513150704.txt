@@ -32,13 +32,13 @@ Require minimal clicks
 Surface the most important information first
 Work well on desktop and mobile
 Feel optimistic and encouraging
-Use EchoMap's original green and gold branding
+Use ChildLed's original green and gold branding
 Avoid overwhelming users with raw data
 Prioritize clinically meaningful changes
 Load quickly
 Display friendly onboarding when data is limited
 Critical Requirement
-All insights, communication functions, stage indicators, mitigation observations, SOAP note content, and coaching suggestions must be generated using the uploaded EchoMap clinical knowledge documents as the primary source of truth. The system should provide evidence-based suggestions and confidence levels, never definitive diagnoses or stage assignments.
+All insights, communication functions, stage indicators, mitigation observations, SOAP note content, and coaching suggestions must be generated using the uploaded ChildLed clinical knowledge documents as the primary source of truth. The system should provide evidence-based suggestions and confidence levels, never definitive diagnoses or stage assignments.
 This is the version that starts to feel less like a transcription tool and more like a true clinical intelligence platform for GLP/NLA clinicians.
 provide info on a prompt to best support SECTION 7: Language Journey Timeline
 Create a visual timeline.
@@ -60,14 +60,14 @@ Emerging mitigations
 Possible language flexibility indicators
 
 Display changes across weeks and months.
-For EchoMap, I would make the Language Journey Timeline much more than a simple list of phrases. It should tell the story of the child's language development in a way that is meaningful to SLPs, caregivers, and educators.
+For ChildLed, I would make the Language Journey Timeline much more than a simple list of phrases. It should tell the story of the child's language development in a way that is meaningful to SLPs, caregivers, and educators.
 Here's the prompt I'd give Replit:
 
-EchoMap Language Journey Timeline
+ChildLed Language Journey Timeline
 Create an interactive "Language Journey Timeline" page that visualizes a child's communication development across sessions, weeks, months, and years.
 The purpose is to help clinicians, caregivers, and educational teams understand how language patterns evolve over time.
 
-The timeline should be one of EchoMap's signature features and prioritize clinical meaning, not just data storage.
+The timeline should be one of ChildLed's signature features and prioritize clinical meaning, not just data storage.
 
 Overview Card
 At the top of the page display:
@@ -253,7 +253,7 @@ Possible Stage Indicators
 Possible Mitigation Observations
 Emerging Flexibility Indicators
 Clinician Review Recommended
-All insights must be generated using the uploaded EchoMap clinical knowledge base and supported by observable language evidence.
+All insights must be generated using the uploaded ChildLed clinical knowledge base and supported by observable language evidence.
 One feature I'd add that could become a "wow" moment
 At the bottom of the prompt, add:
 Create a "Then vs. Now" comparison view. Allow clinicians and caregivers to select any two dates and compare:

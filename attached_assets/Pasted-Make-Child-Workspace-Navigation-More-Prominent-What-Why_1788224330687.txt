@@ -36,7 +36,7 @@ Replace with:
 [Team]
 [Documentation]
 Active tab:
-Filled EchoMap gold
+Filled ChildLed gold
 Dark text
 Slight shadow
 Inactive tabs:

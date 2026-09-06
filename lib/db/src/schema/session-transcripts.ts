@@ -345,7 +345,7 @@ export const childSpeakerRoleLearningAggregatesTable = pgTable(
 
 /**
  * Immutable audit records for the legal-authority confirmation made before
- * creating a child profile. Child profiles are currently held by the EchoMap
+ * creating a child profile. Child profiles are currently held by the ChildLed
  * service, so this intentionally does not use a foreign key.
  */
 export const childProfileConsentRecordsTable = pgTable(

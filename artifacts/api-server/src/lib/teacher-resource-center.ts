@@ -7,7 +7,7 @@ import { storeClinicalKnowledgeObject } from "./clinical-knowledge-object-storag
 
 export const TEACHER_RESOURCE_KEY = "teacher-resource-center";
 export const TEACHER_RESOURCE_VERSION = "1.0";
-export const TEACHER_RESOURCE_PDF = "echomap-teacher-resources_1788216080991.pdf";
+export const TEACHER_RESOURCE_PDF = "childled-teacher-resources_1788216080991.pdf";
 export const TEACHER_RESOURCE_DISCLAIMER = "These resources are educational classroom supports, not clinical records, diagnosis, treatment recommendations, or a replacement for individualized guidance from a child’s care team.";
 type Definition = { resourceKey: string; category: string; position: number; title: string; summary: string; readingMinutes: number; sections: TeacherResourceSection[]; format?: string };
 type TeacherResourceBundle = {

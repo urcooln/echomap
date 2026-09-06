@@ -14,7 +14,7 @@ import {
 process.env.SESSION_SECRET = "audio-object-store-test-secret";
 
 test("encrypted local audio storage never writes the original recording bytes", async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), "echomap-audio-"));
+  const directory = await mkdtemp(path.join(tmpdir(), "childled-audio-"));
   try {
     const store = new EncryptedLocalAudioObjectStore(directory);
     const recording = Buffer.from("private clinical recording bytes");

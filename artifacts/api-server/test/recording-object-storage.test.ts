@@ -5,11 +5,11 @@ import { storageTestState } from "./google-cloud-storage.stub";
 process.env.NODE_ENV = "production";
 process.env.DATABASE_URL = "postgres://example";
 process.env.PUBLIC_APP_ORIGIN = "https://staging.example.test";
-process.env.ECHOMAP_DATA_ENCRYPTION_KEY = "a".repeat(44);
-process.env.ECHOMAP_AUDIO_STORAGE_DRIVER = "gcs";
-process.env.GCS_PRIVATE_BUCKET = "echomap-staging-private";
+process.env.CHILDLED_DATA_ENCRYPTION_KEY = "a".repeat(44);
+process.env.CHILDLED_AUDIO_STORAGE_DRIVER = "gcs";
+process.env.GCS_PRIVATE_BUCKET = "childled-staging-private";
 process.env.GCS_PRIVATE_OBJECT_PREFIX = "staging";
-process.env.ECHOMAP_LEGACY_S3_MIGRATION_COMPLETE = "true";
+process.env.CHILDLED_LEGACY_S3_MIGRATION_COMPLETE = "true";
 
 const { RecordingObjectStorage } =
   await import("../src/lib/recording-object-storage");
@@ -26,16 +26,16 @@ test("GCS upload reservations use native signed URLs and the configured private 
 
   assert.deepEqual(reservation, {
     audioId: "recording-1",
-    objectPath: "/objects/echomap/session-recordings/staging/7/recording-1",
+    objectPath: "/objects/childled/session-recordings/staging/7/recording-1",
     uploadUrl:
-      "https://storage.test/echomap-staging-private/staging/echomap/session-recordings/staging/7/recording-1?signed=true",
+      "https://storage.test/childled-staging-private/staging/childled/session-recordings/staging/7/recording-1?signed=true",
   });
   assert.equal(storageTestState.clients.length, 1);
   assert.equal(storageTestState.clients[0], undefined);
   assert.deepEqual(storageTestState.signedUrls, [
     {
-      bucketName: "echomap-staging-private",
-      objectName: "staging/echomap/session-recordings/staging/7/recording-1",
+      bucketName: "childled-staging-private",
+      objectName: "staging/childled/session-recordings/staging/7/recording-1",
       options: {
         action: "write",
         contentType: "audio/webm",

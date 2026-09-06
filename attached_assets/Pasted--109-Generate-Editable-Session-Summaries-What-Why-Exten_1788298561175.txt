@@ -2,7 +2,7 @@
 
 What & Why
 
-Extend EchoMap’s post-review workflow with a structured, editable clinical Session Summary grounded only in reviewed evidence. The summary should help clinicians understand what was observed, what changed, and what may warrant follow-up without turning AI output into an autonomous clinical conclusion.
+Extend ChildLed’s post-review workflow with a structured, editable clinical Session Summary grounded only in reviewed evidence. The summary should help clinicians understand what was observed, what changed, and what may warrant follow-up without turning AI output into an autonomous clinical conclusion.
 
 Done looks like
 
@@ -40,8 +40,8 @@ Add clinician editing and explicit save -- Persist the editable draft separately
 Verify privacy and safety -- Add endpoint, persistence, and browser tests for evidence traceability, Child-only evidence, longitudinal comparisons, growth and sharing sections, empty/partial review, provider failures, organization and child isolation, edit/save behavior, and prohibited claims.
 Relevant files
 
-artifacts/echomap/src/App.tsx
-artifacts/api-server/src/routes/echomap.ts
+artifacts/childled/src/App.tsx
+artifacts/api-server/src/routes/childled.ts
 artifacts/api-server/src/lib/documentation-draft.ts
 artifacts/api-server/src/lib/clinical-knowledge-engine.ts
 artifacts/api-server/test/session-transcription.test.ts

@@ -1,6 +1,6 @@
-# EchoMap Staging Deployment
+# ChildLed Staging Deployment
 
-This setup is the first production-shaped step for EchoMap:
+This setup is the first production-shaped step for ChildLed:
 
 1. Private GitHub repo.
 2. GitHub Actions CI.
@@ -10,7 +10,7 @@ This setup is the first production-shaped step for EchoMap:
 6. Google Secret Manager for runtime secrets.
 7. Optional custom domain pointed at Cloud Run.
 
-GitHub Pages is not enough for this app because EchoMap is not a static-only
+GitHub Pages is not enough for this app because ChildLed is not a static-only
 site. It has an Express API, private file uploads, Clerk auth middleware,
 database writes, PDF processing, and AI integrations.
 
@@ -27,6 +27,10 @@ creating cloud resources, and triggering deployment require either:
 
 Create a GitHub environment named `staging`, then add these repository or
 environment variables:
+
+Existing staging resources retain their original `echomap` IDs because Google
+Cloud resource identities cannot be renamed in place. These IDs are not exposed
+as product branding. New production resources should use `childled` IDs.
 
 | Variable                            | Staging value                                                                        |
 | ----------------------------------- | ------------------------------------------------------------------------------------ |
@@ -51,7 +55,7 @@ environment variables:
 | `SECRET_OPENAI_API_KEY`             | `echomap-staging-openai-api-key`                                                     |
 
 For early public testing, use fake/synthetic data and keep
-`ECHOMAP_ENABLE_DEMO_LOGIN=true` only in staging. Do not enable it for a real
+`CHILDLED_ENABLE_DEMO_LOGIN=true` only in staging. Do not enable it for a real
 production environment with live children or clinical data.
 
 ## Google Cloud Resources
@@ -67,7 +71,8 @@ Enable these APIs in the staging Google Cloud project:
 Create these service accounts:
 
 - `github-deploy`: used by GitHub Actions through Workload Identity Federation.
-- `echomap-runtime`: used by the running Cloud Run service.
+- `echomap-runtime`: legacy resource ID used by the running ChildLed Cloud Run
+  service.
 
 Recommended IAM:
 
@@ -87,7 +92,7 @@ variables above. Generate fresh values for:
 
 ```bash
 openssl rand -base64 48 # SESSION_SECRET
-openssl rand -base64 32 # ECHOMAP_DATA_ENCRYPTION_KEY
+openssl rand -base64 32 # CHILDLED_DATA_ENCRYPTION_KEY
 ```
 
 For the first staging database, the lowest-friction option is a managed
@@ -140,7 +145,7 @@ Before real production data:
 - move the database to a production-grade PostgreSQL plan,
 - keep staging and production in separate projects or at least separate
   service accounts, databases, buckets, and Clerk instances,
-- disable `ECHOMAP_ENABLE_DEMO_LOGIN`,
+- disable `CHILDLED_ENABLE_DEMO_LOGIN`,
 - add backups, monitoring, error tracking, audit review, and uptime alerts,
 - review HIPAA/BAA requirements for every vendor before storing protected
   health information.

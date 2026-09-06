@@ -3,7 +3,7 @@ import type {
   KnowledgeEvidenceSnapshot,
 } from "@workspace/db";
 
-export const CLINICAL_KNOWLEDGE_PROVIDER = "EchoMap cited-retrieval";
+export const CLINICAL_KNOWLEDGE_PROVIDER = "ChildLed cited-retrieval";
 export const CLINICAL_KNOWLEDGE_MODEL = "deterministic-v1";
 export const CLINICAL_INSIGHTS_ENGINE_VERSION = "routine-auto-apply-v1";
 

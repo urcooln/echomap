@@ -11,11 +11,11 @@ import { storeClinicalKnowledgeObject } from "./clinical-knowledge-object-storag
 
 export const PARENT_LEARNING_RESOURCE_KEY = "parent-coaching-handbook";
 export const PARENT_LEARNING_CONTENT_VERSION = "1.0";
-export const PARENT_LEARNING_RESOURCE_TITLE = "EchoMap Parent Coaching Handbook";
+export const PARENT_LEARNING_RESOURCE_TITLE = "ChildLed Parent Coaching Handbook";
 export const PARENT_LEARNING_RESOURCE_SUBTITLE =
   "An affirming guide for supporting communication development at home.";
 export const PARENT_LEARNING_PDF_FILENAME =
-  "echomap-parent-resources_1788210961456.pdf";
+  "childled-parent-resources_1788210961456.pdf";
 export const PARENT_LEARNING_DISCLAIMER =
   "These resources are educational invitations for connection and observation. They do not replace individualized therapy recommendations, diagnosis, treatment, or guidance from your child’s care team.";
 

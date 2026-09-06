@@ -16,13 +16,13 @@ export type ResolvedCareTeamActor = {
   organizationId?: number;
 };
 
-export type EchoMapAuthFailure = "email_unverified" | "not_invited" | "session_invalid" | "access_disabled" | "beta_notice_unacknowledged";
+export type ChildLedAuthFailure = "email_unverified" | "not_invited" | "session_invalid" | "access_disabled" | "beta_notice_unacknowledged";
 
 declare global {
   namespace Express {
     interface Request {
-      echomapActor?: ResolvedCareTeamActor;
-      echomapAuthFailure?: EchoMapAuthFailure;
+      childledActor?: ResolvedCareTeamActor;
+      childledAuthFailure?: ChildLedAuthFailure;
     }
   }
 }

@@ -17,7 +17,7 @@ import {
   securityAuditLogsTable,
   usersTable,
 } from "@workspace/db";
-import router from "../src/routes/echomap";
+import router from "../src/routes/childled";
 import type { ResolvedCareTeamActor } from "../src/lib/auth-context";
 
 test.after(async () => {
@@ -71,7 +71,7 @@ test("communication goals are caseload-scoped, versioned, and safely finalized a
   };
   const app = express();
   app.use(express.json());
-  app.use((req, _res, next) => { req.echomapActor = actor; next(); });
+  app.use((req, _res, next) => { req.childledActor = actor; next(); });
   app.use(router);
   const server = await new Promise<ReturnType<typeof app.listen>>((resolve) => {
     const value = app.listen(0, () => resolve(value));

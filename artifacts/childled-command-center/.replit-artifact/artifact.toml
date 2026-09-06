@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/childled-command-center/"
+title = "ChildLed Command Center"
+description = "A focused SLP caseload workspace for reviewing recent communication changes, prioritizing children, and moving from shared observations to the next clear action."
+version = "1.0.0"
+id = "artifacts/childled-command-center"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/childled-command-center/" ]
+localPort = 25878
+
+[services.development]
+run = "pnpm --filter @workspace/childled-command-center run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/childled-command-center", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/childled-command-center/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25878"
+BASE_PATH = "/childled-command-center/"

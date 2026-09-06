@@ -25,7 +25,7 @@ export const storeClinicalKnowledgeObject = async (
 
   if (isManagedObjectStorageDriver(runtimeConfig.audioStorage.driver)) {
     return appStorage.putServerObject({
-      objectPath: `/objects/echomap/${relativeKey}`,
+      objectPath: `/objects/childled/${relativeKey}`,
       contentType: input.contentType,
       data: input.data,
     });

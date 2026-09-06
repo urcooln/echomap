@@ -12,7 +12,7 @@ Building Peer Connections
 Supporting Transitions & Routines
 Language Modeling Examples
 Frequently Asked Questions
-Each resource can be opened and read directly inside EchoMap.
+Each resource can be opened and read directly inside ChildLed.
 Resources support bookmarking and completion tracking.
 Teachers can quickly save favorite resources for later reference.
 Resources are child-safe and educational, not clinical records.
@@ -57,7 +57,7 @@ Communication Partner Reflection Tool
 Classroom Observation Form
 Future Enhancement (Not Required Now)
 Add a "Recommended for This Child" section that allows clinicians to share specific teacher resources linked to the child's strengths, interests, communication profile, and AAC supports. These remain educational recommendations and do not expose clinical notes or private records.
-For EchoMap specifically, I would prioritize these three teacher resources first because they provide immediate value:
+For ChildLed specifically, I would prioritize these three teacher resources first because they provide immediate value:
 Declarative Language Cheat Sheet
 Regulation & Sensory Supports Guide
 AAC Modeling in the Classroom

@@ -2,9 +2,9 @@ Enhanced Gestalt Detection and Tracking System
 
 The current recording feature converts audio into a single speech-to-text transcript.
 
-This is not sufficient for EchoMap.
+This is not sufficient for ChildLed.
 
-EchoMap should identify, separate, and track individual gestalts within recordings.
+ChildLed should identify, separate, and track individual gestalts within recordings.
 
 ⸻
 
@@ -297,6 +297,6 @@ Notes
 
 Design Principle
 
-EchoMap should not simply transcribe recordings.
+ChildLed should not simply transcribe recordings.
 
-EchoMap should build a living communication profile that tracks the evolution, frequency, and meaning of gestalts across time and environments.
+ChildLed should build a living communication profile that tracks the evolution, frequency, and meaning of gestalts across time and environments.

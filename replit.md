@@ -1,6 +1,6 @@
-# EchoMap
+# ChildLed
 
-EchoMap helps families, educators, SLPs, and caregivers share the meaning behind a child's Gestalt Language Processor phrases.
+ChildLed helps families, educators, SLPs, and caregivers share the meaning behind a child's Gestalt Language Processor phrases.
 
 ## Run & Operate
 
@@ -22,9 +22,9 @@ EchoMap helps families, educators, SLPs, and caregivers share the meaning behind
 
 ## Where things live
 
-- `artifacts/echomap` — responsive React + Vite app with dashboard, dictionary, child profile, activity, reports, and settings views
-- `artifacts/api-server/src/routes/echomap.ts` — EchoMap API routes and collaboration data
-- `lib/api-spec/openapi.yaml` — source of truth for EchoMap API contracts
+- `artifacts/childled` — responsive React + Vite app with dashboard, dictionary, child profile, activity, reports, and settings views
+- `artifacts/api-server/src/routes/childled.ts` — ChildLed API routes and collaboration data
+- `lib/api-spec/openapi.yaml` — source of truth for ChildLed API contracts
 - `lib/api-client-react/src/generated` — generated React Query hooks used by the app
 
 ## Architecture decisions

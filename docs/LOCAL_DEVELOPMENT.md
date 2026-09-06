@@ -17,16 +17,16 @@ pnpm install
 2. Start or verify Postgres. The API expects this local database URL by default:
 
 ```
-DATABASE_URL=postgresql://postgres:password@localhost:5432/echomap_dev?sslmode=disable
+DATABASE_URL=postgresql://postgres:password@localhost:5432/childled_dev?sslmode=disable
 ```
 
 If you use Docker:
 
 ```bash
-docker run -e POSTGRES_PASSWORD=password -p 5432:5432 -d --name echomap-postgres postgres:15
+docker run -e POSTGRES_PASSWORD=password -p 5432:5432 -d --name childled-postgres postgres:15
 ```
 
-If you use a local Postgres install, create an `echomap_dev` database and make sure the credentials in `artifacts/api-server/.env` match your machine.
+If you use a local Postgres install, create an `childled_dev` database and make sure the credentials in `artifacts/api-server/.env` match your machine.
 
 3. Apply DB schema:
 

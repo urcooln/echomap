@@ -1,6 +1,6 @@
 Create an interactive "Language Journey Timeline" page that visualizes a child's communication development across sessions, weeks, months, and years.
 The purpose is to help clinicians, caregivers, and educational teams understand how language patterns evolve over time.
-The timeline should be one of EchoMap's signature features and prioritize clinical meaning, not just data storage.
+The timeline should be one of ChildLed's signature features and prioritize clinical meaning, not just data storage.
 Overview Card
 At the top of the page display:
 Language Journey Snapshot
@@ -142,4 +142,4 @@ Possible Stage Indicators
 Possible Mitigation Observations
 Emerging Flexibility Indicators
 Clinician Review Recommended
-All insights must be generated using the uploaded EchoMap clinical knowledge base and supported by observable language evidence.
+All insights must be generated using the uploaded ChildLed clinical knowledge base and supported by observable language evidence.

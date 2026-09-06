@@ -4,7 +4,7 @@ What & Why
 
 The current post-recording workflow asks clinicians to make too many decisions before receiving value from a completed recording.
 
-EchoMap should optimize for:
+ChildLed should optimize for:
 
 Record → Confirm Child Language → Save Useful Output
 

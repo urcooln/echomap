@@ -23,7 +23,7 @@ This prevents one clinician from inviting dozens of users unexpectedly.
 Add: Beta Agreement
 Before first login:
 Beta Participation Notice
-EchoMap is currently in private beta testing.
+ChildLed is currently in private beta testing.
 Features, workflows, and AI-assisted outputs may change during testing.
 Clinical decisions remain the responsibility of the clinician or care team.
 Done Looks Like
@@ -64,8 +64,8 @@ approved organization scope
 A clinician invitation must be tied to:
 organization membership
 approved clinician role
-No accepted account should enter EchoMap without an explicitly defined access scope.
+No accepted account should enter ChildLed without an explicitly defined access scope.
 One final beta recommendation
 Since you're dealing with recordings and child communication data, I'd add this banner throughout the beta:
-EchoMap Private Beta
+ChildLed Private Beta
 Access is restricted to authorized users. Do not share recordings, transcripts, or child information outside approved care-team workflows.

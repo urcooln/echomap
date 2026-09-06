@@ -82,7 +82,7 @@ app.use("/api", router);
 
 if (production) {
   const staticClientDir = path.resolve(
-    process.env.ECHOMAP_STATIC_DIR?.trim() ||
+    process.env.CHILDLED_STATIC_DIR?.trim() ||
       path.join(process.cwd(), "dist", "public"),
   );
 

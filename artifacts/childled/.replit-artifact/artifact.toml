@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/"
+title = "ChildLed"
+description = "A collaborative communication dictionary for families, teachers, speech-language pathologists, and caregivers supporting children who are Gestalt Language Processors."
+version = "1.0.0"
+id = "artifacts/childled"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24157
+
+[services.development]
+run = "pnpm --filter @workspace/childled run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/childled", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/childled/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24157"
+BASE_PATH = "/"

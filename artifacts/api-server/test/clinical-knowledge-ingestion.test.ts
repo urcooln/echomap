@@ -9,7 +9,7 @@ import {
 
 const protocolPdf = path.resolve(
   process.cwd(),
-  "../../attached_assets/EchoMap_AI__Clinical_Assessment_Protocol_&_Goal_Template_Manua_1787509198760.pdf",
+  "../../attached_assets/ChildLed_AI__Clinical_Assessment_Protocol_&_Goal_Template_Manua_1787509198760.pdf",
 );
 
 test("the packaged GLP assessment PDF extracts page-aware, citable knowledge chunks", async () => {

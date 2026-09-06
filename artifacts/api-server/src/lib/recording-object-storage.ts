@@ -3,8 +3,8 @@ import { Storage, type File } from "@google-cloud/storage";
 import { runtimeConfig } from "./runtime-config";
 
 const REPLIT_SIDECAR_ENDPOINT = "http://127.0.0.1:1106";
-const RECORDING_PREFIX = "echomap/session-recordings";
-const OBSERVATION_VIDEO_PREFIX = "echomap/observation-videos";
+const RECORDING_PREFIX = "childled/session-recordings";
+const OBSERVATION_VIDEO_PREFIX = "childled/observation-videos";
 const FINAL_SEGMENT = "/final/";
 const UPLOAD_URL_TTL_MS = 15 * 60 * 1000;
 

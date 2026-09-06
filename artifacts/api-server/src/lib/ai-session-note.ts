@@ -278,7 +278,7 @@ export const contentFromAiSessionNote = (
       : nlaObservationLabels.insufficient_evidence,
     "",
     DOCUMENTATION_REVIEW_REQUIRED_LABEL,
-    "EchoMap does not assign an NLA stage. Review and edit this observation using clinical judgment.",
+    "ChildLed does not assign an NLA stage. Review and edit this observation using clinical judgment.",
   ].join("\n"),
   potentialGestalts: [
     DOCUMENTATION_SUGGESTED_INSIGHT_LABEL,
@@ -362,7 +362,7 @@ export const contentFromAiSessionNote = (
      ...evidence.slice(0, 5).map((item) => `• The phrase “${item.utterance}” was confirmed in the reviewed session.`),
      "",
      DOCUMENTATION_REVIEW_REQUIRED_LABEL,
-     "Edit these highlights for the intended audience. EchoMap does not send them automatically.",
+     "Edit these highlights for the intended audience. ChildLed does not send them automatically.",
    ].join("\n"),
    evidenceReferences,
   };
@@ -443,7 +443,7 @@ export const generateAiSessionNote = async (evidence: AiSessionEvidence[]) => {
     response_format: {
       type: "json_schema",
       json_schema: {
-        name: "echomap_session_note",
+        name: "childled_session_note",
         strict: true,
         schema: modelDraftSchema,
       },
@@ -452,7 +452,7 @@ export const generateAiSessionNote = async (evidence: AiSessionEvidence[]) => {
       {
         role: "system",
         content: [
-          "You draft a clinician-reviewable communication session note for EchoMap.",
+          "You draft a clinician-reviewable communication session note for ChildLed.",
           "Use only the reviewed Child utterance evidence in the user message.",
           "Do not mention, reconstruct, or infer from any unseen transcript.",
           "Return only the constrained codes and eligible segment IDs defined by the schema.",

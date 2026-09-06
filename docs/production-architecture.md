@@ -1,6 +1,6 @@
-# EchoMap portable production architecture
+# ChildLed portable production architecture
 
-EchoMap is designed to run as an ordinary HTTP API and static web client on any
+ChildLed is designed to run as an ordinary HTTP API and static web client on any
 host that provides PostgreSQL, Replit-managed Clerk, and
 private S3-compatible object storage. The browser never receives database,
 storage, encryption, or identity-provider credentials.
@@ -12,16 +12,16 @@ storage, encryption, or identity-provider credentials.
 | `DATABASE_URL` | PostgreSQL connection URL. |
 | `PUBLIC_APP_ORIGIN` | The single canonical browser origin, such as `https://app.example.com`. |
 | `ALLOWED_APP_ORIGINS` | Optional comma-separated additional trusted browser origins. |
-| `ECHOMAP_DATA_ENCRYPTION_KEY` | Base64 32-byte key used for application-level encryption at rest. Rotate through a deliberate key-version migration. |
-| `ECHOMAP_AUTH_MODE=clerk` | Enables the Replit-managed Clerk authentication boundary (the default). |
-| `ECHOMAP_AUDIO_STORAGE_DRIVER=s3` | Selects private S3-compatible audio storage. |
-| `ECHOMAP_S3_BUCKET` | Private bucket name for therapy audio. |
-| `ECHOMAP_S3_REGION` | S3 region. |
-| `ECHOMAP_S3_ENDPOINT` | Optional custom endpoint for MinIO, Cloudflare R2, or another compatible service. |
-| `ECHOMAP_S3_FORCE_PATH_STYLE=true` | Optional setting for compatible services that require path-style addressing. |
-| `ECHOMAP_S3_ACCESS_KEY_ID` | Scoped S3-compatible access key ID. |
-| `ECHOMAP_S3_SECRET_ACCESS_KEY` | Scoped S3-compatible secret access key. |
-| `ECHOMAP_S3_SESSION_TOKEN` | Optional temporary credential session token. |
+| `CHILDLED_DATA_ENCRYPTION_KEY` | Base64 32-byte key used for application-level encryption at rest. Rotate through a deliberate key-version migration. |
+| `CHILDLED_AUTH_MODE=clerk` | Enables the Replit-managed Clerk authentication boundary (the default). |
+| `CHILDLED_AUDIO_STORAGE_DRIVER=s3` | Selects private S3-compatible audio storage. |
+| `CHILDLED_S3_BUCKET` | Private bucket name for therapy audio. |
+| `CHILDLED_S3_REGION` | S3 region. |
+| `CHILDLED_S3_ENDPOINT` | Optional custom endpoint for MinIO, Cloudflare R2, or another compatible service. |
+| `CHILDLED_S3_FORCE_PATH_STYLE=true` | Optional setting for compatible services that require path-style addressing. |
+| `CHILDLED_S3_ACCESS_KEY_ID` | Scoped S3-compatible access key ID. |
+| `CHILDLED_S3_SECRET_ACCESS_KEY` | Scoped S3-compatible secret access key. |
+| `CHILDLED_S3_SESSION_TOKEN` | Optional temporary credential session token. |
 
 Access keys, workload identity, or instance roles are configured by the chosen
 S3 provider and must never be committed or placed in browser configuration.
@@ -34,7 +34,7 @@ request, confirms a verified email through Clerk, then maps the Clerk user ID
 to a local `users` record. It resolves an active organization membership and an
 explicit child care-team membership; roles and child IDs are never browser
 input. A user with more than one organization supplies the authorized
-organization ID in `X-EchoMap-Organization-ID`.
+organization ID in `X-ChildLed-Organization-ID`.
 
 The server enforces the following application roles:
 
@@ -45,9 +45,9 @@ The server enforces the following application roles:
 - **Admin**: organization administration; child data still requires an
   explicit child membership.
 
-There is no EchoMap password store or demo-session cookie. Configure Clerk
+There is no ChildLed password store or demo-session cookie. Configure Clerk
 session maximum lifetime and inactivity timeout in the managed Clerk Dashboard:
-Configure → Sessions. EchoMap warns after 13 minutes and clears local private
+Configure → Sessions. ChildLed warns after 13 minutes and clears local private
 state at 15 minutes of browser inactivity; set the provider controls to an
 equal or stricter policy in both Development and Production.
 

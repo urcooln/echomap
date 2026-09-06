@@ -10,7 +10,7 @@ Interpretation sections display a visible label:
 AI-generated clinical observation
 Clinician review required
 Why
-Clinicians need to understand why EchoMap generated an observation rather than treating it as a black box.
+Clinicians need to understand why ChildLed generated an observation rather than treating it as a black box.
 Add: Communication Growth Snapshot
 Done looks like
 The Session Summary includes a dedicated section:
@@ -50,7 +50,7 @@ Why
 SLPs frequently need a quick summary they can adapt for parents and teachers.
 Add: Dictionary & AAC Opportunities
 Done looks like
-EchoMap highlights:
+ChildLed highlights:
 Dictionary Candidates
 Novel phrases
 Frequently repeated phrases
@@ -65,7 +65,7 @@ Why
 This turns the summary into a practical workflow tool rather than just documentation.
 Add: Session-to-Session Continuity
 Done looks like
-When previous reviewed sessions exist, EchoMap generates:
+When previous reviewed sessions exist, ChildLed generates:
 Since Last Reviewed Session
 Newly observed phrases
 Phrases not observed this session
@@ -74,6 +74,6 @@ Phrases decreasing in frequency
 Communication functions appearing for the first time
 Use cautious wording and only reviewed evidence.
 Why
-This aligns directly with the broader EchoMap goal:
+This aligns directly with the broader ChildLed goal:
 Turning communication into shared understanding across home, school, and therapy.
-The most valuable thing EchoMap can tell a clinician isn't just what happened today—it's how today's communication compares with what has been happening over time.
+The most valuable thing ChildLed can tell a clinician isn't just what happened today—it's how today's communication compares with what has been happening over time.

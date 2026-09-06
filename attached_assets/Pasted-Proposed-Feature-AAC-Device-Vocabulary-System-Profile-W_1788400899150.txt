@@ -107,7 +107,7 @@ Last Confirmed
 AAC Information Last Updated:
 September 2025
 By: Sarah Johnson, SLP
-EchoMap-Specific Benefits
+ChildLed-Specific Benefits
 This would allow:
 Session Summaries
 Reference:

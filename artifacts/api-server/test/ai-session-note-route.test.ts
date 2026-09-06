@@ -19,7 +19,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
-import router from "../src/routes/echomap";
+import router from "../src/routes/childled";
 import {
   AI_SESSION_NOTE_SOURCE,
 } from "../src/lib/ai-session-note";
@@ -201,7 +201,7 @@ test("AI session-note endpoint enforces evidence boundaries and safe documentati
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.echomapActor = currentActor;
+    req.childledActor = currentActor;
     next();
   });
   app.use(router);

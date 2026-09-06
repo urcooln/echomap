@@ -59,7 +59,7 @@ export function CommandCenter() {
       <aside className={`fixed inset-y-0 left-0 z-30 flex w-[244px] flex-col bg-[hsl(var(--cc-forest))] px-4 py-6 text-[hsl(var(--cc-cream))] transition-transform md:translate-x-0 ${mobileNav ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="mb-10 flex items-center gap-3 px-2">
           <div className="grid size-10 place-items-center rounded-2xl bg-[hsl(var(--cc-gold))] text-[hsl(var(--cc-forest))]"><HeartHandshake size={21} /></div>
-          <div><div className="cc-serif text-2xl font-semibold leading-none">EchoMap</div><div className="cc-mono mt-1 text-[9px] uppercase tracking-[.18em] text-[hsl(var(--cc-gold))]">shared language</div></div>
+          <div><div className="cc-serif text-2xl font-semibold leading-none">ChildLed</div><div className="cc-mono mt-1 text-[9px] uppercase tracking-[.18em] text-[hsl(var(--cc-gold))]">shared language</div></div>
           <button className="cc-focus ml-auto rounded-lg p-2 md:hidden" aria-label="Close navigation" onClick={() => setMobileNav(false)}><X size={18} /></button>
         </div>
         <div className="cc-mono mb-3 px-2 text-[9px] uppercase tracking-[.18em] text-[hsl(var(--cc-cream)/.45)]">Your workspace</div>

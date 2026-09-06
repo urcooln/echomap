@@ -14,7 +14,7 @@ import {
   securityAuditLogsTable,
   usersTable,
 } from "@workspace/db";
-import router from "../src/routes/echomap";
+import router from "../src/routes/childled";
 import type { ResolvedCareTeamActor } from "../src/lib/auth-context";
 
 test.after(async () => {
@@ -84,7 +84,7 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.echomapActor = currentActor;
+    req.childledActor = currentActor;
     next();
   });
   app.use(router);

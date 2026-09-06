@@ -23,12 +23,12 @@ const roleMap: Record<PortableRole, "SLP" | "Parent" | "Teacher" | "Administrato
 };
 
 const requestedOrganizationId = (request: Request) => {
-  const value = Number(request.get("x-echomap-organization-id"));
+  const value = Number(request.get("x-childled-organization-id"));
   return Number.isSafeInteger(value) && value > 0 ? value : null;
 };
 
 /**
- * Resolves a Clerk-authenticated request to an explicitly invited EchoMap care
+ * Resolves a Clerk-authenticated request to an explicitly invited ChildLed care
  * team member. The browser never supplies roles, organizations, or child IDs.
  */
 export const attachClerkActor = async (request: Request, _response: Response, next: NextFunction) => {
@@ -38,7 +38,7 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
   try {
     const clerkUser = await clerkClient.users.getUser(auth.userId);
     if (!hasVerifiedEmailAddress(clerkUser.emailAddresses)) {
-      request.echomapAuthFailure = "email_unverified";
+      request.childledAuthFailure = "email_unverified";
       return next();
     }
 
@@ -52,11 +52,11 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
       ))
       .limit(1);
     if (!user) {
-      request.echomapAuthFailure = "not_invited";
+      request.childledAuthFailure = "not_invited";
       return next();
     }
     if (user.disabledAt) {
-      request.echomapAuthFailure = "access_disabled";
+      request.childledAuthFailure = "access_disabled";
       return next();
     }
 
@@ -69,13 +69,13 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
       ? memberships.find((candidate) => candidate.organizationId === organizationId)
       : null;
     if (!membership || !isPortableRole(membership.role)) {
-      request.echomapAuthFailure = "not_invited";
+      request.childledAuthFailure = "not_invited";
       return next();
     }
     const isAdmin = membership.role === "admin";
     const isSuperAdmin = isSuperAdminIdentity({ userId: user.id, isAdmin });
     if (!user.betaApprovedAt && !isSuperAdmin) {
-      request.echomapAuthFailure = "not_invited";
+      request.childledAuthFailure = "not_invited";
       return next();
     }
     const [organization] = await db.select()
@@ -87,12 +87,12 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
       || organization.archivedAt
       || (!isSuperAdmin && (organization.disabledAt || !organization.betaApprovedAt))
     ) {
-      request.echomapAuthFailure = "access_disabled";
+      request.childledAuthFailure = "access_disabled";
       return next();
     }
     const [controls] = await db.select().from(betaControlsTable).where(eq(betaControlsTable.id, 1)).limit(1);
     if ((!controls || !controls.enabled) && !isSuperAdmin) {
-      request.echomapAuthFailure = "access_disabled";
+      request.childledAuthFailure = "access_disabled";
       return next();
     }
 
@@ -113,7 +113,7 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
       )))
       .map((child) => child.childId);
 
-    request.echomapActor = {
+    request.childledActor = {
       userId: user.id,
       author: user.displayName,
       role: roleMap[membership.role],
@@ -133,10 +133,10 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
           eq(betaNoticeAcknowledgementsTable.noticeVersion, controls.currentNoticeVersion),
         ))
         .limit(1);
-      if (!acknowledgement) request.echomapAuthFailure = "beta_notice_unacknowledged";
+      if (!acknowledgement) request.childledAuthFailure = "beta_notice_unacknowledged";
     }
   } catch (error) {
-    request.echomapAuthFailure = "session_invalid";
+    request.childledAuthFailure = "session_invalid";
     logger.warn({ err: error }, "Clerk actor resolution failed");
   }
   return next();

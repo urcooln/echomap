@@ -16,7 +16,7 @@ import {
   sharedChildProfileHistoryTable,
   usersTable,
 } from "@workspace/db";
-import router from "../src/routes/echomap";
+import router from "../src/routes/childled";
 import type { ResolvedCareTeamActor } from "../src/lib/auth-context";
 
 test.after(async () => {
@@ -103,7 +103,7 @@ test("shared child profile is tenant-scoped, ownership-safe, conflict-safe, hist
   const app = express();
   app.use(express.json());
   app.use((req, _res, next) => {
-    req.echomapActor = actors[String(req.header("x-test-actor") ?? "")];
+    req.childledActor = actors[String(req.header("x-test-actor") ?? "")];
     next();
   });
   app.use(router);

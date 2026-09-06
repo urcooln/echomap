@@ -1,6 +1,6 @@
 Additional Enhancements
 Clinical Quick Reference Hub
-Provide a pinned Quick Reference area that clinicians can access from anywhere in EchoMap without leaving their workflow.
+Provide a pinned Quick Reference area that clinicians can access from anywhere in ChildLed without leaving their workflow.
 Done looks like
 A clinician can open Quick References from Session Review, Child Language Review, Dictionary Review, AAC Planning, Session Summary, and Reports.
 Quick References include:
@@ -51,7 +51,7 @@ Working meanings
 Declarative language examples
 AAC vocabulary examples
 Results link directly to relevant Learning Center content.
-Resource Connections Throughout EchoMap
+Resource Connections Throughout ChildLed
 Done looks like
 Relevant Learning Center resources automatically appear alongside workflows.
 Examples:

@@ -14,7 +14,7 @@ Create Voice Profile
 
 Please read the sentence below aloud:
 
-“Hello, this is my EchoMap voice sample. My name is [Clinician Name], and I am beginning today’s session.”
+“Hello, this is my ChildLed voice sample. My name is [Clinician Name], and I am beginning today’s session.”
 
 This phrase should automatically populate the clinician’s name from their account profile.
 
@@ -59,7 +59,7 @@ Display:
 
 ✅ Voice Profile Saved
 
-Your voice profile will be used to help EchoMap automatically distinguish clinician speech from child speech during recordings.
+Your voice profile will be used to help ChildLed automatically distinguish clinician speech from child speech during recordings.
 
 Persistence
 

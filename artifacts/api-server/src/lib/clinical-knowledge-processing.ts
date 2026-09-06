@@ -109,7 +109,7 @@ const normalizeExtractedText = (value: string) =>
     .trim();
 
 const temporaryPath = (extension: string) =>
-  join(tmpdir(), `echomap-knowledge-${randomUUID()}.${extension}`);
+  join(tmpdir(), `childled-knowledge-${randomUUID()}.${extension}`);
 
 const extractPdf = async (source: Buffer) => {
   const inputPath = temporaryPath("pdf");
@@ -124,7 +124,7 @@ const extractPdf = async (source: Buffer) => {
   } catch {
     throw new KnowledgeSourceProcessingError(
       "SOURCE_UNREADABLE",
-      "EchoMap could not extract readable text from this PDF. Try exporting a text-searchable PDF or upload the source document.",
+      "ChildLed could not extract readable text from this PDF. Try exporting a text-searchable PDF or upload the source document.",
     );
   } finally {
     await unlink(inputPath).catch(() => {});
@@ -152,7 +152,7 @@ const extractDocx = async (source: Buffer) => {
   } catch {
     throw new KnowledgeSourceProcessingError(
       "SOURCE_UNREADABLE",
-      "EchoMap could not extract readable text from this document. Try saving it as a DOCX or text-searchable PDF.",
+      "ChildLed could not extract readable text from this document. Try saving it as a DOCX or text-searchable PDF.",
     );
   } finally {
     await unlink(inputPath).catch(() => {});
@@ -182,13 +182,13 @@ export const extractKnowledgeSourceText = async (
   if (!normalized) {
     throw new KnowledgeSourceProcessingError(
       "SOURCE_EMPTY",
-      "EchoMap could not find readable text in this source.",
+      "ChildLed could not find readable text in this source.",
     );
   }
   if (normalized.length > MAX_EXTRACTED_SOURCE_CHARS) {
     throw new KnowledgeSourceProcessingError(
       "SOURCE_TOO_LARGE",
-      "This source contains more readable text than EchoMap can safely process at once. Split it into smaller materials and try again.",
+      "This source contains more readable text than ChildLed can safely process at once. Split it into smaller materials and try again.",
     );
   }
   return { kind, text: normalized, checksum: createHash("sha256").update(source).digest("hex") };
@@ -248,6 +248,6 @@ export const safeKnowledgeProcessingFailure = (error: unknown) => {
   return {
     code: "SOURCE_UNREADABLE" as const,
     message:
-      "EchoMap could not process this source. The original file was kept private; try a text-searchable PDF, DOCX, or plain-text export.",
+      "ChildLed could not process this source. The original file was kept private; try a text-searchable PDF, DOCX, or plain-text export.",
   };
 };

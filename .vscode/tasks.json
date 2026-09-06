@@ -2,38 +2,38 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "EchoMap: Dev",
+      "label": "ChildLed: Dev",
       "type": "shell",
       "command": "pnpm run dev",
       "isBackground": true,
       "problemMatcher": [],
-      "detail": "Start the EchoMap API and web app together."
+      "detail": "Start the ChildLed API and web app together."
     },
     {
-      "label": "EchoMap: API",
+      "label": "ChildLed: API",
       "type": "shell",
       "command": "pnpm run dev:api",
       "isBackground": true,
       "problemMatcher": [],
-      "detail": "Start only the EchoMap API."
+      "detail": "Start only the ChildLed API."
     },
     {
-      "label": "EchoMap: Web",
+      "label": "ChildLed: Web",
       "type": "shell",
       "command": "pnpm run dev:web",
       "isBackground": true,
       "problemMatcher": [],
-      "detail": "Start only the EchoMap frontend."
+      "detail": "Start only the ChildLed frontend."
     },
     {
-      "label": "EchoMap: Push DB Schema",
+      "label": "ChildLed: Push DB Schema",
       "type": "shell",
       "command": "pnpm run db:push",
       "problemMatcher": [],
       "detail": "Apply the Drizzle schema using artifacts/api-server/.env."
     },
     {
-      "label": "EchoMap: Typecheck",
+      "label": "ChildLed: Typecheck",
       "type": "shell",
       "command": "pnpm run typecheck",
       "group": "build",

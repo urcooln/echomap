@@ -1,0 +1,132 @@
+ChildLed SLP Command Center Redesign Prompt
+Redesign the current ChildLed clinician home experience into a modern, highly efficient SLP Command Center that functions as a caseload management workspace rather than a simple dashboard.
+The primary goal is to help clinicians immediately answer:
+Which children need my attention today?
+What changed since I last logged in?
+What communication insights are emerging?
+What actions should I take next?
+The design should feel similar to a professional clinical command center, combining the clarity of an EMR dashboard with the usability of modern SaaS products.
+Layout Structure
+Top Header
+Display:
+Welcome Back, [Clinician Name]
+Underneath:
+Caseload Count
+Active Students
+New Observations This Week
+New Team Messages
+Pending Reviews
+Example:
+27 Active Students
+14 New Phrases Logged
+8 New Team Updates
+3 Insights Awaiting Review
+Most Important Section
+What's New Since Your Last Sign-In
+This should be the most prominent card on the page.
+Automatically summarize:
+New Gestalts
+"Let's save the city!" observed for first time
+New Communication Functions
+Requesting assistance detected
+Emerging Mitigations
+New partial mitigation observed
+Team Contributions
+Teacher logged 3 phrases
+Parent added 2 observations
+Notable Language Changes
+Increased language flexibility
+Each item should link directly to the child's profile.
+Priority Alerts Panel
+Display urgent items requiring clinician attention.
+Examples:
+🔴 New phrase requiring review
+🟠 Possible mitigation detected
+🟡 Team question awaiting response
+🔵 New child added
+Allow:
+Mark as reviewed
+Open child profile
+Dismiss
+Caseload Overview
+Display all children as searchable cards.
+Each card should show:
+Child Name
+Snapshot Metrics
+Total Gestalts
+New This Week
+Session Count
+Communication Functions
+Team Activity Count
+Last Activity
+Example:
+Teacher logged phrase 3 hours ago
+Quick Actions
+Buttons:
+Open Profile
+Record Session
+Add Phrase
+View Timeline
+Message Team
+Smart Search Bar
+Allow searching by:
+Child Name
+Phrase
+Communication Function
+Team Member
+School
+Date
+Caseload Filters
+Allow sorting by:
+Needs Attention
+Most Active
+New Child
+Most New Gestalts
+Recent Team Activity
+Recently Recorded Session
+Team Activity Feed
+Create a live collaboration panel.
+Display:
+Teacher:
+Logged phrase "Ready, set, go!"
+Parent:
+Added observation from home
+OT:
+Added sensory note
+SLP:
+Reviewed new insight
+Show timestamps.
+Communication Trends Widget
+Across the entire caseload display:
+Most Common Scripts
+Emerging Mitigations
+Most Frequent Communication Functions
+New Language Flexibility Indicators
+Visualize using simple charts.
+Daily Focus Panel
+Automatically identify:
+Children Requiring Review Today
+Reasons:
+New phrase detected
+New mitigation candidate
+Team message
+Missing review
+Provide one-click access.
+Design Style
+Use:
+Warm clinical aesthetic
+Calm greens and neutrals
+High readability
+Minimal cognitive load
+Mobile-first responsive design
+Accessibility-compliant typography
+Large touch targets
+Avoid:
+EMR clutter
+Dense tables
+Technical AI terminology
+Core Design Principle
+Every screen should answer:
+"What changed, who needs attention, and what should I do next?"
+The clinician should be able to identify priorities within 5 seconds of opening the app.
+This redesign should make ChildLed feel less like a phrase tracker and more like a communication intelligence platform for managing an entire caseload.

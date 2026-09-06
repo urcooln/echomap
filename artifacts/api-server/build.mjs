@@ -10,11 +10,11 @@ globalThis.require = createRequire(import.meta.url);
 
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 const packagedClinicalSourceNames = [
-  "EchoMap_Clinical_Knowledge_Base__A_Comprehensive_GLP_Reference_1787509206363.pdf",
-  "EchoMap_AI__Clinical_Assessment_Protocol_&_Goal_Template_Manua_1787509198760.pdf",
+  "ChildLed_Clinical_Knowledge_Base__A_Comprehensive_GLP_Reference_1787509206363.pdf",
+  "ChildLed_AI__Clinical_Assessment_Protocol_&_Goal_Template_Manua_1787509198760.pdf",
 ];
-const parentLearningResourceName = "echomap-parent-resources_1788210961456.pdf";
-const teacherResourceName = "echomap-teacher-resources_1788216080991.pdf";
+const parentLearningResourceName = "childled-parent-resources_1788210961456.pdf";
+const teacherResourceName = "childled-teacher-resources_1788216080991.pdf";
 
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");

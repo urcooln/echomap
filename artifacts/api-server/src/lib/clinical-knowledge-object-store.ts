@@ -18,7 +18,7 @@ type AppStorageClient = Pick<
 const appStorageKey = (key: string) =>
   key.startsWith("/objects/")
     ? key
-    : `/objects/echomap/clinical-knowledge/${key.replace(/^\/+/, "")}`;
+    : `/objects/childled/clinical-knowledge/${key.replace(/^\/+/, "")}`;
 
 export class AppStorageClinicalKnowledgeObjectStore implements AudioObjectStore {
   constructor(private readonly storage: AppStorageClient) {}

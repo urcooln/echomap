@@ -28,11 +28,11 @@ type PackagedKnowledgeSource = {
 const packagedSources: PackagedKnowledgeSource[] = [
   {
     filename:
-      "EchoMap_Clinical_Knowledge_Base__A_Comprehensive_GLP_Reference_1787509206363.pdf",
+      "ChildLed_Clinical_Knowledge_Base__A_Comprehensive_GLP_Reference_1787509206363.pdf",
     title:
-      "EchoMap Clinical Knowledge Base: A Comprehensive GLP Reference Guide",
+      "ChildLed Clinical Knowledge Base: A Comprehensive GLP Reference Guide",
     citation:
-      "EchoMap Clinical Knowledge Base: A Comprehensive GLP Reference Guide",
+      "ChildLed Clinical Knowledge Base: A Comprehensive GLP Reference Guide",
     tags: [
       "GLP",
       "NLA",
@@ -43,11 +43,11 @@ const packagedSources: PackagedKnowledgeSource[] = [
   },
   {
     filename:
-      "EchoMap_AI__Clinical_Assessment_Protocol_&_Goal_Template_Manua_1787509198760.pdf",
+      "ChildLed_AI__Clinical_Assessment_Protocol_&_Goal_Template_Manua_1787509198760.pdf",
     title:
-      "EchoMap AI: Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors",
+      "ChildLed AI: Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors",
     citation:
-      "EchoMap AI: Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors",
+      "ChildLed AI: Clinical Assessment Protocol & Goal Template Manual for Gestalt Language Processors",
     tags: ["GLP", "assessment", "SOAP", "goals", "mitigation"],
   },
 ];
@@ -168,7 +168,7 @@ export const ensurePackagedClinicalKnowledge = async (
             organizationId,
             title: packaged.title,
             sourceType: "Uploaded clinical PDF",
-            authorship: "EchoMap clinical reference",
+            authorship: "ChildLed clinical reference",
             citation: packaged.citation,
             tags: packaged.tags,
             status: "processing",

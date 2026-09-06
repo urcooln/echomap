@@ -156,7 +156,7 @@ test("audit history visibility follows the same request authorization boundary",
 
 test("processed observation deletion removes typed phrase-observation evidence", () => {
   const routeSource = readFileSync(
-    join(process.cwd(), "src/routes/echomap.ts"),
+    join(process.cwd(), "src/routes/childled.ts"),
     "utf8",
   );
 

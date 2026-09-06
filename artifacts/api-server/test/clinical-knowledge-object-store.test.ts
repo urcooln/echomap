@@ -54,13 +54,13 @@ async function assertPrivateObjectStore(config: RuntimeConfig) {
 
   assert.equal(
     stored.key,
-    "/objects/echomap/clinical-knowledge/organization-7/source.pdf",
+    "/objects/childled/clinical-knowledge/organization-7/source.pdf",
   );
   assert.equal(stored.contentType, "application/pdf");
   assert.equal(stored.sizeBytes, source.length);
   assert.deepEqual(writes, [
     {
-      key: "/objects/echomap/clinical-knowledge/organization-7/source.pdf",
+      key: "/objects/childled/clinical-knowledge/organization-7/source.pdf",
       contentType: "application/pdf",
     },
   ]);

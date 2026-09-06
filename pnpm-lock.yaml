@@ -232,7 +232,7 @@ importers:
         specifier: 3.1.0
         version: 3.1.0
 
-  artifacts/echomap:
+  artifacts/childled:
     devDependencies:
       '@clerk/react':
         specifier: ^6.14.4
@@ -424,7 +424,7 @@ importers:
         specifier: 'catalog:'
         version: 3.25.76
 
-  artifacts/echomap-command-center:
+  artifacts/childled-command-center:
     dependencies:
       '@clerk/react':
         specifier: ^6.14.4

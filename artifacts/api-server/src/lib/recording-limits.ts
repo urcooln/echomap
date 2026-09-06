@@ -17,7 +17,7 @@ const readBytes = (
   if (!value) return fallback;
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1) {
-    throw new Error(`EchoMap runtime configuration error: ${key} must be a positive byte count.`);
+    throw new Error(`ChildLed runtime configuration error: ${key} must be a positive byte count.`);
   }
   return parsed;
 };
@@ -25,9 +25,9 @@ const readBytes = (
 export const loadRecordingLimits = (
   env: Record<string, string | undefined> = process.env,
 ): RecordingLimits => ({
-  maxAudioUploadBytes: readBytes(env, "ECHOMAP_MAX_AUDIO_UPLOAD_BYTES", DEFAULT_AUDIO_UPLOAD_BYTES),
-  maxVideoUploadBytes: readBytes(env, "ECHOMAP_MAX_VIDEO_UPLOAD_BYTES", DEFAULT_VIDEO_UPLOAD_BYTES),
-  maxProviderBytes: readBytes(env, "ECHOMAP_TRANSCRIPTION_PROVIDER_MAX_BYTES", DEFAULT_PROVIDER_BYTES),
+  maxAudioUploadBytes: readBytes(env, "CHILDLED_MAX_AUDIO_UPLOAD_BYTES", DEFAULT_AUDIO_UPLOAD_BYTES),
+  maxVideoUploadBytes: readBytes(env, "CHILDLED_MAX_VIDEO_UPLOAD_BYTES", DEFAULT_VIDEO_UPLOAD_BYTES),
+  maxProviderBytes: readBytes(env, "CHILDLED_TRANSCRIPTION_PROVIDER_MAX_BYTES", DEFAULT_PROVIDER_BYTES),
 });
 
 export const formatBytes = (bytes: number) => {

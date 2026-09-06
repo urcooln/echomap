@@ -34,7 +34,7 @@ export const createAudioObjectStore = (): AudioObjectStore => {
   return isManagedObjectStorageDriver(runtimeConfig.audioStorage.driver)
     ? new ManagedObjectAudioObjectStore()
     : new EncryptedLocalAudioObjectStore(
-        path.resolve(process.cwd(), ".data", "echomap-sessions", "audio"),
+        path.resolve(process.cwd(), ".data", "childled-sessions", "audio"),
       );
 };
 
@@ -44,23 +44,23 @@ export const createAudioObjectStore = (): AudioObjectStore => {
  * implementation.
  */
 export const createLegacyS3AudioObjectStore = (): AudioObjectStore => {
-  const bucket = process.env.ECHOMAP_S3_BUCKET;
-  const region = process.env.ECHOMAP_S3_REGION;
-  const accessKeyId = process.env.ECHOMAP_S3_ACCESS_KEY_ID;
-  const secretAccessKey = process.env.ECHOMAP_S3_SECRET_ACCESS_KEY;
+  const bucket = process.env.CHILDLED_S3_BUCKET;
+  const region = process.env.CHILDLED_S3_REGION;
+  const accessKeyId = process.env.CHILDLED_S3_ACCESS_KEY_ID;
+  const secretAccessKey = process.env.CHILDLED_S3_SECRET_ACCESS_KEY;
   if (!bucket || !region || !accessKeyId || !secretAccessKey) {
     throw new Error(
-      "Legacy S3 recordings require ECHOMAP_S3_BUCKET, ECHOMAP_S3_REGION, ECHOMAP_S3_ACCESS_KEY_ID, and ECHOMAP_S3_SECRET_ACCESS_KEY.",
+      "Legacy S3 recordings require CHILDLED_S3_BUCKET, CHILDLED_S3_REGION, CHILDLED_S3_ACCESS_KEY_ID, and CHILDLED_S3_SECRET_ACCESS_KEY.",
     );
   }
   return new S3CompatibleAudioObjectStore(
     new S3HttpClient({
-      endpoint: process.env.ECHOMAP_S3_ENDPOINT,
+      endpoint: process.env.CHILDLED_S3_ENDPOINT,
       region,
       accessKeyId,
       secretAccessKey,
-      sessionToken: process.env.ECHOMAP_S3_SESSION_TOKEN,
-      forcePathStyle: process.env.ECHOMAP_S3_FORCE_PATH_STYLE === "true",
+      sessionToken: process.env.CHILDLED_S3_SESSION_TOKEN,
+      forcePathStyle: process.env.CHILDLED_S3_FORCE_PATH_STYLE === "true",
     }),
     bucket,
   );

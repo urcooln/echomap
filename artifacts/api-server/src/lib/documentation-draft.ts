@@ -77,7 +77,7 @@ export const buildDocumentationDraftContent = ({
       evidence?.nlaObservations ?? "No NLA-related observation is generated from clinician input alone.",
       "",
       DOCUMENTATION_REVIEW_REQUIRED_LABEL,
-      "EchoMap does not assign an NLA stage. Review language in context and edit this section using the clinician’s own judgment.",
+      "ChildLed does not assign an NLA stage. Review language in context and edit this section using the clinician’s own judgment.",
     ].join("\n"),
     potentialGestalts: [
       DOCUMENTATION_SUGGESTED_INSIGHT_LABEL,

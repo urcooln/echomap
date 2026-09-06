@@ -12,7 +12,7 @@ import {
 /**
  * Provider boundary for voice diarization.
  *
- * The active provider returns temporary labels only. EchoMap never treats
+ * The active provider returns temporary labels only. ChildLed never treats
  * those labels as a person's identity or as a clinical role.
  */
 export type SpeakerDiarizationProvider = {

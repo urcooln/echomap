@@ -6,7 +6,7 @@ import {
   type PreviewableRole,
 } from "./auth-authorization";
 
-export const ROLE_PREVIEW_COOKIE = "echomap_role_preview";
+export const ROLE_PREVIEW_COOKIE = "childled_role_preview";
 
 const previewRoleFromRequest = (request: Request): PreviewableRole | undefined => {
   const value = request.signedCookies?.[ROLE_PREVIEW_COOKIE];
@@ -14,7 +14,7 @@ const previewRoleFromRequest = (request: Request): PreviewableRole | undefined =
 };
 
 export const realViewerFromRequest = (request: Request): ResolvedCareTeamActor | null => {
-  const actor = request.echomapActor;
+  const actor = request.childledActor;
   return hasVerifiedCareTeamSession(actor) && actor?.organizationId ? actor : null;
 };
 

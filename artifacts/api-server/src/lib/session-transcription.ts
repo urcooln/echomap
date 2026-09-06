@@ -242,7 +242,7 @@ const createWav = (
 };
 
 const detectPauseMidpoints = async (wav: Buffer) => {
-  const inputPath = join(tmpdir(), `echomap-pause-${randomUUID()}.wav`);
+  const inputPath = join(tmpdir(), `childled-pause-${randomUUID()}.wav`);
   await writeFile(inputPath, wav);
   try {
     const stderr = await new Promise<string>((resolve, reject) => {

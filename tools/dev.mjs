@@ -19,7 +19,7 @@ const apiEnv = {
 };
 
 const webEnv = {
-  ...readEnvFile("artifacts/echomap/.env", root),
+  ...readEnvFile("artifacts/childled/.env", root),
   ...process.env,
   NODE_ENV: "development",
   PORT: webPort,
@@ -85,11 +85,11 @@ const start = (name, args, env) => {
   });
 };
 
-console.log(`Starting EchoMap API on http://localhost:${apiPort}`);
-console.log(`Starting EchoMap web app on http://localhost:${webPort}`);
+console.log(`Starting ChildLed API on http://localhost:${apiPort}`);
+console.log(`Starting ChildLed web app on http://localhost:${webPort}`);
 
 start("api", ["--filter", "@workspace/api-server", "dev"], apiEnv);
-start("web", ["--filter", "@workspace/echomap", "dev"], webEnv);
+start("web", ["--filter", "@workspace/childled", "dev"], webEnv);
 
 for (const signal of ["SIGINT", "SIGTERM"]) {
   process.on(signal, () => stopAll(0));

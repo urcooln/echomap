@@ -24,18 +24,18 @@ import { logger } from "./logger";
 import { runtimeConfig } from "./runtime-config";
 import { ensurePackagedClinicalKnowledge } from "./clinical-knowledge-bootstrap";
 
-export const DEVELOPMENT_DEMO_COOKIE = "echomap_development_demo";
-export const DEVELOPMENT_DEMO_EMAIL = "demo.admin@echomap.local";
-export const DEVELOPMENT_CLINICIAN_EMAIL = "demo.clinician@echomap.local";
+export const DEVELOPMENT_DEMO_COOKIE = "childled_development_demo";
+export const DEVELOPMENT_DEMO_EMAIL = "demo.admin@childled.local";
+export const DEVELOPMENT_CLINICIAN_EMAIL = "demo.clinician@childled.local";
 
-const demoOrganization = { slug: "echomap-demo", name: "EchoMap Demo" };
+const demoOrganization = { slug: "childled-demo", name: "ChildLed Demo" };
 const demoAdmin = {
-  id: "echomap-development-demo-admin",
-  displayName: "EchoMap Demo Administrator",
+  id: "childled-development-demo-admin",
+  displayName: "ChildLed Demo Administrator",
   email: DEVELOPMENT_DEMO_EMAIL,
 };
 const demoClinician = {
-  id: "echomap-development-demo-clinician",
+  id: "childled-development-demo-clinician",
   displayName: "Dr. Lena Ortiz",
   email: DEVELOPMENT_CLINICIAN_EMAIL,
 };
@@ -471,7 +471,7 @@ const developmentSpeakerFixtureCharacteristic = (
   speaker: "child" | "clinician",
 ) =>
   createHash("sha256")
-    .update(`echomap-development-speaker-fixture:${speaker}`, "utf8")
+    .update(`childled-development-speaker-fixture:${speaker}`, "utf8")
     .digest("hex");
 
 /**
@@ -615,7 +615,7 @@ export const attachDevelopmentDemoActor = async (
 ) => {
   if (
     !runtimeConfig.demoLogin.enabled ||
-    request.echomapActor ||
+    request.childledActor ||
     request.cookies?.[DEVELOPMENT_DEMO_COOKIE] !== "active"
   ) {
     return next();
@@ -632,7 +632,7 @@ export const attachDevelopmentDemoActor = async (
           eq(childCareTeamMembershipsTable.active, true),
         ),
       );
-    request.echomapActor = {
+    request.childledActor = {
       userId: demoAdmin.id,
       author: demoAdmin.displayName,
       role: "Administrator",
@@ -643,9 +643,9 @@ export const attachDevelopmentDemoActor = async (
       organizationId: demo.organizationId,
       expiresAt: Date.now() + 12 * 60 * 60 * 1000,
     };
-    request.echomapAuthFailure = undefined;
+    request.childledAuthFailure = undefined;
   } catch (error) {
-    request.echomapAuthFailure = "session_invalid";
+    request.childledAuthFailure = "session_invalid";
     logger.error({ err: error }, "Could not prepare the development demo");
   }
   return next();

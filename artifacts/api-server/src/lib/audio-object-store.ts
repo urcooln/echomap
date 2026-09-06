@@ -70,7 +70,7 @@ export class S3CompatibleAudioObjectStore implements AudioObjectStore {
   constructor(
     private readonly client: S3CompatibleClient,
     private readonly bucket: string,
-    private readonly keyPrefix = "echomap/audio",
+    private readonly keyPrefix = "childled/audio",
   ) {}
 
   async put(input: { key?: string; contentType: string; data: Buffer }): Promise<StoredAudioObject> {

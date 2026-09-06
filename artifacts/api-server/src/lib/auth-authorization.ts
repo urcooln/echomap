@@ -22,7 +22,7 @@ export const isSuperAdminIdentity = ({
   userId,
   isAdmin,
   isDevelopmentDemo = false,
-  configuredUserIds = process.env.ECHOMAP_SUPER_ADMIN_USER_IDS,
+  configuredUserIds = process.env.CHILDLED_SUPER_ADMIN_USER_IDS,
 }: {
   userId: string;
   isAdmin: boolean;

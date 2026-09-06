@@ -42,7 +42,7 @@ export function ChildCentered() {
       <div className="mx-auto max-w-[1380px] space-y-5 overflow-x-clip animate-rise">
         <header className="flex items-center justify-between px-1">
           <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.22em] text-primary">EchoMap · Clinician workspace</p>
+            <p className="mono text-[10px] font-bold uppercase tracking-[.22em] text-primary">ChildLed · Clinician workspace</p>
             <p className="mt-1 text-xs text-muted-foreground">Prepare a thoughtful session with one child.</p>
           </div>
           <button type="button" onClick={noop} aria-label="Open workspace help" className="focus-ring rounded-full p-2 text-muted-foreground hover:bg-secondary hover:text-primary"><Lightbulb size={17} /></button>
