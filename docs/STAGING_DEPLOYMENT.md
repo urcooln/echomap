@@ -28,18 +28,18 @@ creating cloud resources, and triggering deployment require either:
 Create a GitHub environment named `staging`, then add these repository or
 environment variables:
 
-| Variable                            | Example                                                                              |
+| Variable                            | Staging value                                                                        |
 | ----------------------------------- | ------------------------------------------------------------------------------------ |
-| `GCP_PROJECT_ID`                    | `echomap-staging`                                                                    |
+| `GCP_PROJECT_ID`                    | `crested-timer-507620-r1`                                                            |
 | `GCP_REGION`                        | `us-central1`                                                                        |
-| `GCP_WORKLOAD_IDENTITY_PROVIDER`    | `projects/123456789/locations/global/workloadIdentityPools/github/providers/echomap` |
-| `GCP_DEPLOY_SERVICE_ACCOUNT`        | `github-deploy@echomap-staging.iam.gserviceaccount.com`                              |
-| `CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT` | `echomap-runtime@echomap-staging.iam.gserviceaccount.com`                            |
+| `GCP_WORKLOAD_IDENTITY_PROVIDER`    | `projects/118320805216/locations/global/workloadIdentityPools/github/providers/echomap` |
+| `GCP_DEPLOY_SERVICE_ACCOUNT`        | `github-deploy@crested-timer-507620-r1.iam.gserviceaccount.com`                      |
+| `CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT` | `echomap-runtime@crested-timer-507620-r1.iam.gserviceaccount.com`                    |
 | `CLOUD_RUN_SERVICE`                 | `echomap-staging`                                                                    |
 | `ARTIFACT_REGISTRY_REPOSITORY`      | `echomap`                                                                            |
-| `PUBLIC_APP_ORIGIN`                 | `https://staging.echomap.example`                                                    |
-| `ALLOWED_APP_ORIGINS`               | `https://staging.echomap.example`                                                    |
-| `GCS_PRIVATE_BUCKET`                | `echomap-staging-private`                                                            |
+| `PUBLIC_APP_ORIGIN`                 | `https://staging.childledapp.com`                                                    |
+| `ALLOWED_APP_ORIGINS`               | `https://staging.childledapp.com`                                                    |
+| `GCS_PRIVATE_BUCKET`                | `echomap-staging-private-crested-timer-507620-r1`                                    |
 | `GCS_PRIVATE_OBJECT_PREFIX`         | `staging`                                                                            |
 | `VITE_CLERK_PUBLISHABLE_KEY`        | `pk_test_...`                                                                        |
 | `SECRET_DATABASE_URL`               | `echomap-staging-database-url`                                                       |
@@ -104,7 +104,7 @@ for the staging origin:
 ```json
 [
   {
-    "origin": ["https://staging.echomap.example"],
+    "origin": ["https://staging.childledapp.com"],
     "method": ["PUT"],
     "responseHeader": ["Content-Type"],
     "maxAgeSeconds": 3600
@@ -115,7 +115,9 @@ for the staging origin:
 Apply it with:
 
 ```bash
-gcloud storage buckets update gs://echomap-staging-private --cors-file=cors.json
+gcloud storage buckets update \
+  gs://echomap-staging-private-crested-timer-507620-r1 \
+  --cors-file=cors.json
 ```
 
 ## First Deploy
