@@ -48,7 +48,8 @@ ENV CHILDLED_STATIC_DIR=/app/artifacts/api-server/dist/public
 WORKDIR /app
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates poppler-utils \
+  && apt-get install -y --no-install-recommends ca-certificates ffmpeg poppler-utils \
+  && ffmpeg -version >/dev/null \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=deps /app/node_modules ./node_modules

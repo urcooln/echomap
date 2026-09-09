@@ -74,6 +74,13 @@ test("returns safe diagnostic guidance for a conversion failure", () => {
   assert.match(failure.message, /could not be prepared/i);
 });
 
+test("reports a missing audio converter as a service failure", () => {
+  const failure = safeTranscriptionFailure(new Error("spawn ffmpeg ENOENT"));
+
+  assert.equal(failure.code, "AUDIO_PREPARATION_FAILED");
+  assert.match(failure.message, /temporarily unavailable/i);
+});
+
 test("only treats a completed empty provider response as no detected speech", () => {
   assert.equal(successfulEmptyTranscript("complete", " \n "), true);
   assert.equal(successfulEmptyTranscript("failed", ""), false);

@@ -111,6 +111,13 @@ export const safeTranscriptionFailure = (error: unknown) => {
         "The transcription service is not configured. Ask an administrator to configure the OpenAI integration before trying again.",
     };
   }
+  if (/spawn\s+ffmpeg\s+ENOENT|ffmpeg.*not found/i.test(message)) {
+    return {
+      code: "AUDIO_PREPARATION_FAILED" as const,
+      message:
+        "Recording processing is temporarily unavailable. Your recording is still available—please retry shortly or ask an administrator to check the audio service.",
+    };
+  }
   if (
     /ffmpeg|format|wav|audio samples|converted recording/i.test(message)
   ) {
