@@ -4160,6 +4160,18 @@ export const GetSessionTranscriptionDraftResponse = zod.object({
 
 
 /**
+ * @summary Permanently delete one unfinished recording and transcript draft
+ */
+export const DeleteSessionTranscriptionDraftQueryParams = zod.object({
+  "childId": zod.coerce.number(),
+  "transcriptId": zod.coerce.number().optional(),
+  "audioId": zod.coerce.string().optional()
+})
+
+export const DeleteSessionTranscriptionDraftResponse = zod.void()
+
+
+/**
  * @summary Stream the private recording for an unsaved transcript review
  */
 export const GetSessionTranscriptionAudioParams = zod.object({

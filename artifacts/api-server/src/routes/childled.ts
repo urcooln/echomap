@@ -1,4 +1,4 @@
-import { Router, type IRouter, type Request } from "express";
+import { Router, raw, type IRouter, type Request } from "express";
 import { clerkClient, getAuth } from "@clerk/express";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
@@ -379,6 +379,7 @@ import {
   RequestSessionAudioUploadBody,
   GetSessionAudioParams,
   GetSessionTranscriptionDraftQueryParams,
+  DeleteSessionTranscriptionDraftQueryParams,
   GetSessionTranscriptionAudioParams,
   TranscribeSessionAudioBody,
   TranscribeSessionAudioQueryParams,
@@ -16199,10 +16200,29 @@ router.post("/sessions/audio/upload-url", async (req, res) => {
   }
   try {
     const storageDriver = runtimeConfig.audioStorage.driver;
-    const reservation = await recordingObjectStorage.reserveUpload(
-      actor.organizationId,
-      contentType,
-    );
+    const reservation = isManagedObjectStorageDriver(storageDriver)
+      ? await recordingObjectStorage.reserveUpload(
+          actor.organizationId,
+          contentType,
+        )
+      : (() => {
+          const audioId = randomUUID();
+          const extension =
+            contentType.includes("mp4") || contentType.includes("m4a")
+              ? "m4a"
+              : contentType.includes("ogg")
+                ? "ogg"
+                : contentType.includes("mpeg")
+                  ? "mp3"
+                  : contentType.includes("wav")
+                    ? "wav"
+                    : "webm";
+          return {
+            audioId,
+            objectPath: `${actor.organizationId}/audio/${audioId}.${extension}`,
+            uploadUrl: `/api/sessions/audio/upload/${audioId}`,
+          };
+        })();
     await db.insert(sessionAudioObjectsTable).values({
       id: reservation.audioId,
       organizationId: actor.organizationId,
@@ -16236,7 +16256,11 @@ router.post("/sessions/audio/upload-url", async (req, res) => {
     return res
       .status(201)
       .json({ ...reservation, contentType, sizeBytes: parsed.data.sizeBytes });
-  } catch {
+  } catch (error) {
+    req.log.error(
+      { err: error, storageDriver: runtimeConfig.audioStorage.driver },
+      "Could not reserve private recording upload",
+    );
     return res.status(503).json({
       error:
         "We could not securely prepare the recording upload. Please try again.",
@@ -16244,6 +16268,84 @@ router.post("/sessions/audio/upload-url", async (req, res) => {
     });
   }
 });
+
+router.put(
+  "/sessions/audio/upload/:audioId",
+  raw({ type: () => true, limit: runtimeConfig.recording.maxVideoUploadBytes }),
+  async (req, res) => {
+    if (runtimeConfig.audioStorage.driver !== "local-encrypted") {
+      return res.status(404).json({ error: "Recording upload not found." });
+    }
+    const actor = viewerFrom(req);
+    if (!actor?.organizationId || !canUseClinicalTools(actor)) {
+      return res
+        .status(403)
+        .json({ error: "Only an SLP can upload a therapy recording." });
+    }
+    const audioId = req.params.audioId;
+    if (!audioId) {
+      return res.status(404).json({ error: "Recording upload not found." });
+    }
+    const [audio] = await db
+      .select()
+      .from(sessionAudioObjectsTable)
+      .where(
+        and(
+          eq(sessionAudioObjectsTable.id, audioId),
+          eq(sessionAudioObjectsTable.organizationId, actor.organizationId),
+          eq(sessionAudioObjectsTable.uploadedByUserId, actor.userId),
+          eq(sessionAudioObjectsTable.storageDriver, "local-encrypted"),
+          eq(sessionAudioObjectsTable.status, "staged"),
+          isNull(sessionAudioObjectsTable.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!audio) {
+      return res.status(404).json({ error: "Recording upload not found." });
+    }
+    if (!requireChildAccess(req, res, audio.childId)) return;
+    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    const requestContentType = normalizeRecordingUploadContentType(
+      req.get("content-type") ?? "",
+    );
+    if (
+      !bytes.length ||
+      bytes.length !== audio.sizeBytes ||
+      requestContentType !== audio.contentType
+    ) {
+      return res.status(400).json({
+        error: "The recording upload did not match its reservation.",
+        code: "RECORDING_UPLOAD_INCOMPLETE",
+      });
+    }
+    try {
+      await persistedAudioObjectStore(audio).put({
+        key: audio.objectKey,
+        contentType: audio.contentType,
+        data: bytes,
+      });
+      req.log.info(
+        {
+          audioId: audio.id,
+          childId: audio.childId,
+          contentType: audio.contentType,
+          sizeBytes: bytes.length,
+        },
+        "Encrypted local recording stored",
+      );
+      return res.status(204).end();
+    } catch (error) {
+      req.log.error(
+        { err: error, audioId: audio.id },
+        "Could not store encrypted local recording",
+      );
+      return res.status(503).json({
+        error: "The recording could not be stored securely. Please try again.",
+        code: "RECORDING_UPLOAD_INCOMPLETE",
+      });
+    }
+  },
+);
 
 router.post("/sessions/calibration/complete", async (req, res) => {
   const parsed = CompleteSessionCalibrationBody.safeParse(req.body);
@@ -16360,13 +16462,15 @@ router.post("/sessions/calibration/complete", async (req, res) => {
       .json({ error: failure.message, code: failure.code, diagnostics });
   }
   try {
-    const finalObjectPath = await recordingObjectStorage.finalizeExpectedObject(
-      audio.objectKey,
-      audio.contentType,
-      audio.sizeBytes,
-      "childled/session-calibrations",
-      `/objects/childled/session-calibrations/final/${audio.id}`,
-    );
+    const finalObjectPath = isManagedObjectStorageDriver(audio.storageDriver)
+      ? await recordingObjectStorage.finalizeExpectedObject(
+          audio.objectKey,
+          audio.contentType,
+          audio.sizeBytes,
+          "childled/session-calibrations",
+          `/objects/childled/session-calibrations/final/${audio.id}`,
+        )
+      : audio.objectKey;
     if (!finalObjectPath) {
       const failure = calibrationFinalizationFailure(
         new Error(
@@ -16730,6 +16834,123 @@ router.get("/sessions/transcription/draft", async (req, res) => {
       .status(404)
       .json({ error: "No unsaved transcript review was found." });
   return res.json(await transcriptResponse(transcript, actor.organizationId));
+});
+
+router.delete("/sessions/transcription/draft", async (req, res) => {
+  const query = DeleteSessionTranscriptionDraftQueryParams.safeParse(req.query);
+  if (!query.success || (!query.data.transcriptId && !query.data.audioId)) {
+    return fail(
+      res,
+      "Select an unfinished recording or transcript draft to delete.",
+    );
+  }
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId || !canUseClinicalTools(actor)) {
+    return res.status(403).json({
+      error: "Only an SLP can permanently delete an unfinished recording.",
+    });
+  }
+
+  const transcript = (
+    await db
+      .select()
+      .from(sessionTranscriptsTable)
+      .where(
+        and(
+          query.data.transcriptId
+            ? eq(sessionTranscriptsTable.id, query.data.transcriptId)
+            : eq(sessionTranscriptsTable.audioId, query.data.audioId!),
+          eq(sessionTranscriptsTable.childId, query.data.childId),
+          eq(sessionTranscriptsTable.createdByUserId, actor.userId),
+          isNull(sessionTranscriptsTable.sessionId),
+        ),
+      )
+      .limit(1)
+  )[0];
+  if (
+    transcript &&
+    query.data.audioId &&
+    transcript.audioId !== query.data.audioId
+  ) {
+    return res.status(404).json({ error: "Unfinished recording not found." });
+  }
+
+  const audioId = transcript?.audioId ?? query.data.audioId;
+  const audio = audioId
+    ? (
+        await db
+          .select()
+          .from(sessionAudioObjectsTable)
+          .where(
+            and(
+              eq(sessionAudioObjectsTable.id, audioId),
+              eq(
+                sessionAudioObjectsTable.organizationId,
+                actor.organizationId,
+              ),
+              eq(sessionAudioObjectsTable.childId, query.data.childId),
+              eq(sessionAudioObjectsTable.uploadedByUserId, actor.userId),
+              eq(sessionAudioObjectsTable.purpose, "session_recording"),
+              isNull(sessionAudioObjectsTable.sessionId),
+            ),
+          )
+          .limit(1)
+      )[0]
+    : undefined;
+  if (!transcript && !audio) {
+    return res.status(404).json({ error: "Unfinished recording not found." });
+  }
+
+  if (audio && !audio.deletedAt) {
+    try {
+      await persistedAudioObjectStore(audio).delete(audio.objectKey);
+    } catch (error) {
+      req.log.error(
+        { err: error, audioId: audio.id, transcriptId: transcript?.id },
+        "Could not permanently delete unfinished recording object",
+      );
+      return res.status(503).json({
+        error:
+          "The private recording could not be deleted from storage. The draft was preserved so you can try again.",
+      });
+    }
+  }
+
+  await db.transaction(async (transaction) => {
+    if (transcript) {
+      await transaction
+        .delete(sessionTranscriptsTable)
+        .where(
+          and(
+            eq(sessionTranscriptsTable.id, transcript.id),
+            eq(sessionTranscriptsTable.createdByUserId, actor.userId),
+            isNull(sessionTranscriptsTable.sessionId),
+          ),
+        );
+    }
+    if (audio) {
+      await transaction
+        .update(sessionAudioObjectsTable)
+        .set({ status: "deleted", deletedAt: new Date() })
+        .where(
+          and(
+            eq(sessionAudioObjectsTable.id, audio.id),
+            eq(sessionAudioObjectsTable.uploadedByUserId, actor.userId),
+            isNull(sessionAudioObjectsTable.sessionId),
+          ),
+        );
+    }
+  });
+  await writeSecurityAudit({
+    actor,
+    action: "UNFINISHED_RECORDING_DELETED",
+    targetType: "recording",
+    targetId: audio?.id ?? `transcript:${transcript!.id}`,
+    childId: query.data.childId,
+    metadata: { transcriptId: transcript?.id ?? null },
+  });
+  return res.status(204).end();
 });
 
 router.get("/sessions/transcription/:transcriptId/audio", async (req, res) => {

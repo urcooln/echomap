@@ -83,6 +83,7 @@ import type {
   Dashboard,
   DecideDictionaryDuplicateSuggestionParams,
   DeleteSessionCalibrationParams,
+  DeleteSessionTranscriptionDraftParams,
   DeletionRequest,
   DeletionRequestDetail,
   DeletionRequestInput,
@@ -7776,6 +7777,84 @@ export function useGetSessionTranscriptionDraft<TData = Awaited<ReturnType<typeo
 
 
 
+
+export const getDeleteSessionTranscriptionDraftUrl = (params: DeleteSessionTranscriptionDraftParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sessions/transcription/draft?${stringifiedParams}` : `/api/sessions/transcription/draft`
+}
+
+/**
+ * @summary Permanently delete one unfinished recording and transcript draft
+ */
+export const deleteSessionTranscriptionDraft = async (params: DeleteSessionTranscriptionDraftParams, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteSessionTranscriptionDraftUrl(params),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSessionTranscriptionDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSessionTranscriptionDraft>>, TError,{params: DeleteSessionTranscriptionDraftParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSessionTranscriptionDraft>>, TError,{params: DeleteSessionTranscriptionDraftParams}, TContext> => {
+
+const mutationKey = ['deleteSessionTranscriptionDraft'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSessionTranscriptionDraft>>, {params: DeleteSessionTranscriptionDraftParams}> = (props) => {
+          const {params} = props ?? {};
+
+          return  deleteSessionTranscriptionDraft(params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSessionTranscriptionDraftMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSessionTranscriptionDraft>>>
+
+    export type DeleteSessionTranscriptionDraftMutationError = ErrorType<void>
+
+    /**
+ * @summary Permanently delete one unfinished recording and transcript draft
+ */
+export const useDeleteSessionTranscriptionDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSessionTranscriptionDraft>>, TError,{params: DeleteSessionTranscriptionDraftParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSessionTranscriptionDraft>>,
+        TError,
+        {params: DeleteSessionTranscriptionDraftParams},
+        TContext
+      > => {
+      return useMutation(getDeleteSessionTranscriptionDraftMutationOptions(options));
+    }
 
 export const getGetSessionTranscriptionAudioUrl = (transcriptId: number,) => {
 

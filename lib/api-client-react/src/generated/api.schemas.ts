@@ -4095,6 +4095,12 @@ childId: number;
 transcriptId: number;
 };
 
+export type DeleteSessionTranscriptionDraftParams = {
+childId: number;
+transcriptId?: number;
+audioId?: string;
+};
+
 export type UpdateTranscriptSpeakersParams = {
 childId: number;
 };

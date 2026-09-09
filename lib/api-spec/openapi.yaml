@@ -1937,6 +1937,30 @@ paths:
                 $ref: "#/components/schemas/SessionTranscript"
         "403": { description: Clinician access and child access required }
         "404": { description: No unsaved transcript review }
+    delete:
+      operationId: deleteSessionTranscriptionDraft
+      tags: [sessions]
+      summary: Permanently delete one unfinished recording and transcript draft
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+        - in: query
+          name: transcriptId
+          required: false
+          schema: { type: number }
+        - in: query
+          name: audioId
+          required: false
+          schema: { type: string }
+      responses:
+        "204": { description: Unfinished recording draft permanently deleted }
+        "400": { description: A transcript or audio identifier is required }
+        "401": { description: Authentication required }
+        "403": { description: "Clinician access, ownership, and child access required" }
+        "404": { description: Unfinished recording draft not found }
+        "503": { description: Private recording storage could not be deleted }
   /sessions/transcription/{transcriptId}/audio:
     get:
       operationId: getSessionTranscriptionAudio

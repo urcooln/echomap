@@ -216,29 +216,46 @@ export const ensureParentLearningCenter = async (organizationId: number) => {
     }
 
     let currentResource = resource;
+
     if (!currentResource.pdfObjectPath) {
-      const data = await readFile(resourceSourcePath());
-      const stored = await storeClinicalKnowledgeObject({
-        organizationId,
-        key: `parent-resources/${PARENT_LEARNING_PDF_FILENAME}`,
-        contentType: "application/pdf",
-        data,
-      });
-      const [updated] = await db.update(parentLearningResourcesTable).set({
-        pdfObjectPath: stored.key,
-        pdfContentType: stored.contentType,
-        pdfSizeBytes: stored.sizeBytes,
-        updatedAt: new Date(),
-      }).where(and(
-        eq(parentLearningResourcesTable.id, resource.id),
-        eq(parentLearningResourcesTable.organizationId, organizationId),
-      )).returning();
-      if (updated) currentResource = updated;
+      let data: Buffer | undefined;
+      try {
+        data = await readFile(resourceSourcePath());
+      } catch (err: any) {
+        if (err?.code === 'ENOENT') {
+          const { logger } = await import('./logger');
+          logger.warn({ err, path: resourceSourcePath() }, 'Packaged parent learning PDF missing; skipping provisioning in dev.');
+        } else {
+          throw err;
+        }
+      }
+
+      if (data) {
+        const stored = await storeClinicalKnowledgeObject({
+          organizationId,
+          key: `parent-resources/${PARENT_LEARNING_PDF_FILENAME}`,
+          contentType: "application/pdf",
+          data,
+        });
+
+        const [updated] = await db.update(parentLearningResourcesTable).set({
+          pdfObjectPath: stored.key,
+          pdfContentType: stored.contentType,
+          pdfSizeBytes: stored.sizeBytes,
+          updatedAt: new Date(),
+        }).where(and(
+          eq(parentLearningResourcesTable.id, resource.id),
+          eq(parentLearningResourcesTable.organizationId, organizationId),
+        )).returning();
+
+        if (updated) currentResource = updated;
+      }
     }
 
     const modules = await db.select().from(parentLearningModulesTable).where(
       eq(parentLearningModulesTable.resourceId, currentResource.id),
     ).orderBy(asc(parentLearningModulesTable.position));
+
     return { resource: currentResource, modules };
   })();
 

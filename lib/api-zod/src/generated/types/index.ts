@@ -132,6 +132,7 @@ export * from './createSessionParams';
 export * from './dashboard';
 export * from './decideDictionaryDuplicateSuggestionParams';
 export * from './deleteSessionCalibrationParams';
+export * from './deleteSessionTranscriptionDraftParams';
 export * from './deletionCategory';
 export * from './deletionCategoryProgress';
 export * from './deletionCategoryProgressStatus';

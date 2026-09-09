@@ -36,10 +36,22 @@ export const ensureTeacherResourceCenter = async (organizationId: number): Promi
     for (const item of teacherResourceDefinitions) await db.insert(teacherResourceItemsTable).values({ resourceId: resource.id, ...item }).onConflictDoNothing({ target: [teacherResourceItemsTable.resourceId, teacherResourceItemsTable.resourceKey] });
     let current = resource;
     if (!current.pdfObjectPath) {
-      const data = await readFile(path.resolve(process.cwd(), "dist", "parent-resources", TEACHER_RESOURCE_PDF));
-      const stored = await storeClinicalKnowledgeObject({ organizationId, key: `teacher-resources/${TEACHER_RESOURCE_PDF}`, contentType: "application/pdf", data });
-      const [updated] = await db.update(teacherResourcesTable).set({ pdfObjectPath: stored.key, pdfContentType: stored.contentType, pdfSizeBytes: stored.sizeBytes, updatedAt: new Date() }).where(eq(teacherResourcesTable.id, current.id)).returning();
-      if (updated) current = updated;
+      let data: Buffer | undefined;
+      try {
+        data = await readFile(path.resolve(process.cwd(), "dist", "parent-resources", TEACHER_RESOURCE_PDF));
+      } catch (err: any) {
+        if (err?.code === 'ENOENT') {
+          const { logger } = await import('./logger');
+          logger.warn({ err, path: path.resolve(process.cwd(), "dist", "parent-resources", TEACHER_RESOURCE_PDF) }, 'Packaged teacher resource PDF missing; skipping provisioning in dev.');
+        } else {
+          throw err;
+        }
+      }
+      if (data) {
+        const stored = await storeClinicalKnowledgeObject({ organizationId, key: `teacher-resources/${TEACHER_RESOURCE_PDF}`, contentType: "application/pdf", data });
+        const [updated] = await db.update(teacherResourcesTable).set({ pdfObjectPath: stored.key, pdfContentType: stored.contentType, pdfSizeBytes: stored.sizeBytes, updatedAt: new Date() }).where(eq(teacherResourcesTable.id, current.id)).returning();
+        if (updated) current = updated;
+      }
     }
     const items = await db.select().from(teacherResourceItemsTable).where(eq(teacherResourceItemsTable.resourceId, current.id)).orderBy(asc(teacherResourceItemsTable.position));
     return { resource: current, items };

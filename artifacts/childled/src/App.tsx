@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   QueryClient,
   QueryClientProvider,
@@ -34,6 +35,7 @@ import {
   Activity as ActivityIcon,
   AlertCircle,
   AudioWaveform,
+  ArrowLeft,
   ArrowRight,
   Bell,
   BookOpen,
@@ -76,6 +78,7 @@ import {
   Video,
   Volume2,
   X,
+  Trash2,
 } from "lucide-react";
 import {
   getGetAdminSecurityOverviewQueryKey,
@@ -158,6 +161,7 @@ import {
   useRequestSessionAudioUpload,
   useCompleteSessionCalibration,
   useDeleteSessionCalibration,
+  useDeleteSessionTranscriptionDraft,
   usePrepareSessionRecording,
   useListClinicalKnowledgeSources,
   useCreateClinicalKnowledgeSource,
@@ -540,14 +544,72 @@ function Modal({
   children: ReactNode;
   onClose: () => void;
 }) {
-  return (
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    document.body.style.overflow = "hidden";
+
+    const frame = window.requestAnimationFrame(() => {
+      const dialog = dialogRef.current;
+      const firstControl =
+        dialog?.querySelector<HTMLElement>("[data-autofocus]") ??
+        dialog?.querySelector<HTMLElement>(
+          'input:not([disabled]), select:not([disabled]), textarea:not([disabled]), button:not([disabled]):not([data-testid="button-close-dialog"]), [href]',
+        );
+      (firstControl ?? dialog)?.focus({ preventScroll: true });
+    });
+    const handleDialogKeys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const dialog = dialogRef.current;
+      const controls = Array.from(
+        dialog?.querySelectorAll<HTMLElement>(
+          'input:not([disabled]), button:not([disabled]), select:not([disabled]), textarea:not([disabled]), [href], [tabindex]:not([tabindex="-1"])',
+        ) ?? [],
+      ).filter((control) => control.offsetParent !== null);
+      if (!controls.length) {
+        event.preventDefault();
+        dialog?.focus();
+        return;
+      }
+      const first = controls[0];
+      const last = controls[controls.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", handleDialogKeys);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      document.removeEventListener("keydown", handleDialogKeys);
+      document.body.style.overflow = previousOverflow;
+      previouslyFocused?.focus({ preventScroll: true });
+    };
+  }, []);
+
+  return createPortal(
     <div
       data-testid="dialog-overlay"
-      className="fixed inset-0 z-40 grid place-items-center bg-primary/45 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto overscroll-contain bg-primary/45 p-4 backdrop-blur-sm"
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
         className="brand-card max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-border bg-card p-6 shadow-2xl md:p-8"
       >
         <div className="mb-6 flex items-start justify-between gap-4">
@@ -564,7 +626,8 @@ function Modal({
         </div>
         {children}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -9769,6 +9832,7 @@ function SessionRecorderPage({
   resumeTranscriptId,
   startRequestToken = 0,
   onSessionActivityChange,
+  onExit,
   onSaved,
 }: {
   childId: number;
@@ -9776,6 +9840,7 @@ function SessionRecorderPage({
   resumeTranscriptId?: number;
   startRequestToken?: number;
   onSessionActivityChange?: (active: boolean) => void;
+  onExit?: () => void;
   onSaved: (session: Session) => void;
 }) {
   const { user } = useUser();
@@ -9785,6 +9850,7 @@ function SessionRecorderPage({
   const uploadAudio = requestAudioUpload;
   const completeSessionCalibration = useCompleteSessionCalibration();
   const deleteSessionCalibration = useDeleteSessionCalibration();
+  const deleteSessionDraft = useDeleteSessionTranscriptionDraft();
   const prepareSessionRecording = usePrepareSessionRecording();
   const transcribeAudio = useTranscribeSessionAudio();
   const updateTranscriptSpeakers = useUpdateTranscriptSpeakers();
@@ -9840,15 +9906,17 @@ function SessionRecorderPage({
     Partial<Record<"clinician" | "caregiver", boolean>>
   >({});
   const recordingStartedAt = useRef<number | null>(null);
+  const workflowHeaderRef = useRef<HTMLElement | null>(null);
   const captureFailed = useRef(false);
   const timerRef = useRef<number | null>(null);
   const transcriptionRun = useRef(0);
   const sessionSaveInFlight = useRef(false);
-  const automaticCloseoutKey = useRef<string | undefined>(undefined);
   const automaticallyResumedDraftId = useRef<number | undefined>(undefined);
   const handledStartRequestToken = useRef(0);
   const consentConfirmedAtRef = useRef<string | undefined>(undefined);
-  const [stage, setStage] = useState<"capture" | "review" | "saved">("capture");
+  const [stage, setStage] = useState<
+    "capture" | "review" | "finalize" | "saved"
+  >("capture");
   const [recording, setRecording] = useState(false);
   const [paused, setPaused] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -9856,6 +9924,10 @@ function SessionRecorderPage({
   const [audioUrl, setAudioUrl] = useState<string>();
   const [audioError, setAudioError] = useState("");
   const [saveError, setSaveError] = useState("");
+  const [deleteError, setDeleteError] = useState("");
+  const [audioPreparationPending, setAudioPreparationPending] = useState(false);
+  const [finalizePreparing, setFinalizePreparing] = useState(false);
+  const [discardModalOpen, setDiscardModalOpen] = useState(false);
   const [captured, setCaptured] = useState<ReviewGestalt[]>([]);
   const [phrase, setPhrase] = useState("");
   const [meaning, setMeaning] = useState("");
@@ -10118,9 +10190,54 @@ function SessionRecorderPage({
     handledStartRequestToken.current = startRequestToken;
     openConsentModal("record");
   }, [startRequestToken]);
+  const hasUnsavedSession =
+    recording ||
+    (stage === "capture" && Boolean(audioBlob)) ||
+    stage === "review" ||
+    stage === "finalize";
   useEffect(() => {
-    onSessionActivityChange?.(recording || stage === "review");
-  }, [onSessionActivityChange, recording, stage]);
+    onSessionActivityChange?.(
+      hasUnsavedSession || Boolean(audioError) || stage === "saved",
+    );
+  }, [audioError, hasUnsavedSession, onSessionActivityChange, stage]);
+  useEffect(() => {
+    if (!hasUnsavedSession) return;
+    const warnBeforeLeaving = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", warnBeforeLeaving);
+    return () => window.removeEventListener("beforeunload", warnBeforeLeaving);
+  }, [hasUnsavedSession]);
+  useEffect(() => {
+    if (!hasUnsavedSession) return;
+    const guardInternalNavigation = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      const link = target?.closest<HTMLAnchorElement>("a[href]");
+      if (!link || link.target === "_blank" || link.hasAttribute("download"))
+        return;
+      const destination = new URL(link.href, window.location.href);
+      const current = new URL(window.location.href);
+      if (
+        destination.origin === current.origin &&
+        destination.pathname === current.pathname &&
+        destination.search === current.search &&
+        destination.hash === current.hash
+      )
+        return;
+      const leave = window.confirm(
+        recording
+          ? "A recording is in progress. Leave this page and lose the current capture?"
+          : "This session has not been saved. Leave this page? Unsaved review edits may be lost.",
+      );
+      if (leave) return;
+      event.preventDefault();
+      event.stopPropagation();
+    };
+    document.addEventListener("click", guardInternalNavigation, true);
+    return () =>
+      document.removeEventListener("click", guardInternalNavigation, true);
+  }, [hasUnsavedSession, recording]);
   useEffect(
     () => () => onSessionActivityChange?.(false),
     [onSessionActivityChange],
@@ -10192,36 +10309,41 @@ function SessionRecorderPage({
     blob: Blob,
     confirmedAt = consentConfirmedAtRef.current,
   ) => {
-    if (!confirmedAt)
-      throw new Error(
-        "Confirm recording consent before processing therapy audio.",
-      );
-    const preparationId =
-      recordingPreparationId ??
-      (await prepareSessionRecording.mutateAsync({ data: { childId } })).id;
-    if (!recordingPreparationId) setRecordingPreparationId(preparationId);
-    const reservation = await requestAudioUpload.mutateAsync({
-      data: {
-        contentType: blob.type || "audio/webm",
-        fileName: `therapy-session-${Date.now()}.webm`,
-        sizeBytes: blob.size,
-        childId,
-        consentConfirmed: true,
-        consentConfirmedAt: confirmedAt,
-        preparationId,
-      },
-    });
-    const response = await fetch(reservation.uploadUrl, {
-      method: "PUT",
-      headers: { "Content-Type": reservation.contentType },
-      body: blob,
-    });
-    if (!response.ok)
-      throw new Error(
-        "The recording could not be uploaded to private storage. Please try again.",
-      );
-    setUploadedAudioId(reservation.audioId);
-    return reservation.audioId;
+    setAudioPreparationPending(true);
+    try {
+      if (!confirmedAt)
+        throw new Error(
+          "Confirm recording consent before processing therapy audio.",
+        );
+      const preparationId =
+        recordingPreparationId ??
+        (await prepareSessionRecording.mutateAsync({ data: { childId } })).id;
+      if (!recordingPreparationId) setRecordingPreparationId(preparationId);
+      const reservation = await requestAudioUpload.mutateAsync({
+        data: {
+          contentType: blob.type || "audio/webm",
+          fileName: `therapy-session-${Date.now()}.webm`,
+          sizeBytes: blob.size,
+          childId,
+          consentConfirmed: true,
+          consentConfirmedAt: confirmedAt,
+          preparationId,
+        },
+      });
+      const response = await fetch(reservation.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": reservation.contentType },
+        body: blob,
+      });
+      if (!response.ok)
+        throw new Error(
+          "The recording could not be uploaded to private storage. Please try again.",
+        );
+      setUploadedAudioId(reservation.audioId);
+      return reservation.audioId;
+    } finally {
+      setAudioPreparationPending(false);
+    }
   };
   const setCalibrationCaptureState = (
     role: "clinician" | "caregiver",
@@ -11096,6 +11218,10 @@ function SessionRecorderPage({
     clearAudio();
     setAudioBlob(blob);
     setAudioUrl(URL.createObjectURL(blob));
+    if (blob.size) {
+      setTranscriptionStatus("uploading");
+      setTranscriptionError("");
+    }
     setStage("review");
     setSessionNote((current) => current || summaryFor());
     if (!blob.size) {
@@ -11119,7 +11245,7 @@ function SessionRecorderPage({
     setAudioError(message);
     setTranscriptionStatus("error");
     setTranscriptionError(message);
-    setStage("review");
+    setStage("capture");
   };
   useEffect(
     () => () => {
@@ -11150,6 +11276,7 @@ function SessionRecorderPage({
     }
     setAudioError("");
     setSaveError("");
+    setFinalizePreparing(false);
     if (
       !window.isSecureContext ||
       !navigator.mediaDevices?.getUserMedia ||
@@ -11466,19 +11593,16 @@ function SessionRecorderPage({
     }
     prepareAudioForReview(file);
   };
-  const saveSession = async (automatic = false) => {
+  const saveSession = async () => {
     if (sessionSaveInFlight.current) return;
     setSaveError("");
-    const hasPreservedUnclearSpeech = Boolean(
-      transcription?.childUtterances.some(
-        (utterance) =>
-          utterance.intelligibility === "unintelligible" ||
-          utterance.intelligibility === "partially_intelligible",
-      ),
-    );
-    if (!captured.length && !hasPreservedUnclearSpeech) {
+    if (
+      !captured.length &&
+      !hasPreservedUnclearSpeech &&
+      !hasCompletedTranscriptReview
+    ) {
       setSaveError(
-        "No reviewed Child language was available to save. Add a clinician-captured phrase or complete speaker review first.",
+        "Complete the transcript review or add a clinician-captured phrase before saving this session.",
       );
       return;
     }
@@ -11542,9 +11666,7 @@ function SessionRecorderPage({
       setSaveError(
         error?.data?.error ??
           error?.message ??
-          (automatic
-            ? "Automatic closeout paused. Your reviewed session is still here; save it when ready."
-            : "We could not save this session. Your review is still here; please try again."),
+          "We could not save this session. Your review is still here; please try again.",
       );
     } finally {
       sessionSaveInFlight.current = false;
@@ -11564,12 +11686,19 @@ function SessionRecorderPage({
     setSessionNoteEdited(false);
   };
   const resetSession = () => {
-    if (recording) finishRecording();
+    captureFailed.current = true;
+    if (timerRef.current) window.clearInterval(timerRef.current);
+    timerRef.current = null;
+    recordingStartedAt.current = null;
+    if (mediaRecorder.current?.state !== "inactive")
+      mediaRecorder.current?.stop();
+    mediaStream.current?.getTracks().forEach((track) => track.stop());
+    mediaRecorder.current = null;
+    mediaStream.current = null;
     clearCalibrationCapture("clinician");
     clearCalibrationCapture("caregiver");
     clearAudio();
     consentConfirmedAtRef.current = undefined;
-    automaticCloseoutKey.current = undefined;
     sessionSaveInFlight.current = false;
     setElapsed(0);
     setCaptured([]);
@@ -11582,6 +11711,10 @@ function SessionRecorderPage({
     setSavedSession(undefined);
     setAudioError("");
     setSaveError("");
+    setDeleteError("");
+    setFinalizePreparing(false);
+    setDiscardModalOpen(false);
+    setConsentModalOpen(false);
     setConsentChecked(false);
     setConsentConfirmedAt(undefined);
     setPendingAudioFile(undefined);
@@ -11592,11 +11725,86 @@ function SessionRecorderPage({
     setCaregiverPresent(false);
     setStartingSession(false);
     setRecordingPreparationId(undefined);
+    setRecording(false);
+    setPaused(false);
     setStage("capture");
   };
+  const leaveSessionForLater = () => {
+    resetSession();
+    void queryClient.invalidateQueries({
+      queryKey: getGetSessionsDashboardQueryKey(),
+    });
+    onExit?.();
+  };
+  const permanentlyDeleteCurrentSession = async (startOver: boolean) => {
+    if (audioPreparationPending || deleteSessionDraft.isPending) return;
+    setDeleteError("");
+    const transcriptId = transcription?.id ?? resumeTranscriptId;
+    const audioId = uploadedAudioId ?? transcription?.audioId;
+    try {
+      if (transcriptId || audioId) {
+        await deleteSessionDraft.mutateAsync({
+          params: {
+            childId,
+            ...(transcriptId ? { transcriptId } : {}),
+            ...(audioId ? { audioId } : {}),
+          },
+        });
+      }
+      resetSession();
+      await queryClient.invalidateQueries({
+        queryKey: getGetSessionsDashboardQueryKey(),
+      });
+      if (!startOver) onExit?.();
+    } catch (error: any) {
+      setDeleteError(
+        error?.data?.error ??
+          error?.message ??
+          "The unfinished session could not be deleted. It was preserved so you can try again.",
+      );
+    }
+  };
+  // A completed raw transcript can still be waiting on server-side speaker grouping.
+  const speakerProcessingPending =
+    transcriptionStatus === "complete" &&
+    (transcription?.speakerSeparationStatus === "pending" ||
+      transcription?.speakerSeparationStatus === "processing");
+  const reviewPreparationPending =
+    transcriptionStatus === "complete" &&
+    Boolean(transcription) &&
+    !speakerProcessingPending &&
+    Boolean(
+      transcription?.phrases.some(
+        (detected) =>
+          detected.childAttributed &&
+          !ignoredTranscriptPhraseIds.includes(detected.id) &&
+          !captured.some(
+            (item) => item.transcriptPhraseId === detected.id,
+          ),
+      ),
+    );
   const transcriptionPending =
     transcriptionStatus === "uploading" ||
-    transcriptionStatus === "transcribing";
+    transcriptionStatus === "transcribing" ||
+    (transcriptionStatus === "complete" && !transcription) ||
+    speakerProcessingPending ||
+    reviewPreparationPending;
+  const transcriptionProgressTitle =
+    transcriptionStatus === "uploading"
+      ? "Uploading the private recording…"
+      : transcriptionStatus === "transcribing"
+        ? "Transcribing the recording…"
+        : speakerProcessingPending
+          ? "Separating speakers and preparing review…"
+          : "Preparing the review…";
+  const transcriptionProgressBody =
+    transcriptionStatus === "uploading"
+      ? "ChildLed is securely uploading the recording. Transcription will begin automatically when the upload finishes."
+      : transcriptionStatus === "transcribing"
+        ? "ChildLed is creating the transcript. Review will remain hidden until all processing finishes."
+        : speakerProcessingPending
+          ? "The transcript is still being processed for speakers and likely Child phrases. Review will appear only when this finishes."
+          : "ChildLed is organizing the completed transcript into review items. This should only take a moment.";
   const completedWithNoSpeech =
     transcriptionStatus === "complete" &&
     transcription?.rawTranscript.trim().length === 0;
@@ -11825,6 +12033,12 @@ function SessionRecorderPage({
   const unresolvedChildUtteranceReview = childUtterances.some(
     (utterance) => utterance.disposition === "pending",
   );
+  const hasCompletedTranscriptReview =
+    transcriptionStatus === "complete" &&
+    Boolean(transcription) &&
+    !manualTranscriptReview &&
+    !unresolvedChildUtteranceReview &&
+    (Boolean(transcription?.reviewProgress.total) || !hasRawTranscript);
   const closeoutState =
     stage === "saved"
       ? "saved"
@@ -11836,13 +12050,14 @@ function SessionRecorderPage({
               unresolvedChildUtteranceReview ||
               exceptionCaptured.length > 0
             ? "needs_review"
-            : routineCaptured.length + clinicianReviewedCaptured.length > 0
+            : routineCaptured.length + clinicianReviewedCaptured.length > 0 ||
+                hasCompletedTranscriptReview
               ? "ready"
               : "waiting";
   const closeoutCopy = {
     processing: {
-      title: "Finishing safe processing",
-      body: "ChildLed is protecting the recording, preparing the transcript, and checking for clinician-confirmed Child evidence.",
+      title: "Transcription is loading",
+      body: transcriptionProgressBody,
     },
     needs_review: {
       title: "A few items need your judgment",
@@ -11853,10 +12068,14 @@ function SessionRecorderPage({
           : `${exceptionCaptured.length} phrase${exceptionCaptured.length === 1 ? "" : "s"} needs clinical context before it can become evidence.`,
     },
     ready: {
-      title: "Routine evidence is ready",
-      body: clinicianReviewedCaptured.length
-        ? "Your reviewed exceptions and routine evidence are ready. Save once to update the child workspace."
-        : "Exact reviewed dictionary matches are prepared without replacing their prior clinician-owned details. ChildLed will close this session automatically.",
+      title: captured.length
+        ? "Reviewed evidence is ready"
+        : "Review is complete",
+      body: captured.length
+        ? clinicianReviewedCaptured.length
+          ? "Your reviewed exceptions and routine evidence are ready for final confirmation."
+          : "Exact reviewed dictionary matches are prepared without replacing their prior clinician-owned details."
+        : "No Child phrases were confirmed in this recording. You can still finalize and save the session review.",
     },
     saving: {
       title: "Updating the child workspace",
@@ -11871,36 +12090,6 @@ function SessionRecorderPage({
       body: "Complete speaker review or add a clinician-captured phrase to continue.",
     },
   }[closeoutState];
-  useEffect(() => {
-    const automaticCloseoutEligible =
-      stage === "review" &&
-      transcriptionStatus === "complete" &&
-      Boolean(transcription) &&
-      !unresolvedSpeakerReview &&
-      !unresolvedChildUtteranceReview &&
-      routineCaptured.length > 0 &&
-      clinicianReviewedCaptured.length === 0 &&
-      exceptionCaptured.length === 0 &&
-      Boolean(consentConfirmedAt) &&
-      !createSession.isPending;
-    if (!automaticCloseoutEligible || !transcription) return;
-    const key = `${transcription.id}:${routineCaptured.map((item) => `${item.transcriptPhraseId}:${item.frequency}`).join("|")}`;
-    if (automaticCloseoutKey.current === key) return;
-    automaticCloseoutKey.current = key;
-    void saveSession(true);
-  }, [
-    captured,
-    consentConfirmedAt,
-    createSession.isPending,
-    exceptionCaptured.length,
-    clinicianReviewedCaptured.length,
-    routineCaptured,
-    stage,
-    transcription,
-    transcriptionStatus,
-    unresolvedSpeakerReview,
-    unresolvedChildUtteranceReview,
-  ]);
   const singleSpeakerFastPath =
     reviewedSpeakers.length === 1 && !speakerSeparationUnavailable;
   const speakerReviewPanel =
@@ -13417,18 +13606,24 @@ function SessionRecorderPage({
         className="rounded-3xl border border-border bg-card p-6 md:p-8"
       >
         {identifyChildLanguagePanel}
-        {speakerReviewPanel}
+        {(lowConfidenceTurnCount > 0 || speakerSeparationUnavailable) &&
+          speakerReviewPanel}
         <div className="mt-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-              Automatic transcript
+              {transcriptionPending
+                ? "Processing recording"
+                : "Automatic transcript"}
             </p>
             <h2 className="serif mt-2 text-2xl font-semibold">
-              Draft phrases from the recording
+              {transcriptionPending
+                ? "Preparing your transcript"
+                : "Draft phrases from the recording"}
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Audio is processed after recording stops. These are reviewable
-              suggestions—not confirmed meanings or clinical interpretations.
+              {transcriptionPending
+                ? "Keep this page open while ChildLed processes the recording. Nothing needs your attention yet."
+                : "These are reviewable suggestions—not confirmed meanings or clinical interpretations."}
             </p>
           </div>
           {transcriptionStatus === "complete" && (
@@ -13446,13 +13641,11 @@ function SessionRecorderPage({
             <Sparkles className="animate-pulse text-primary" size={20} />
             <div>
               <p className="text-sm font-semibold">
-                {transcriptionStatus === "uploading"
-                  ? "Uploading the private recording…"
-                  : "Transcribing and finding likely phrases…"}
+                {transcriptionProgressTitle}
               </p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                You can continue reviewing your manual notes while this
-                finishes.
+                This screen will update automatically when the transcript is
+                ready.
               </p>
             </div>
           </div>
@@ -13489,7 +13682,7 @@ function SessionRecorderPage({
         {transcriptionStatus === "complete" && transcription && (
           <div className="mt-6 space-y-5">
             {transcription.phrases.length > 0 && (
-              <div className="grid gap-4 md:grid-cols-2">
+              <div className="grid gap-4">
                 {transcription.phrases.map((detected) => {
                   const capturedPhrase = captured.find(
                     (item) => item.transcriptPhraseId === detected.id,
@@ -13601,10 +13794,10 @@ function SessionRecorderPage({
                           </div>
                         )}
                       </div>
-                      <div className="mt-4 rounded-xl bg-muted/65 p-4">
-                        <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                          Contextual review prompts
-                        </p>
+                      <details className="mt-4 rounded-xl bg-muted/65 p-4">
+                        <summary className="cursor-pointer text-xs font-bold uppercase text-muted-foreground">
+                          Clinical review prompts
+                        </summary>
                         <div className="mt-3 space-y-2 text-xs leading-5 text-muted-foreground">
                           <p>
                             <span className="font-semibold text-foreground">
@@ -13631,7 +13824,7 @@ function SessionRecorderPage({
                             {guidance.coachingPrompt}
                           </p>
                         </div>
-                      </div>
+                      </details>
                       {detected.existingGestalt ? (
                         <div className="mt-4 rounded-xl bg-card p-4">
                           <p className="mono text-[10px] font-bold uppercase tracking-[.15em] text-primary">
@@ -13684,42 +13877,321 @@ function SessionRecorderPage({
       </section>
     ) : null;
 
-  if (consentModalOpen && stage === "capture") return consentModal;
-
-  if (stage === "capture" && !recording) {
-    return (
-      <div className="mx-auto max-w-5xl space-y-4">
-        {developmentDemoEnabled && (
-          <div className="flex justify-end">
-            <Button
-              variant="quiet"
-              onClick={() => void loadSpeakerReviewFixture()}
-              data-testid="button-load-speaker-review-fixture"
-            >
-              <Shield size={15} /> Load protected speaker fixture
-            </Button>
-          </div>
-        )}
-        {audioError && (
-          <p
-            role="alert"
-            className="mx-auto max-w-4xl rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive"
+  const hasPreservedUnclearSpeech = Boolean(
+    transcription?.childUtterances.some(
+      (utterance) =>
+        utterance.intelligibility === "unintelligible" ||
+        utterance.intelligibility === "partially_intelligible",
+    ),
+  );
+  const canFinalize =
+    !transcriptionPending &&
+    !unresolvedChildUtteranceReview &&
+    exceptionCaptured.length === 0 &&
+    (captured.length > 0 ||
+      hasPreservedUnclearSpeech ||
+      hasCompletedTranscriptReview);
+  const beginFinalize = () => {
+    if (!canFinalize) return;
+    setSaveError("");
+    setStage("finalize");
+    setFinalizePreparing(true);
+    window.setTimeout(() => {
+      if (!sessionNoteEdited) setSessionNote(summaryFor());
+      setFinalizePreparing(false);
+    }, 250);
+  };
+  useEffect(() => {
+    if (stage !== "finalize" || sessionNoteEdited || finalizePreparing) return;
+    setSessionNote(summaryFor());
+  }, [
+    captured,
+    elapsed,
+    finalizePreparing,
+    nextSteps,
+    observations,
+    sessionNoteEdited,
+    stage,
+  ]);
+  useEffect(() => {
+    if (stage === "capture" && !recording) return;
+    const positionWorkflow = () => {
+      const header = workflowHeaderRef.current;
+      if (!header) return;
+      const shellHeader = header
+        .closest("main")
+        ?.querySelector<HTMLElement>(":scope > div.sticky");
+      const shellOffset = Math.ceil(
+        shellHeader?.getBoundingClientRect().height ?? 0,
+      );
+      header.style.top = `${shellOffset + 8}px`;
+      header.style.scrollMarginTop = `${shellOffset + 8}px`;
+    };
+    positionWorkflow();
+    window.addEventListener("resize", positionWorkflow);
+    const timeout = window.setTimeout(() => {
+      positionWorkflow();
+      const header = workflowHeaderRef.current;
+      const container = header?.parentElement;
+      if (!header || !container) return;
+      const targetTop =
+        window.scrollY +
+        container.getBoundingClientRect().top -
+        Number.parseFloat(header.style.top || "0");
+      window.scrollTo({ top: Math.max(0, targetTop), behavior: "auto" });
+    }, 0);
+    return () => {
+      window.clearTimeout(timeout);
+      window.removeEventListener("resize", positionWorkflow);
+    };
+  }, [recording, stage]);
+  const workflowLabels = ["Start", "Record", "Review", "Finalize", "Complete"];
+  const currentWorkflowStep =
+    stage === "capture"
+      ? 1
+      : stage === "review"
+        ? 2
+        : stage === "finalize"
+          ? 3
+          : 4;
+  const currentWorkflowLabel =
+    stage === "review" && transcriptionPending
+      ? "Transcribing"
+      : workflowLabels[currentWorkflowStep];
+  const workflowProgress = (
+    <nav
+      ref={workflowHeaderRef}
+      aria-label="Recording workflow progress"
+      className="sticky top-2 z-30 rounded-2xl border border-border bg-card/95 p-4 shadow-sm backdrop-blur"
+      data-testid="recording-workflow-progress"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <p className="mono text-[10px] font-bold uppercase text-muted-foreground">
+            Step {currentWorkflowStep + 1} of {workflowLabels.length}
+          </p>
+          <p className="mt-0.5 text-sm font-semibold">{currentWorkflowLabel}</p>
+        </div>
+        {stage !== "saved" && (
+          <Button
+            variant="quiet"
+            className="min-h-11 px-3 text-destructive hover:text-destructive"
+            onClick={() => setDiscardModalOpen(true)}
+            disabled={createSession.isPending}
+            data-testid="button-end-recording-session"
           >
-            {audioError}
+            <X size={16} /> End session
+          </Button>
+        )}
+      </div>
+      <div className="mt-3 grid grid-cols-5 gap-2" aria-hidden="true">
+        {workflowLabels.map((label, index) => (
+          <span
+            key={label}
+            className={`h-2 rounded-full ${index <= currentWorkflowStep ? "bg-primary" : "bg-muted"}`}
+          />
+        ))}
+      </div>
+      <div className="mt-2 hidden grid-cols-5 gap-2 text-center text-[10px] font-semibold text-muted-foreground sm:grid">
+        {workflowLabels.map((label, index) => (
+          <span
+            key={label}
+            className={index === currentWorkflowStep ? "text-primary" : ""}
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+    </nav>
+  );
+  const hasPersistedDraft = Boolean(
+    transcription?.id || resumeTranscriptId || uploadedAudioId,
+  );
+  const discardModal = discardModalOpen ? (
+    <Modal title="End this session?" onClose={() => setDiscardModalOpen(false)}>
+      <div className="space-y-5" data-testid="dialog-end-recording-session">
+        <p className="text-sm leading-6 text-muted-foreground">
+          {hasPersistedDraft
+            ? "This unfinished recording can be kept for later or permanently deleted with its transcript and review work."
+            : "This session has not created a saved recording draft. You can start over or leave without creating a session."}
+        </p>
+        {audioPreparationPending && (
+          <p className="rounded-xl bg-secondary p-3 text-sm text-primary">
+            Please wait for the secure upload to finish before leaving or
+            deleting this session.
           </p>
         )}
-        {consentModal}
+        {deleteError && (
+          <p
+            role="alert"
+            className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+          >
+            {deleteError}
+          </p>
+        )}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Button
+            variant="quiet"
+            className="min-h-12"
+            onClick={() => setDiscardModalOpen(false)}
+            disabled={deleteSessionDraft.isPending}
+          >
+            Keep working
+          </Button>
+          {hasPersistedDraft && (
+            <Button
+              variant="outline"
+              className="min-h-12"
+              onClick={leaveSessionForLater}
+              disabled={
+                audioPreparationPending || deleteSessionDraft.isPending
+              }
+              data-testid="button-save-session-for-later"
+            >
+              <Clock3 size={16} /> Save for later & leave
+            </Button>
+          )}
+          <Button
+            variant="outline"
+            className="min-h-12 border-destructive/30 text-destructive hover:border-destructive/60 hover:text-destructive"
+            onClick={() => void permanentlyDeleteCurrentSession(true)}
+            disabled={audioPreparationPending || deleteSessionDraft.isPending}
+            data-testid="button-discard-and-restart-session"
+          >
+            <RotateCcw size={16} /> Delete & start over
+          </Button>
+          <Button
+            className="min-h-12 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            onClick={() => void permanentlyDeleteCurrentSession(false)}
+            disabled={audioPreparationPending || deleteSessionDraft.isPending}
+            data-testid="button-discard-and-exit-session"
+          >
+            <Trash2 size={16} />
+            {deleteSessionDraft.isPending ? "Deleting…" : "Delete & leave"}
+          </Button>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          Permanent deletion cannot be undone. Required security audit records
+          do not contain the recording or transcript.
+        </p>
       </div>
-    );
-  }
+    </Modal>
+  ) : null;
+  const reviewActionLabel = transcriptionPending
+    ? transcriptionStatus === "uploading"
+      ? "Uploading recording…"
+      : "Transcribing recording…"
+    : unresolvedChildUtteranceReview
+      ? "Review uncertain speech to continue"
+      : exceptionCaptured.length
+        ? `Resolve ${exceptionCaptured.length} phrase${exceptionCaptured.length === 1 ? "" : "s"} to continue`
+        : "Continue to finalize";
+  const workflowActionBar =
+    (stage === "capture" && recording) ||
+    (stage === "review" && !transcriptionPending) ||
+    stage === "finalize"
+      ? createPortal(
+          <div className="pointer-events-none fixed inset-x-3 bottom-20 z-40 md:bottom-4 lg:left-[16.75rem]">
+            <div className="pointer-events-auto mx-auto max-w-4xl rounded-2xl border border-border bg-card/95 p-3 shadow-xl backdrop-blur">
+              {stage === "finalize" && saveError && (
+                <p
+                  role="alert"
+                  className="mb-2 px-1 text-xs font-semibold text-destructive"
+                >
+                  {saveError}
+                </p>
+              )}
+              <div className="flex items-center justify-between gap-3">
+                <div className="hidden min-w-0 sm:block">
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                    Next action
+                  </p>
+                  <p className="truncate text-sm font-semibold">
+                    {stage === "capture"
+                      ? "Recording controls"
+                      : stage === "review"
+                        ? closeoutCopy.title
+                        : "Confirm and save this session"}
+                  </p>
+                </div>
+                {stage === "capture" ? (
+                  <div className="flex w-full gap-3">
+                    <Button
+                      variant="outline"
+                      className="min-h-12 flex-1"
+                      onClick={togglePause}
+                      data-testid="button-pause-recording"
+                    >
+                      {paused ? <Play size={16} /> : <Pause size={16} />}
+                      {paused ? "Resume" : "Pause"}
+                    </Button>
+                    <Button
+                      variant="warm"
+                      className="min-h-12 flex-1"
+                      onClick={finishRecording}
+                      data-testid="button-stop-recording"
+                    >
+                      <Square size={15} fill="currentColor" /> Stop & review
+                    </Button>
+                  </div>
+                ) : stage === "review" ? (
+                  <Button
+                    className="min-h-12 w-full sm:w-auto"
+                    onClick={beginFinalize}
+                    disabled={!canFinalize}
+                    data-testid="button-continue-to-finalize"
+                  >
+                    {reviewActionLabel} <ArrowRight size={16} />
+                  </Button>
+                ) : (
+                  <Button
+                    className="min-h-12 w-full sm:w-auto"
+                    onClick={() => void saveSession()}
+                    disabled={
+                      finalizePreparing ||
+                      createSession.isPending ||
+                      uploadAudio.isPending ||
+                      !consentConfirmedAt ||
+                      !canFinalize
+                    }
+                    data-testid="button-save-session"
+                  >
+                    {finalizePreparing
+                      ? "Preparing summary…"
+                      : createSession.isPending || uploadAudio.isPending
+                        ? "Saving and generating note…"
+                        : saveError
+                          ? "Retry finalization"
+                          : "Save session & generate note"}{" "}
+                    <ArrowRight size={16} />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  if (consentModalOpen && stage === "capture") return consentModal;
+
+  if (
+    stage === "capture" &&
+    !recording &&
+    !audioBlob &&
+    !audioError &&
+    handledStartRequestToken.current === startRequestToken
+  )
+    return null;
 
   if (stage === "saved")
     return (
       <div className="mx-auto max-w-4xl space-y-7">
+        {workflowProgress}
         <SectionHeading
           eyebrow="Session complete"
-          title="Your notes are ready to share."
-          description={`${captured.length} reviewed gestalt${captured.length === 1 ? "" : "s"} and the session note are now available to ${child?.name ?? "the care team"}.`}
+          title="Session saved successfully."
+          description={`${captured.length} reviewed phrase${captured.length === 1 ? "" : "s"} and the session note are now available to ${child?.name ?? "the care team"}.`}
           action={
             <div className="flex flex-wrap gap-2">
               <Link
@@ -13727,7 +14199,7 @@ function SessionRecorderPage({
                 data-testid="button-draft-ai-session-note"
                 className="inline-flex focus-ring items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-primary"
               >
-                <Sparkles size={16} /> Draft AI session note
+                <FileText size={16} /> Open session report
               </Link>
               <Button variant="outline" onClick={resetSession}>
                 <RotateCcw size={16} /> New session
@@ -13753,6 +14225,10 @@ function SessionRecorderPage({
           <pre className="mt-7 whitespace-pre-wrap rounded-2xl border border-primary-foreground/15 bg-primary-foreground/5 p-5 font-sans text-sm leading-6 text-primary-foreground/85">
             {savedSession?.note}
           </pre>
+          <p className="mt-4 text-xs leading-5 text-primary-foreground/65">
+            The recording is attached to the saved session. Temporary upload
+            copies are now eligible for secure retention cleanup.
+          </p>
         </section>
         {savedSession?.audioUrl && (
           <section className="rounded-2xl border border-border bg-card p-5">
@@ -13767,514 +14243,645 @@ function SessionRecorderPage({
       </div>
     );
 
-  if (stage === "review")
+  if (stage === "review" && transcriptionPending)
     return (
-      <div className="mx-auto max-w-5xl space-y-7">
-        <SectionHeading
-          eyebrow="Session closeout"
-          title="ChildLed is closing out this session."
-          description="Routine reviewed evidence moves forward in the background. Your attention is reserved for uncertain speakers and clinical interpretation exceptions."
-          action={
-            <Button variant="outline" onClick={resetSession}>
-              <RotateCcw size={16} /> Start over
-            </Button>
-          }
-        />
+      <div className="mx-auto max-w-4xl space-y-5 pb-8">
+        {workflowProgress}
         <section
-          data-testid="status-session-closeout"
-          className={`rounded-2xl border p-5 ${closeoutState === "needs_review" ? "border-accent/40 bg-accent/10" : closeoutState === "processing" || closeoutState === "saving" ? "border-primary/20 bg-secondary/45" : "border-primary/15 bg-card"}`}
+          role="status"
+          aria-live="polite"
+          data-testid="status-transcription-processing"
+          className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-10"
         >
-          <div className="flex items-start gap-3">
-            <span
-              className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl ${closeoutState === "needs_review" ? "bg-accent text-primary" : "bg-secondary text-primary"}`}
-            >
-              {closeoutState === "needs_review" ? (
-                <CircleHelp size={18} />
-              ) : closeoutState === "saved" ? (
-                <Check size={18} />
-              ) : (
-                <Sparkles
-                  className={
-                    closeoutState === "processing" || closeoutState === "saving"
-                      ? "animate-pulse"
-                      : ""
-                  }
-                  size={18}
-                />
-              )}
+          <span className="grid size-12 place-items-center rounded-2xl bg-secondary text-primary">
+            <Sparkles className="animate-pulse" size={22} />
+          </span>
+          <p className="mono mt-6 text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
+            Preparing review
+          </p>
+          <h1 className="serif mt-2 text-3xl font-semibold md:text-4xl">
+            Transcription is loading.
+          </h1>
+          <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+            {transcriptionProgressBody}
+          </p>
+          <div className="mt-7 flex items-center gap-3 rounded-2xl bg-secondary/55 p-4 md:p-5">
+            <span className="relative flex size-3 shrink-0">
+              <span className="absolute inline-flex size-full animate-ping rounded-full bg-primary/45" />
+              <span className="relative inline-flex size-3 rounded-full bg-primary" />
             </span>
             <div>
-              <p className="text-sm font-bold">{closeoutCopy.title}</p>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                {closeoutCopy.body}
+              <p className="text-sm font-semibold">
+                {transcriptionProgressTitle}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Keep this page open. Nothing needs your attention yet.
               </p>
             </div>
           </div>
+          <Button
+            variant="outline"
+            className="mt-6 min-h-12 w-full sm:w-auto"
+            onClick={() => setStage("capture")}
+            data-testid="button-recording-step-back"
+          >
+            <ArrowLeft size={16} /> Back to recording
+          </Button>
         </section>
-        <section className="rounded-3xl border border-border bg-card p-6 md:p-8">
-          <div className="flex flex-wrap items-center justify-between gap-4">
-            <div>
-              <p className="serif text-2xl font-semibold">Recording</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {formattedTime} captured · private until you save
-              </p>
-            </div>
-            <div className="flex flex-wrap gap-2">
+        {discardModal}
+      </div>
+    );
+
+  if (stage === "review" || stage === "finalize")
+    return (
+      <div className="mx-auto max-w-4xl space-y-5 pb-32">
+        {workflowProgress}
+        <SectionHeading
+          eyebrow={
+            stage === "review"
+              ? transcriptionPending
+                ? "Preparing review"
+                : "Review phrases"
+              : "Finalize session"
+          }
+          title={
+            stage === "review"
+              ? transcriptionPending
+                ? "Transcription is loading."
+                : "Keep the phrases that belong in this session."
+              : "Confirm the session note before saving."
+          }
+          description={
+            stage === "review"
+              ? transcriptionPending
+                ? transcriptionStatus === "uploading"
+                  ? "The recording is uploading securely. This screen will update automatically when transcription begins."
+                  : "ChildLed is finding likely phrases now. Your review will appear automatically when it is ready."
+                : "Review the transcript, correct uncertain Child speech, and remove anything you do not want to save."
+              : "Add any useful observations or next steps, then save the session and generate its documentation."
+          }
+          action={
+            (stage === "finalize" || audioBlob) && (
               <Button
                 variant="outline"
-                onClick={() => {
-                  clearAudio();
-                  setStage("capture");
-                  startRecording();
-                }}
+                onClick={() =>
+                  setStage(stage === "review" ? "capture" : "review")
+                }
+                data-testid="button-recording-step-back"
               >
-                <Mic size={16} /> Re-record
+                <ArrowLeft size={16} />
+                {stage === "review" ? "Back to recording" : "Back to review"}
               </Button>
-              <label className="inline-flex focus-ring  cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:border-primary">
-                <Volume2 size={16} /> Replace
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept="audio/*"
-                  onChange={(event) => replaceAudio(event.target.files?.[0])}
-                />
-              </label>
-              <Button
-                variant="quiet"
-                onClick={clearAudio}
-                disabled={!audioBlob}
+            )
+          }
+        />
+        {workflowActionBar}
+        {stage === "review" && (
+          <>
+            {!transcriptionPending && (
+              <section
+                data-testid="status-session-closeout"
+                className={`rounded-2xl border p-5 ${closeoutState === "needs_review" ? "border-accent/40 bg-accent/10" : closeoutState === "processing" || closeoutState === "saving" ? "border-primary/20 bg-secondary/45" : "border-primary/15 bg-card"}`}
               >
-                <X size={16} /> Delete audio
-              </Button>
-            </div>
-          </div>
-          {audioUrl ? (
-            <audio className="mt-5 w-full" controls src={audioUrl} />
-          ) : (
-            <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">
-              No recording will be attached. You can still save the reviewed
-              gestalts and clinical note.
-            </p>
-          )}
-        </section>
-        <section
-          data-testid="status-recording-consent"
-          className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border bg-secondary/45 p-4"
-        >
-          <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">
-              Recording consent
-            </p>
-            <p className="mt-1 text-sm font-semibold">
-              {consentConfirmedAt
-                ? `Confirmed for ${child?.name ?? "this child"} at ${new Date(consentConfirmedAt).toLocaleString()}.`
-                : "Consent confirmation is required before this session can be saved."}
-            </p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              {consentConfirmedAt
-                ? "This confirmation will be saved with the session and care-team user."
-                : "No audio is attached, but confirming consent keeps this session record complete."}
-            </p>
-          </div>
-          {consentConfirmedAt ? (
-            <span className="rounded-full bg-card px-3 py-1.5 text-xs font-bold text-primary">
-              Confirmed
-            </span>
-          ) : (
-            <Button
-              variant="outline"
-              onClick={() => openConsentModal("save")}
-              data-testid="button-open-audio-consent"
-            >
-              Confirm consent
-            </Button>
-          )}
-        </section>
-        {transcriptionPanel}
-        <section className="space-y-4">
-          <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-              Evidence closeout
-            </p>
-            <h2 className="serif mt-1 text-2xl font-semibold">
-              {exceptionCaptured.length
-                ? "Only the exceptions need review"
-                : "Routine evidence is ready"}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {routineCaptured.length} routine match
-              {routineCaptured.length === 1 ? "" : "es"} ·{" "}
-              {clinicianReviewedCaptured.length} clinician-reviewed exception
-              {clinicianReviewedCaptured.length === 1 ? "" : "s"} ·{" "}
-              {exceptionCaptured.length} still to review
-            </p>
-          </div>
-          {captured.map((item, index) => {
-            const previous = matchingGestalt(item.phrase);
-            if (item.reviewState !== "exception")
-              return (
-                <div
-                  key={item.id}
-                  data-testid={`card-closeout-phrase-${item.id}`}
-                  className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-primary/15 bg-secondary/30 p-4"
-                >
+                <div className="flex items-start gap-3">
+                  <span
+                    className={`mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl ${closeoutState === "needs_review" ? "bg-accent text-primary" : "bg-secondary text-primary"}`}
+                  >
+                    {closeoutState === "needs_review" ? (
+                      <CircleHelp size={18} />
+                    ) : closeoutState === "saved" ? (
+                      <Check size={18} />
+                    ) : (
+                      <Sparkles size={18} />
+                    )}
+                  </span>
                   <div>
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="serif text-lg font-semibold">
-                        “{item.phrase}”
-                      </p>
-                      <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-bold text-primary">
-                        {item.reviewState === "routine"
-                          ? "Routine dictionary match"
-                          : "Clinician reviewed"}
-                      </span>
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                      {item.frequency && item.frequency > 1
-                        ? `Heard ${item.frequency} times · `
-                        : ""}
-                      {item.function} · {item.context}
+                    <p className="text-sm font-bold">{closeoutCopy.title}</p>
+                    <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                      {closeoutCopy.body}
                     </p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {item.reviewState === "routine" ? (
-                      <Button
-                        variant="quiet"
-                        className="px-3 py-2 text-xs"
-                        onClick={() => reopenRoutinePhrase(item.id)}
-                        data-testid={`button-add-context-${item.id}`}
-                      >
-                        Add context
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="quiet"
-                        className="px-3 py-2 text-xs"
-                        onClick={() => reopenReviewedPhrase(item.id)}
-                        data-testid={`button-reopen-exception-${item.id}`}
-                      >
-                        Edit review
-                      </Button>
-                    )}
+                </div>
+              </section>
+            )}
+            {!transcriptionPending && (
+              <details className="rounded-2xl border border-border bg-card p-4">
+                <summary className="cursor-pointer text-sm font-semibold">
+                  Listen to or replace recording · {formattedTime}
+                </summary>
+                <div className="mt-4 space-y-4">
+                  {audioUrl ? (
+                    <audio className="w-full" controls src={audioUrl} />
+                  ) : (
+                    <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">
+                      No recording will be attached. You can still save the
+                      reviewed phrases and clinical note.
+                    </p>
+                  )}
+                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:border-primary focus-ring">
+                    <Volume2 size={16} /> Replace recording
+                    <input
+                      className="sr-only"
+                      type="file"
+                      accept="audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav,audio/x-m4a"
+                      onChange={(event) =>
+                        replaceAudio(event.target.files?.[0])
+                      }
+                    />
+                  </label>
+                </div>
+              </details>
+            )}
+            {!consentConfirmedAt && (
+              <section
+                data-testid="status-recording-consent"
+                className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-accent/40 bg-accent/10 p-4"
+              >
+                <div>
+                  <p className="text-sm font-semibold">
+                    Confirm consent before finalizing
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Consent is required even when no recording is attached.
+                  </p>
+                </div>
+                <Button
+                  variant="outline"
+                  onClick={() => openConsentModal("save")}
+                  data-testid="button-open-audio-consent"
+                >
+                  Confirm consent
+                </Button>
+              </section>
+            )}
+            {transcriptionPanel}
+            {!transcriptionPending && (
+              <>
+                <details className="rounded-2xl border border-border bg-card p-4">
+                  <summary className="cursor-pointer text-sm font-semibold">
+                    Add a phrase manually
+                  </summary>
+                  <form onSubmit={addCaptured} className="mt-5 space-y-4">
+                    <Field
+                      label="Exact phrase"
+                      value={phrase}
+                      onChange={setPhrase}
+                      placeholder="What was said?"
+                      testId="input-session-phrase"
+                    />
+                    <label className="block space-y-2">
+                      <span className="text-xs font-bold uppercase text-muted-foreground">
+                        Working meaning
+                      </span>
+                      <textarea
+                        data-testid="textarea-session-meaning"
+                        value={meaning}
+                        onChange={(event) => setMeaning(event.target.value)}
+                        placeholder="Optional working meaning…"
+                        className="min-h-20 w-full resize-y rounded-xl border border-input bg-background p-3 text-sm outline-none focus-ring"
+                      />
+                    </label>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <SelectField
+                        label="Function"
+                        value={func}
+                        onChange={setFunc}
+                        options={[
+                          "Request",
+                          "Protest",
+                          "Shared Joy",
+                          "Comment",
+                          "Transition",
+                          "Regulation",
+                          "Self-Advocacy",
+                          "Unknown",
+                        ]}
+                        testId="select-session-function"
+                      />
+                      <SelectField
+                        label="Emotional state"
+                        value={emotion}
+                        onChange={setEmotion}
+                        options={[
+                          "Regulated",
+                          "Excited",
+                          "Frustrated",
+                          "Dysregulated",
+                          "Tired",
+                          "Unknown",
+                        ]}
+                        testId="select-session-emotion"
+                      />
+                      <SelectField
+                        label="Context"
+                        value={context}
+                        onChange={setContext}
+                        options={["Therapy", "Home", "School", "Community"]}
+                        testId="select-session-context"
+                      />
+                    </div>
                     <Button
-                      variant="quiet"
-                      className="px-3 py-2 text-xs text-muted-foreground"
-                      onClick={() => removeCaptured(item.id)}
-                      data-testid={`button-remove-review-phrase-${item.id}`}
+                      type="submit"
+                      className="min-h-12 w-full sm:w-auto"
+                      disabled={!phrase.trim()}
+                      data-testid="button-capture-gestalt"
                     >
-                      <X size={14} /> Exclude
+                      <Plus size={16} /> Add phrase
+                    </Button>
+                  </form>
+                </details>
+                <section className="space-y-4">
+                  <div>
+                    <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
+                      Evidence closeout
+                    </p>
+                    <h2 className="serif mt-1 text-2xl font-semibold">
+                      {exceptionCaptured.length
+                        ? "Only the exceptions need review"
+                        : "Routine evidence is ready"}
+                    </h2>
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {routineCaptured.length} routine match
+                      {routineCaptured.length === 1 ? "" : "es"} ·{" "}
+                      {clinicianReviewedCaptured.length} clinician-reviewed
+                      exception
+                      {clinicianReviewedCaptured.length === 1 ? "" : "s"} ·{" "}
+                      {exceptionCaptured.length} still to review
+                    </p>
+                  </div>
+                  {captured.map((item, index) => {
+                    const previous = matchingGestalt(item.phrase);
+                    if (item.reviewState !== "exception")
+                      return (
+                        <div
+                          key={item.id}
+                          data-testid={`card-closeout-phrase-${item.id}`}
+                          className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-primary/15 bg-secondary/30 p-4"
+                        >
+                          <div>
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="serif text-lg font-semibold">
+                                “{item.phrase}”
+                              </p>
+                              <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-bold text-primary">
+                                {item.reviewState === "routine"
+                                  ? "Routine dictionary match"
+                                  : "Clinician reviewed"}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                              {item.frequency && item.frequency > 1
+                                ? `Heard ${item.frequency} times · `
+                                : ""}
+                              {item.function} · {item.context}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {item.reviewState === "routine" ? (
+                              <Button
+                                variant="quiet"
+                                className="px-3 py-2 text-xs"
+                                onClick={() => reopenRoutinePhrase(item.id)}
+                                data-testid={`button-add-context-${item.id}`}
+                              >
+                                Add context
+                              </Button>
+                            ) : (
+                              <Button
+                                variant="quiet"
+                                className="px-3 py-2 text-xs"
+                                onClick={() => reopenReviewedPhrase(item.id)}
+                                data-testid={`button-reopen-exception-${item.id}`}
+                              >
+                                Edit review
+                              </Button>
+                            )}
+                            <Button
+                              variant="quiet"
+                              className="px-3 py-2 text-xs text-muted-foreground"
+                              onClick={() => removeCaptured(item.id)}
+                              data-testid={`button-remove-review-phrase-${item.id}`}
+                            >
+                              <X size={14} /> Exclude
+                            </Button>
+                          </div>
+                        </div>
+                      );
+                    return (
+                      <div
+                        key={item.id}
+                        className="rounded-2xl border border-border bg-card p-5"
+                      >
+                        <div className="mb-4 flex items-center justify-between gap-3">
+                          <p className="mono text-[10px] font-bold tracking-wider text-muted-foreground">
+                            GESTALT {String(index + 1).padStart(2, "0")}
+                            {item.frequency && item.frequency > 1
+                              ? ` · HEARD ${item.frequency} TIMES`
+                              : ""}
+                          </p>
+                          <Button
+                            variant="quiet"
+                            onClick={() => removeCaptured(item.id)}
+                            data-testid={`button-remove-review-phrase-${item.id}`}
+                          >
+                            <X size={14} /> Remove
+                          </Button>
+                        </div>
+                        {previous && (
+                          <aside
+                            data-testid={`card-previous-gestalt-${item.id}`}
+                            className="mb-5 rounded-2xl border border-accent/40 bg-secondary/45 p-4"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="mono text-[10px] font-bold uppercase tracking-[.16em] text-primary">
+                                  Previously logged
+                                </p>
+                                <p className="mt-1 text-sm font-semibold">
+                                  “{previous.phrase}” is already in{" "}
+                                  {child?.name ?? "this child"}’s map.
+                                </p>
+                              </div>
+                              <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-bold text-primary">
+                                Reference only
+                              </span>
+                            </div>
+                            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                              <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                  Earlier meaning
+                                </p>
+                                <p className="mt-1 text-sm leading-6">
+                                  {previous.meaning}
+                                </p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                  Original source
+                                </p>
+                                <p className="mt-1 text-sm leading-6">
+                                  {previous.source}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="mt-4 border-t border-primary/10 pt-4">
+                              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                Team notes
+                              </p>
+                              {previous.comments?.length ? (
+                                <div className="mt-2 space-y-2">
+                                  {previous.comments.map((comment) => (
+                                    <div
+                                      key={comment.id}
+                                      className="rounded-xl bg-card/70 p-3"
+                                    >
+                                      <p className="text-sm leading-5">
+                                        {comment.body}
+                                      </p>
+                                      <p className="mt-1 text-[11px] text-muted-foreground">
+                                        {comment.author} · {comment.role}
+                                      </p>
+                                    </div>
+                                  ))}
+                                </div>
+                              ) : (
+                                <p className="mt-1 text-sm text-muted-foreground">
+                                  No earlier team notes were recorded for this
+                                  phrase.
+                                </p>
+                              )}
+                            </div>
+                            <p className="mt-4 text-xs leading-5 text-muted-foreground">
+                              This prior entry is shown for context. Confirm the
+                              current meaning and situation for today’s session
+                              independently.
+                            </p>
+                          </aside>
+                        )}
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <Field
+                            label="Exact phrase"
+                            value={item.phrase}
+                            onChange={(value) =>
+                              updateCaptured(item.id, "phrase", value)
+                            }
+                            placeholder="What was said?"
+                            testId={`input-review-phrase-${item.id}`}
+                          />
+                          <Field
+                            label="Working meaning"
+                            value={item.meaning}
+                            onChange={(value) =>
+                              updateCaptured(item.id, "meaning", value)
+                            }
+                            placeholder="What might it mean?"
+                            testId={`input-review-meaning-${item.id}`}
+                          />
+                          <SelectField
+                            label="Function"
+                            value={item.function}
+                            onChange={(value) =>
+                              updateCaptured(item.id, "function", value)
+                            }
+                            options={[
+                              "Request",
+                              "Protest",
+                              "Shared Joy",
+                              "Comment",
+                              "Transition",
+                              "Regulation",
+                              "Self-Advocacy",
+                              "Unknown",
+                            ]}
+                            testId={`select-review-function-${item.id}`}
+                          />
+                          <SelectField
+                            label="Emotional state"
+                            value={item.emotionalState}
+                            onChange={(value) =>
+                              updateCaptured(item.id, "emotionalState", value)
+                            }
+                            options={[
+                              "Regulated",
+                              "Excited",
+                              "Frustrated",
+                              "Dysregulated",
+                              "Tired",
+                              "Unknown",
+                            ]}
+                            testId={`select-review-emotion-${item.id}`}
+                          />
+                          <SelectField
+                            label="Setting"
+                            value={item.context}
+                            onChange={(value) =>
+                              updateCaptured(item.id, "context", value)
+                            }
+                            options={["Therapy", "Home", "School", "Community"]}
+                            testId={`select-review-context-${item.id}`}
+                          />
+                        </div>
+                        <label className="mt-4 block space-y-2">
+                          <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                            What was happening when it was said?
+                          </span>
+                          <textarea
+                            data-testid={`textarea-review-note-${item.id}`}
+                            value={item.note}
+                            onChange={(event) =>
+                              updateCaptured(
+                                item.id,
+                                "note",
+                                event.target.value,
+                              )
+                            }
+                            placeholder="e.g. During a preferred play routine, after I paused and waited..."
+                            className="min-h-24 w-full resize-y rounded-xl border border-input bg-background p-3 text-sm outline-none transition-shadow focus-ring"
+                          />
+                        </label>
+                        <div className="mt-4 flex justify-end">
+                          <Button
+                            variant="primary"
+                            onClick={() => resolveExceptionPhrase(item.id)}
+                            data-testid={`button-resolve-review-phrase-${item.id}`}
+                          >
+                            <Check size={15} /> Mark ready to save
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </section>
+              </>
+            )}
+            {saveError && (
+              <p
+                role="alert"
+                data-testid="status-review-session-error"
+                className="rounded-xl border border-destructive/20 bg-destructive/10 p-4 text-sm text-destructive"
+              >
+                {saveError}
+              </p>
+            )}
+          </>
+        )}
+        {stage === "finalize" && (
+          <section className="rounded-3xl border border-border bg-card p-5 md:p-8">
+            {finalizePreparing ? (
+              <div
+                className="flex min-h-72 flex-col items-center justify-center text-center"
+                data-testid="status-preparing-session-summary"
+              >
+                <span className="grid size-12 place-items-center rounded-full bg-secondary text-primary">
+                  <Sparkles className="animate-pulse" size={22} />
+                </span>
+                <h2 className="serif mt-4 text-2xl font-semibold">
+                  Preparing session summary…
+                </h2>
+                <p className="mt-2 max-w-md text-sm leading-6 text-muted-foreground">
+                  ChildLed is organizing the phrases you confirmed. Your review
+                  is preserved while this finishes.
+                </p>
+              </div>
+            ) : (
+              <>
+                <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
+                  Optional team context
+                </p>
+                <h2 className="serif mt-2 text-2xl font-semibold">
+                  Add a handoff only if it helps
+                </h2>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  ChildLed builds the session summary and editable SOAP draft
+                  from saved reviewed evidence. Add extra observations or next
+                  steps when they are useful for this child’s team.
+                </p>
+                <div className="mt-6 grid gap-5 md:grid-cols-2">
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Clinical observations
+                    </span>
+                    <textarea
+                      data-testid="textarea-session-observations"
+                      value={observations}
+                      onChange={(event) => setObservations(event.target.value)}
+                      placeholder="Optional context for the team…"
+                      className="min-h-28 w-full resize-y rounded-xl border border-input bg-background p-3 text-sm outline-none transition-shadow focus-ring"
+                    />
+                  </label>
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Next steps
+                    </span>
+                    <textarea
+                      data-testid="textarea-session-next-steps"
+                      value={nextSteps}
+                      onChange={(event) => setNextSteps(event.target.value)}
+                      placeholder="Optional follow-up…"
+                      className="min-h-28 w-full resize-y rounded-xl border border-input bg-background p-3 text-sm outline-none transition-shadow focus-ring"
+                    />
+                  </label>
+                </div>
+                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    Editable session summary
+                  </span>
+                  <Button
+                    variant="outline"
+                    onClick={regenerateSessionNote}
+                    data-testid="button-refresh-session-summary"
+                  >
+                    <RotateCcw size={15} /> Refresh summary
+                  </Button>
+                </div>
+                <textarea
+                  data-testid="textarea-session-note"
+                  value={sessionNote}
+                  onChange={(event) => {
+                    setSessionNote(event.target.value);
+                    setSessionNoteEdited(true);
+                  }}
+                  className="mt-2 min-h-64 w-full resize-y rounded-xl border border-input bg-background p-4 text-sm leading-6 outline-none transition-shadow focus-ring"
+                />
+                <div className="mt-5 flex flex-wrap justify-between gap-3">
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={copyNote}
+                      data-testid="button-copy-session-note"
+                    >
+                      <ClipboardList size={16} /> Copy summary
+                    </Button>
+                    <Button variant="outline" onClick={() => window.print()}>
+                      <Printer size={16} /> Print review
                     </Button>
                   </div>
                 </div>
-              );
-            return (
-              <div
-                key={item.id}
-                className="rounded-2xl border border-border bg-card p-5"
-              >
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <p className="mono text-[10px] font-bold tracking-wider text-muted-foreground">
-                    GESTALT {String(index + 1).padStart(2, "0")}
-                    {item.frequency && item.frequency > 1
-                      ? ` · HEARD ${item.frequency} TIMES`
-                      : ""}
+                {saveError && (
+                  <p
+                    data-testid="status-save-session-error"
+                    className="mt-4 rounded-xl bg-destructive/10 p-3 text-sm text-destructive"
+                  >
+                    {saveError}
                   </p>
-                  <Button
-                    variant="quiet"
-                    onClick={() => removeCaptured(item.id)}
-                    data-testid={`button-remove-review-phrase-${item.id}`}
-                  >
-                    <X size={14} /> Remove
-                  </Button>
-                </div>
-                {previous && (
-                  <aside
-                    data-testid={`card-previous-gestalt-${item.id}`}
-                    className="mb-5 rounded-2xl border border-accent/40 bg-secondary/45 p-4"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="mono text-[10px] font-bold uppercase tracking-[.16em] text-primary">
-                          Previously logged
-                        </p>
-                        <p className="mt-1 text-sm font-semibold">
-                          “{previous.phrase}” is already in{" "}
-                          {child?.name ?? "this child"}’s map.
-                        </p>
-                      </div>
-                      <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-bold text-primary">
-                        Reference only
-                      </span>
-                    </div>
-                    <div className="mt-4 grid gap-4 sm:grid-cols-2">
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                          Earlier meaning
-                        </p>
-                        <p className="mt-1 text-sm leading-6">
-                          {previous.meaning}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                          Original source
-                        </p>
-                        <p className="mt-1 text-sm leading-6">
-                          {previous.source}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="mt-4 border-t border-primary/10 pt-4">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                        Team notes
-                      </p>
-                      {previous.comments?.length ? (
-                        <div className="mt-2 space-y-2">
-                          {previous.comments.map((comment) => (
-                            <div
-                              key={comment.id}
-                              className="rounded-xl bg-card/70 p-3"
-                            >
-                              <p className="text-sm leading-5">
-                                {comment.body}
-                              </p>
-                              <p className="mt-1 text-[11px] text-muted-foreground">
-                                {comment.author} · {comment.role}
-                              </p>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          No earlier team notes were recorded for this phrase.
-                        </p>
-                      )}
-                    </div>
-                    <p className="mt-4 text-xs leading-5 text-muted-foreground">
-                      This prior entry is shown for context. Confirm the current
-                      meaning and situation for today’s session independently.
-                    </p>
-                  </aside>
                 )}
-                <div className="grid gap-4 md:grid-cols-2">
-                  <Field
-                    label="Exact phrase"
-                    value={item.phrase}
-                    onChange={(value) =>
-                      updateCaptured(item.id, "phrase", value)
-                    }
-                    placeholder="What was said?"
-                    testId={`input-review-phrase-${item.id}`}
-                  />
-                  <Field
-                    label="Working meaning"
-                    value={item.meaning}
-                    onChange={(value) =>
-                      updateCaptured(item.id, "meaning", value)
-                    }
-                    placeholder="What might it mean?"
-                    testId={`input-review-meaning-${item.id}`}
-                  />
-                  <SelectField
-                    label="Function"
-                    value={item.function}
-                    onChange={(value) =>
-                      updateCaptured(item.id, "function", value)
-                    }
-                    options={[
-                      "Request",
-                      "Protest",
-                      "Shared Joy",
-                      "Comment",
-                      "Transition",
-                      "Regulation",
-                      "Self-Advocacy",
-                      "Unknown",
-                    ]}
-                    testId={`select-review-function-${item.id}`}
-                  />
-                  <SelectField
-                    label="Emotional state"
-                    value={item.emotionalState}
-                    onChange={(value) =>
-                      updateCaptured(item.id, "emotionalState", value)
-                    }
-                    options={[
-                      "Regulated",
-                      "Excited",
-                      "Frustrated",
-                      "Dysregulated",
-                      "Tired",
-                      "Unknown",
-                    ]}
-                    testId={`select-review-emotion-${item.id}`}
-                  />
-                  <SelectField
-                    label="Setting"
-                    value={item.context}
-                    onChange={(value) =>
-                      updateCaptured(item.id, "context", value)
-                    }
-                    options={["Therapy", "Home", "School", "Community"]}
-                    testId={`select-review-context-${item.id}`}
-                  />
-                </div>
-                <label className="mt-4 block space-y-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    What was happening when it was said?
-                  </span>
-                  <textarea
-                    data-testid={`textarea-review-note-${item.id}`}
-                    value={item.note}
-                    onChange={(event) =>
-                      updateCaptured(item.id, "note", event.target.value)
-                    }
-                    placeholder="e.g. During a preferred play routine, after I paused and waited..."
-                    className="min-h-24 w-full resize-y rounded-xl border border-input bg-background p-3 text-sm outline-none transition-shadow focus-ring"
-                  />
-                </label>
-                <div className="mt-4 flex justify-end">
-                  <Button
-                    variant="primary"
-                    onClick={() => resolveExceptionPhrase(item.id)}
-                    data-testid={`button-resolve-review-phrase-${item.id}`}
-                  >
-                    <Check size={15} /> Mark ready to save
-                  </Button>
-                </div>
-              </div>
-            );
-          })}
-        </section>
-        <section className="rounded-3xl border border-border bg-card p-6 md:p-8">
-          <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-            Optional team context
-          </p>
-          <h2 className="serif mt-2 text-2xl font-semibold">
-            Add a handoff only if it helps
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            ChildLed builds the session summary and editable SOAP draft from
-            saved reviewed evidence. Add extra observations or next steps when
-            they are useful for this child’s team.
-          </p>
-          <div className="mt-6 grid gap-5 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Clinical observations
-              </span>
-              <textarea
-                data-testid="textarea-session-observations"
-                value={observations}
-                onChange={(event) => setObservations(event.target.value)}
-                placeholder="Optional context for the team…"
-                className="min-h-28 w-full resize-y rounded-xl border border-input bg-background p-3 text-sm outline-none transition-shadow focus-ring"
-              />
-            </label>
-            <label className="space-y-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Next steps
-              </span>
-              <textarea
-                data-testid="textarea-session-next-steps"
-                value={nextSteps}
-                onChange={(event) => setNextSteps(event.target.value)}
-                placeholder="Optional follow-up…"
-                className="min-h-28 w-full resize-y rounded-xl border border-input bg-background p-3 text-sm outline-none transition-shadow focus-ring"
-              />
-            </label>
-          </div>
-          <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-              Editable session summary
-            </span>
-            <Button
-              variant="outline"
-              onClick={regenerateSessionNote}
-              data-testid="button-refresh-session-summary"
-            >
-              <RotateCcw size={15} /> Refresh summary
-            </Button>
-          </div>
-          <textarea
-            data-testid="textarea-session-note"
-            value={sessionNote}
-            onChange={(event) => {
-              setSessionNote(event.target.value);
-              setSessionNoteEdited(true);
-            }}
-            className="mt-2 min-h-64 w-full resize-y rounded-xl border border-input bg-background p-4 text-sm leading-6 outline-none transition-shadow focus-ring"
-          />
-          <div className="mt-5 flex flex-wrap justify-between gap-3">
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                onClick={copyNote}
-                data-testid="button-copy-session-note"
-              >
-                <ClipboardList size={16} /> Copy summary
-              </Button>
-              <Button variant="outline" onClick={() => window.print()}>
-                <Printer size={16} /> Print review
-              </Button>
-            </div>
-            <Button
-              onClick={() => void saveSession()}
-              disabled={
-                createSession.isPending ||
-                uploadAudio.isPending ||
-                transcriptionPending ||
-                !consentConfirmedAt ||
-                unresolvedChildUtteranceReview ||
-                exceptionCaptured.length > 0 ||
-                (!captured.length &&
-                  !(
-                    transcription &&
-                    transcription.childUtterances.some(
-                      (u) =>
-                        [
-                          "unsure",
-                          "unintelligible",
-                          "context",
-                          "unlabeled",
-                        ].includes(u.disposition) ||
-                        u.intelligibility === "unintelligible",
-                    )
-                  ))
-              }
-              data-testid="button-save-session"
-            >
-              {createSession.isPending || uploadAudio.isPending
-                ? "Saving securely…"
-                : transcriptionPending
-                  ? "Finishing transcript…"
-                  : exceptionCaptured.length
-                    ? "Resolve exceptions to save"
-                    : clinicianReviewedCaptured.length
-                      ? "Save & update workspace"
-                      : "Saving routine evidence…"}{" "}
-              <ArrowRight size={16} />
-            </Button>
-          </div>
-          {saveError && (
-            <p
-              data-testid="status-save-session-error"
-              className="mt-4 rounded-xl bg-destructive/10 p-3 text-sm text-destructive"
-            >
-              {saveError}
-            </p>
-          )}
-        </section>
+              </>
+            )}
+          </section>
+        )}
         {consentModal}
+        {discardModal}
       </div>
     );
 
   return (
-    <div className="mx-auto max-w-5xl space-y-7">
+    <div className={`mx-auto max-w-2xl space-y-5 ${recording ? "pb-28" : ""}`}>
+      {workflowProgress}
+      {workflowActionBar}
       <SectionHeading
-        eyebrow="Session capture · For SLPs"
-        title="Record, then let ChildLed close out the routine work."
-        description={`After you stop a therapy recording for ${child?.name ?? "this child"}, ChildLed protects the audio, prepares the transcript, and brings back only the items that need your judgment.`}
+        eyebrow="Record session"
+        title={`Record ${child?.name ?? "this child"}’s session.`}
+        description="Start when everyone is ready. You can pause at any time, and stopping moves the recording to review."
         action={
           developmentDemoEnabled && (
             <Button
@@ -14287,9 +14894,9 @@ function SessionRecorderPage({
           )
         }
       />
-      <div className="grid gap-5 lg:grid-cols-[.9fr_1.1fr]">
+      <div className="space-y-5">
         <section
-          className={`rounded-3xl p-7 text-primary-foreground soft-shadow md:p-10 ${recording ? "bg-primary" : "bg-primary/95"}`}
+          className={`rounded-3xl p-6 text-primary-foreground soft-shadow md:p-10 ${recording ? "bg-primary" : "bg-primary/95"}`}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -14306,9 +14913,9 @@ function SessionRecorderPage({
               <Timer size={23} />
             </div>
           </div>
-          <div className="my-12 text-center">
+          <div className="my-10 text-center md:my-12">
             <p
-              className={`mono text-6xl font-bold tracking-tight ${recording ? "text-accent" : ""}`}
+              className={`mono text-5xl font-bold sm:text-6xl ${recording ? "text-accent" : ""}`}
             >
               {formattedTime}
             </p>
@@ -14329,13 +14936,15 @@ function SessionRecorderPage({
             {!recording ? (
               <>
                 <Button
+                  className="min-h-12 w-full sm:w-auto"
                   variant="warm"
                   onClick={startRecording}
                   data-testid="button-start-recording"
                 >
-                  <Mic size={17} /> Start recording
+                  <Mic size={17} />
+                  {audioBlob ? "Record again" : "Start recording"}
                 </Button>
-                <label className="inline-flex focus-ring  cursor-pointer items-center gap-2 rounded-xl border border-primary-foreground/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-foreground/10">
+                <label className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-primary-foreground/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-foreground/10 focus-ring sm:w-auto">
                   <Volume2 size={16} /> Use audio file
                   <input
                     data-testid="input-session-audio-file"
@@ -14346,38 +14955,30 @@ function SessionRecorderPage({
                   />
                 </label>
               </>
-            ) : (
-              <>
-                <Button
-                  variant="outline"
-                  className="border-primary-foreground/20 bg-transparent text-primary-foreground hover:bg-primary-foreground/10"
-                  onClick={togglePause}
-                  data-testid="button-pause-recording"
-                >
-                  {paused ? <Play size={16} /> : <Pause size={16} />}
-                  {paused ? "Resume" : "Pause"}
-                </Button>
-                <Button
-                  variant="warm"
-                  onClick={finishRecording}
-                  data-testid="button-stop-recording"
-                >
-                  <Square size={15} fill="currentColor" /> Finish & process
-                </Button>
-              </>
-            )}
+            ) : null}
           </div>
-          {!recording && captured.length > 0 && (
+          {!recording && audioUrl && (
+            <div className="mt-6 rounded-2xl bg-primary-foreground/10 p-4">
+              <p className="mb-3 text-sm font-semibold">Current recording</p>
+              <audio className="w-full" controls src={audioUrl} />
+              <Button
+                className="mt-4 min-h-12 w-full"
+                variant="warm"
+                onClick={() => setStage("review")}
+                data-testid="button-return-to-review"
+              >
+                Continue to review <ArrowRight size={16} />
+              </Button>
+            </div>
+          )}
+          {!recording && !audioBlob && captured.length > 0 && (
             <Button
-              className="mx-auto mt-4"
+              className="mx-auto mt-4 min-h-12 w-full sm:w-auto"
               variant="outline"
-              onClick={() => {
-                setStage("review");
-                setSessionNote(summaryFor());
-              }}
+              onClick={() => setStage("review")}
               data-testid="button-review-without-audio"
             >
-              Close out written session <ArrowRight size={16} />
+              Review written phrases <ArrowRight size={16} />
             </Button>
           )}
           {audioError && (
@@ -14386,122 +14987,8 @@ function SessionRecorderPage({
             </p>
           )}
         </section>
-        <section className="rounded-3xl border border-border bg-card p-6 md:p-8">
-          <div className="mb-6 flex items-start justify-between gap-4">
-            <div>
-              <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-                Live phrase notes
-              </p>
-              <h2 className="serif mt-2 text-2xl font-semibold">
-                Optional clinician capture
-              </h2>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Log a phrase you want to preserve now. ChildLed will reuse a
-                known dictionary match when safe; anything uncertain joins the
-                focused review queue.
-              </p>
-            </div>
-            <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-primary">
-              {captured.length} captured
-            </span>
-          </div>
-          <form onSubmit={addCaptured} className="space-y-4">
-            <label className="block space-y-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                Exact phrase
-              </span>
-              <input
-                data-testid="input-session-phrase"
-                value={phrase}
-                onChange={(event) => setPhrase(event.target.value)}
-                placeholder="e.g. “Blast off!”"
-                className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition-shadow focus-ring"
-              />
-            </label>
-            <label className="block space-y-2">
-              <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                What might it mean?
-              </span>
-              <textarea
-                data-testid="textarea-session-meaning"
-                value={meaning}
-                onChange={(event) => setMeaning(event.target.value)}
-                placeholder="Optional working meaning..."
-                className="min-h-20 w-full resize-y rounded-xl border border-input bg-background p-3 text-sm outline-none transition-shadow focus-ring"
-              />
-            </label>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <SelectField
-                label="Function"
-                value={func}
-                onChange={setFunc}
-                options={[
-                  "Request",
-                  "Protest",
-                  "Shared Joy",
-                  "Comment",
-                  "Transition",
-                  "Regulation",
-                  "Self-Advocacy",
-                  "Unknown",
-                ]}
-                testId="select-session-function"
-              />
-              <SelectField
-                label="Emotional state"
-                value={emotion}
-                onChange={setEmotion}
-                options={[
-                  "Regulated",
-                  "Excited",
-                  "Frustrated",
-                  "Dysregulated",
-                  "Tired",
-                  "Unknown",
-                ]}
-                testId="select-session-emotion"
-              />
-              <SelectField
-                label="Context"
-                value={context}
-                onChange={setContext}
-                options={["Therapy", "Home", "School", "Community"]}
-                testId="select-session-context"
-              />
-            </div>
-            <Button
-              type="submit"
-              variant="warm"
-              disabled={!phrase.trim()}
-              data-testid="button-capture-gestalt"
-            >
-              <Plus size={16} /> Capture phrase
-            </Button>
-          </form>
-          {captured.length > 0 && (
-            <div className="mt-7 space-y-2 border-t border-border pt-6">
-              {captured.map((item, index) => (
-                <div
-                  key={item.id}
-                  className="flex items-start gap-3 rounded-xl bg-muted/60 p-3"
-                >
-                  <span className="mono mt-1 text-[10px] font-bold text-muted-foreground">
-                    {String(index + 1).padStart(2, "0")}
-                  </span>
-                  <div className="min-w-0">
-                    <p className="serif text-lg font-semibold">
-                      “{item.phrase}”
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {item.meaning}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
       </div>
+      {discardModal}
     </div>
   );
 }
@@ -17006,6 +17493,8 @@ function SessionsLandingPage({
   onSaved: (session: Session) => void;
 }) {
   const [, setLocation] = useLocation();
+  const queryClient = useQueryClient();
+  const deleteQueuedSessionDraft = useDeleteSessionTranscriptionDraft();
   const childSelectRef = useRef<HTMLSelectElement | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<number | undefined>(
     initialChildId,
@@ -17022,6 +17511,12 @@ function SessionsLandingPage({
   const [pendingChildSelection, setPendingChildSelection] = useState<{
     childId?: number;
   } | null>(null);
+  const [draftDeletionTarget, setDraftDeletionTarget] = useState<{
+    transcriptId: number;
+    childId: number;
+    childName: string;
+  }>();
+  const [draftDeletionError, setDraftDeletionError] = useState("");
   const sessionsDashboardQuery = useGetSessionsDashboard({
     query: {
       queryKey: getGetSessionsDashboardQueryKey(),
@@ -17084,18 +17579,16 @@ function SessionsLandingPage({
     ? requiringReview.find((item) => item.transcriptId === resumeTranscriptId)
     : undefined;
   const currentWorkflowIndex = activeReviewItem
-    ? activeReviewItem.workflowStatus === "child_phrase_inbox"
-      ? 2
-      : activeReviewItem.workflowStatus === "session_summary"
-        ? 4
-        : 1
+    ? activeReviewItem.workflowStatus === "session_summary"
+      ? 3
+      : 2
     : 0;
   const workflowSteps = [
+    { label: "Start", icon: Play },
     { label: "Record", icon: Mic },
     { label: "Review", icon: ClipboardList },
-    { label: "Phrase Inbox", icon: MessageCircle },
-    { label: "Dictionary", icon: BookOpen },
-    { label: "Session Summary", icon: FileText },
+    { label: "Finalize", icon: FileText },
+    { label: "Complete", icon: Check },
   ];
   const weeklySnapshot = sessionsDashboardQuery.data?.weeklySnapshot;
   const applyChildSelection = (childId?: number) => {
@@ -17124,6 +17617,32 @@ function SessionsLandingPage({
     setOpenedRecording(undefined);
     setStartRequestToken((current) => current + 1);
   };
+  const permanentlyDeleteQueuedDraft = async () => {
+    if (!draftDeletionTarget || deleteQueuedSessionDraft.isPending) return;
+    setDraftDeletionError("");
+    try {
+      await deleteQueuedSessionDraft.mutateAsync({
+        params: {
+          childId: draftDeletionTarget.childId,
+          transcriptId: draftDeletionTarget.transcriptId,
+        },
+      });
+      if (resumeTranscriptId === draftDeletionTarget.transcriptId) {
+        setResumeTranscriptId(undefined);
+        setSessionActive(false);
+      }
+      setDraftDeletionTarget(undefined);
+      await queryClient.invalidateQueries({
+        queryKey: getGetSessionsDashboardQueryKey(),
+      });
+    } catch (error: any) {
+      setDraftDeletionError(
+        error?.data?.error ??
+          error?.message ??
+          "The unfinished session could not be deleted. Please try again.",
+      );
+    }
+  };
   const switchingToChild = children.find(
     (child) => child.id === pendingChildSelection?.childId,
   );
@@ -17137,8 +17656,62 @@ function SessionsLandingPage({
 
   return (
     <div className="min-w-0 max-w-full space-y-7 overflow-x-clip animate-rise">
+      {draftDeletionTarget && (
+        <Modal
+          title="Delete this unfinished session?"
+          onClose={() => {
+            if (deleteQueuedSessionDraft.isPending) return;
+            setDraftDeletionTarget(undefined);
+            setDraftDeletionError("");
+          }}
+        >
+          <div className="space-y-5" data-testid="dialog-delete-session-draft">
+            <p className="text-sm leading-6 text-muted-foreground">
+              This permanently deletes {draftDeletionTarget.childName}’s
+              unfinished recording, transcript, and review work. It cannot be
+              undone.
+            </p>
+            {draftDeletionError && (
+              <p
+                role="alert"
+                className="rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+              >
+                {draftDeletionError}
+              </p>
+            )}
+            <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <Button
+                variant="quiet"
+                className="min-h-12"
+                onClick={() => {
+                  setDraftDeletionTarget(undefined);
+                  setDraftDeletionError("");
+                }}
+                disabled={deleteQueuedSessionDraft.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                className="min-h-12 bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => void permanentlyDeleteQueuedDraft()}
+                disabled={deleteQueuedSessionDraft.isPending}
+                data-testid="button-confirm-delete-session-draft"
+              >
+                <Trash2 size={16} />
+                {deleteQueuedSessionDraft.isPending
+                  ? "Deleting…"
+                  : "Delete permanently"}
+              </Button>
+            </div>
+            <p className="text-xs leading-5 text-muted-foreground">
+              Required security audit records do not contain the recording or
+              transcript.
+            </p>
+          </div>
+        </Modal>
+      )}
       <section
-        className={`${heroSticks ? "sticky top-2 z-20" : ""} overflow-hidden rounded-[2rem] border border-primary/15 bg-card soft-shadow`}
+        className={`${sessionActive ? "hidden" : ""} ${heroSticks ? "sticky top-2 z-20" : ""} overflow-hidden rounded-[2rem] border border-primary/15 bg-card soft-shadow`}
         data-testid="recording-hero"
       >
         <div className="relative p-5 md:p-7 lg:p-8">
@@ -17174,10 +17747,10 @@ function SessionsLandingPage({
                         />
                       )}
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-4">
+                        <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
                           <div className="min-w-0">
                             <h1
-                              className="serif truncate text-3xl font-semibold tracking-tight md:text-4xl"
+                              className="serif break-words text-2xl font-semibold sm:text-3xl md:text-4xl"
                               data-testid="recording-hero-title"
                             >
                               Recording for {selectedChild.name}
@@ -17204,7 +17777,7 @@ function SessionsLandingPage({
                               )}
                             </div>
                           </div>
-                          <label className="shrink-0 text-right">
+                          <label className="w-full text-left sm:w-auto sm:shrink-0 sm:text-right">
                             <span className="sr-only">Switch child</span>
                             <select
                               ref={childSelectRef}
@@ -17214,7 +17787,7 @@ function SessionsLandingPage({
                                   Number(event.target.value) || undefined,
                                 )
                               }
-                              className="h-9 cursor-pointer rounded-xl border border-input bg-card px-2 text-xs font-bold text-muted-foreground outline-none transition-colors hover:bg-secondary/50 focus-ring"
+                              className="h-10 w-full cursor-pointer rounded-xl border border-input bg-card px-2 text-xs font-bold text-muted-foreground outline-none transition-colors hover:bg-secondary/50 focus-ring sm:w-auto"
                               data-testid="select-session-child"
                             >
                               {children.map((child) => (
@@ -17319,37 +17892,24 @@ function SessionsLandingPage({
                   Current workflow step:{" "}
                   {workflowSteps[currentWorkflowIndex].label}
                 </p>
-                <div className="flex min-w-max items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                <div className="grid grid-cols-5 gap-2">
                   {workflowSteps.map((step, index) => {
-                    const Icon = step.icon;
                     const complete = index < currentWorkflowIndex;
                     const current = index === currentWorkflowIndex;
                     return (
                       <div
                         key={step.label}
-                        className="flex items-center gap-1.5"
+                        aria-current={current ? "step" : undefined}
+                        className="min-w-0 text-center"
                       >
-                        <div
-                          aria-current={current ? "step" : undefined}
-                          className={`flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-bold transition-colors ${current ? "border-primary bg-primary text-primary-foreground shadow-sm" : complete ? "border-accent/40 bg-accent/15 text-primary" : "border-border bg-muted/30 text-muted-foreground"}`}
+                        <span
+                          className={`block h-2 rounded-full ${current || complete ? "bg-primary" : "bg-muted"}`}
+                        />
+                        <span
+                          className={`mt-2 block truncate text-[9px] font-bold sm:text-[10px] ${current ? "text-primary" : "text-muted-foreground"}`}
                         >
-                          <span
-                            className={`grid size-4 place-items-center rounded-full ${current ? "bg-primary-foreground/20" : complete ? "bg-accent/25" : "bg-background"}`}
-                          >
-                            {complete ? (
-                              <Check size={10} />
-                            ) : (
-                              <Icon size={10} />
-                            )}
-                          </span>
                           {step.label}
-                        </div>
-                        {index < workflowSteps.length - 1 && (
-                          <ArrowRight
-                            className="shrink-0 text-muted-foreground/30"
-                            size={12}
-                          />
-                        )}
+                        </span>
                       </div>
                     );
                   })}
@@ -17417,6 +17977,13 @@ function SessionsLandingPage({
           resumeTranscriptId={resumeTranscriptId}
           startRequestToken={startRequestToken}
           onSessionActivityChange={setSessionActive}
+          onExit={() => {
+            setResumeTranscriptId(undefined);
+            setOpenedRecording(undefined);
+            setSessionActive(false);
+            setStartRequestToken(0);
+            setLocation("/");
+          }}
           onSaved={onSaved}
         />
       )}
@@ -17658,23 +18225,42 @@ function SessionsLandingPage({
                         </p>
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      className="mt-4 w-full"
-                      onClick={() => {
-                        if (sessionActive) {
-                          setPendingChildSelection({ childId: item.childId });
-                          return;
-                        }
-                        setSelectedChildId(item.childId);
-                        setResumeTranscriptId(item.transcriptId);
-                        setOpenedRecording(undefined);
-                        setStartRequestToken(0);
-                      }}
-                      data-testid={`button-resume-session-${item.transcriptId}`}
-                    >
-                      Continue {item.childName}'s work <ArrowRight size={15} />
-                    </Button>
+                    <div className="mt-4 flex gap-2">
+                      <Button
+                        variant="outline"
+                        className="min-h-11 min-w-0 flex-1"
+                        onClick={() => {
+                          if (sessionActive) {
+                            setPendingChildSelection({ childId: item.childId });
+                            return;
+                          }
+                          setSelectedChildId(item.childId);
+                          setResumeTranscriptId(item.transcriptId);
+                          setOpenedRecording(undefined);
+                          setStartRequestToken(0);
+                        }}
+                        data-testid={`button-resume-session-${item.transcriptId}`}
+                      >
+                        Continue work <ArrowRight size={15} />
+                      </Button>
+                      <Button
+                        variant="quiet"
+                        className="size-11 shrink-0 p-0 text-destructive hover:text-destructive"
+                        onClick={() => {
+                          setDraftDeletionError("");
+                          setDraftDeletionTarget({
+                            transcriptId: item.transcriptId,
+                            childId: item.childId,
+                            childName: item.childName,
+                          });
+                        }}
+                        aria-label={`Delete ${item.childName}'s unfinished session`}
+                        title="Delete unfinished session"
+                        data-testid={`button-delete-session-${item.transcriptId}`}
+                      >
+                        <Trash2 size={17} />
+                      </Button>
+                    </div>
                   </article>
                 );
               })}
