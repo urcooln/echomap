@@ -10,6 +10,9 @@ export {
   textToSpeech,
   textToSpeechStream,
   speechToText,
+  speechToTextWithTimestamps,
+  type TimedTranscriptionSegment,
+  type TimedTranscriptionWord,
   speechToTextWithSpeakers,
   speechToTextStream,
 } from "./client";

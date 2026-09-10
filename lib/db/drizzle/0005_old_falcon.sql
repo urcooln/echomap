@@ -1,0 +1,3 @@
+ALTER TABLE "team_messages" ADD COLUMN "recipient_user_id" text;--> statement-breakpoint
+ALTER TABLE "team_messages" ADD CONSTRAINT "team_messages_recipient_user_id_users_id_fk" FOREIGN KEY ("recipient_user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "team_messages_recipient_created_idx" ON "team_messages" USING btree ("recipient_user_id","created_at");

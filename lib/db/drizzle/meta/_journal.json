@@ -8,6 +8,48 @@
       "when": 1788623677309,
       "tag": "0000_initial_schema",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1788986210420,
+      "tag": "0001_windy_viper",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1789055220389,
+      "tag": "0002_organic_synch",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1789068140514,
+      "tag": "0003_nifty_runaways",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1789069730710,
+      "tag": "0004_careful_spencer_smythe",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1789077292551,
+      "tag": "0005_old_falcon",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789078872402,
+      "tag": "0006_freezing_warbound",
+      "breakpoints": true
     }
   ]
 }

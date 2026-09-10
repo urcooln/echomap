@@ -101,7 +101,7 @@ function ConversationsTab() {
       <div className="lg:col-span-1">
         <form
           onSubmit={handleApply}
-          className="rounded-3xl border border-border bg-card p-6 soft-shadow sticky top-28"
+          className="rounded-3xl border border-border bg-card p-4 soft-shadow lg:sticky lg:top-20 lg:p-6"
           data-testid="form-search-filters"
         >
           <div className="mb-6 flex items-center justify-between">
@@ -214,7 +214,7 @@ function ConversationsTab() {
           <button
             type="submit"
             data-testid="button-apply-filters"
-            className="mt-6 w-full rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-transform hover:-translate-y-0.5 hover:shadow-md focus-ring"
+              className="mt-6 min-h-11 w-full rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground transition-transform hover:-translate-y-0.5 hover:shadow-md focus-ring"
           >
             Apply Filters
           </button>
@@ -286,13 +286,13 @@ function ConversationsTab() {
                   </span>
                 </div>
 
-                <div className="flex gap-4">
+                <div className="flex gap-3 sm:gap-4">
                   <div className="mt-1 shrink-0">
                     <div className="grid size-10 place-items-center rounded-full bg-secondary text-xs font-bold text-foreground shadow-sm ring-2 ring-card">
                       {getInitials(message.senderName)}
                     </div>
                   </div>
-                  <div className="flex-1 space-y-2">
+                  <div className="min-w-0 flex-1 space-y-2">
                     <div className="flex flex-wrap items-baseline gap-2">
                       <span className="text-sm font-semibold text-foreground">
                         {message.senderName}
@@ -348,26 +348,26 @@ function PermissionRow({
   };
 
   return (
-    <div className="flex items-center justify-between rounded-xl border border-border/50 bg-secondary/10 p-4 transition-colors hover:bg-secondary/20">
-      <div className="flex items-center gap-4">
+    <div className="flex flex-col items-stretch gap-4 rounded-xl border border-border/50 bg-secondary/10 p-4 transition-colors hover:bg-secondary/20 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex min-w-0 items-center gap-4">
         <div className="grid size-10 shrink-0 place-items-center rounded-full bg-card text-xs font-bold text-foreground shadow-sm border border-border/50">
           {getInitials(member.name)}
         </div>
-        <div>
+        <div className="min-w-0">
           <p className="text-sm font-semibold text-foreground">{member.name}</p>
-          <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+          <div className="mt-0.5 flex min-w-0 flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="font-medium text-primary">{member.role}</span>
             {member.email && (
               <>
                 <span className="opacity-50">•</span>
-                <span>{member.email}</span>
+                <span className="break-all">{member.email}</span>
               </>
             )}
           </div>
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center justify-end gap-3">
         {updatePermission.isError && (
           <span className="text-xs text-destructive flex items-center gap-1" data-testid={`error-permission-${member.userId}`}>
             <AlertCircle size={12} /> Error
@@ -424,7 +424,7 @@ function PermissionsManager({ childId, childName }: { childId: number; childName
 
   return (
     <div className="animate-rise delay-2">
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h3 className="serif text-xl font-semibold text-foreground">
             Team Access: {childName}
@@ -433,7 +433,7 @@ function PermissionsManager({ childId, childName }: { childId: number; childName
             Manage which organization members have access to this student's workspace.
           </p>
         </div>
-        <div className="rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground">
+        <div className="self-start rounded-lg bg-secondary px-3 py-1.5 text-xs font-semibold text-secondary-foreground sm:self-auto">
           {assignedCount} member{assignedCount !== 1 ? 's' : ''} assigned
         </div>
       </div>
@@ -507,7 +507,7 @@ function AssignmentsTab() {
     <div className="grid gap-8 lg:grid-cols-4">
       {/* Student List Sidebar */}
       <div className="lg:col-span-1">
-        <div className="rounded-3xl border border-border bg-card p-4 soft-shadow sticky top-28">
+        <div className="max-h-[42dvh] overflow-y-auto overscroll-contain rounded-3xl border border-border bg-card p-4 soft-shadow lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)]">
           <h2 className="mb-4 px-2 text-sm font-semibold text-muted-foreground uppercase tracking-wider">
             Select Student
           </h2>
@@ -536,7 +536,7 @@ function AssignmentsTab() {
 
       {/* Permissions Main Area */}
       <div className="lg:col-span-3">
-        <div className="rounded-3xl border border-border bg-card p-6 soft-shadow sm:p-8">
+        <div className="rounded-3xl border border-border bg-card p-4 soft-shadow sm:p-8">
           {selectedChildId && selectedChild ? (
             <PermissionsManager childId={selectedChildId} childName={selectedChild.name} />
           ) : (
@@ -569,7 +569,7 @@ export function AdminConversationCenter() {
         </p>
       </div>
 
-      <div className="mb-8 flex gap-2 border-b border-border/50 pb-px" role="tablist">
+      <div className="mb-6 flex max-w-full gap-2 overflow-x-auto border-b border-border/50 pb-px sm:mb-8" role="tablist">
         <button
           role="tab"
           aria-selected={activeTab === 'conversations'}

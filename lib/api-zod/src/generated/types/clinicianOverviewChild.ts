@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { IepServiceRequirement } from './iepServiceRequirement';
 
 export interface ClinicianOverviewChild {
   childId: number;
@@ -17,4 +18,5 @@ export interface ClinicianOverviewChild {
   /** @nullable */
   latestActivityAt: Date | null;
   latestActivityLabel: string;
+  serviceRequirements: IepServiceRequirement[];
 }

@@ -1,5 +1,6 @@
 import {
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -13,7 +14,12 @@ import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
 
-export const applicationRoleValues = ["clinician", "parent", "teacher", "admin"] as const;
+export const applicationRoleValues = [
+  "clinician",
+  "parent",
+  "teacher",
+  "admin",
+] as const;
 
 export const organizationsTable = pgTable(
   "organizations",
@@ -29,8 +35,13 @@ export const organizationsTable = pgTable(
     betaApprovedAt: timestamp("beta_approved_at", { withTimezone: true }),
     betaCohort: text("beta_cohort"),
     betaUserLimit: integer("beta_user_limit"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [uniqueIndex("organizations_slug_unique").on(table.slug)],
 );
@@ -49,11 +60,19 @@ export const usersTable = pgTable(
     disabledReason: text("disabled_reason"),
     betaApprovedAt: timestamp("beta_approved_at", { withTimezone: true }),
     betaCohort: text("beta_cohort"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("users_provider_subject_unique").on(table.identityProvider, table.providerSubject),
+    uniqueIndex("users_provider_subject_unique").on(
+      table.identityProvider,
+      table.providerSubject,
+    ),
     index("users_email_idx").on(table.email),
   ],
 );
@@ -70,12 +89,23 @@ export const organizationMembershipsTable = pgTable(
       .references(() => usersTable.id, { onDelete: "restrict" }),
     role: text("role").notNull(),
     active: boolean("active").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("organization_memberships_org_user_unique").on(table.organizationId, table.userId),
-    index("organization_memberships_user_active_idx").on(table.userId, table.active),
+    uniqueIndex("organization_memberships_org_user_unique").on(
+      table.organizationId,
+      table.userId,
+    ),
+    index("organization_memberships_user_active_idx").on(
+      table.userId,
+      table.active,
+    ),
   ],
 );
 
@@ -95,13 +125,24 @@ export const childProfilesTable = pgTable(
     school: text("school").notNull().default(""),
     grade: text("grade").notNull().default(""),
     communicationStyle: text("communication_style").notNull().default(""),
-    profileDetails: jsonb("profile_details").$type<Record<string, unknown>>().notNull().default({}),
+    profileDetails: jsonb("profile_details")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    index("child_profiles_org_active_idx").on(table.organizationId, table.archivedAt),
+    index("child_profiles_org_active_idx").on(
+      table.organizationId,
+      table.archivedAt,
+    ),
   ],
 );
 
@@ -117,11 +158,19 @@ export const childCareTeamMembershipsTable = pgTable(
       .references(() => usersTable.id, { onDelete: "restrict" }),
     role: text("role").notNull(),
     active: boolean("active").notNull().default(true),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("child_care_team_child_user_unique").on(table.childId, table.userId),
+    uniqueIndex("child_care_team_child_user_unique").on(
+      table.childId,
+      table.userId,
+    ),
     index("child_care_team_user_active_idx").on(table.userId, table.active),
   ],
 );
@@ -147,14 +196,23 @@ export const clinicalGestaltsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("clinical_gestalts_child_phrase_unique")
       .on(table.childId, table.normalizedPhrase)
       .where(sql`${table.archivedAt} IS NULL`),
-    index("clinical_gestalts_org_child_active_idx").on(table.organizationId, table.childId, table.archivedAt),
+    index("clinical_gestalts_org_child_active_idx").on(
+      table.organizationId,
+      table.childId,
+      table.archivedAt,
+    ),
   ],
 );
 
@@ -177,15 +235,26 @@ export const clinicalObservationsTable = pgTable(
     videoObjectPath: text("video_object_path"),
     videoContentType: text("video_content_type"),
     videoSizeBytes: integer("video_size_bytes"),
-    videoConsentConfirmedAt: timestamp("video_consent_confirmed_at", { withTimezone: true }),
-    videoConsentConfirmedByUserId: text("video_consent_confirmed_by_user_id")
-      .references(() => usersTable.id, { onDelete: "restrict" }),
+    videoConsentConfirmedAt: timestamp("video_consent_confirmed_at", {
+      withTimezone: true,
+    }),
+    videoConsentConfirmedByUserId: text(
+      "video_consent_confirmed_by_user_id",
+    ).references(() => usersTable.id, { onDelete: "restrict" }),
     createdByUserId: text("created_by_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
-  (table) => [index("clinical_observations_org_child_created_idx").on(table.organizationId, table.childId, table.createdAt)],
+  (table) => [
+    index("clinical_observations_org_child_created_idx").on(
+      table.organizationId,
+      table.childId,
+      table.createdAt,
+    ),
+  ],
 );
 
 /**
@@ -203,13 +272,17 @@ export const observationVideoUploadsTable = pgTable(
     childId: integer("child_id")
       .notNull()
       .references(() => childProfilesTable.id, { onDelete: "restrict" }),
-    observationId: integer("observation_id")
-      .references(() => clinicalObservationsTable.id, { onDelete: "cascade" }),
+    observationId: integer("observation_id").references(
+      () => clinicalObservationsTable.id,
+      { onDelete: "cascade" },
+    ),
     stagingObjectPath: text("staging_object_path").notNull(),
     finalObjectPath: text("final_object_path"),
     contentType: text("content_type").notNull(),
     sizeBytes: integer("size_bytes").notNull(),
-    consentConfirmedAt: timestamp("consent_confirmed_at", { withTimezone: true }).notNull(),
+    consentConfirmedAt: timestamp("consent_confirmed_at", {
+      withTimezone: true,
+    }).notNull(),
     uploadedByUserId: text("uploaded_by_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
@@ -217,13 +290,27 @@ export const observationVideoUploadsTable = pgTable(
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     attachedAt: timestamp("attached_at", { withTimezone: true }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("observation_video_uploads_staging_path_unique").on(table.stagingObjectPath),
-    index("observation_video_uploads_org_child_status_idx").on(table.organizationId, table.childId, table.status),
-    index("observation_video_uploads_expiry_idx").on(table.status, table.expiresAt),
+    uniqueIndex("observation_video_uploads_staging_path_unique").on(
+      table.stagingObjectPath,
+    ),
+    index("observation_video_uploads_org_child_status_idx").on(
+      table.organizationId,
+      table.childId,
+      table.status,
+    ),
+    index("observation_video_uploads_expiry_idx").on(
+      table.status,
+      table.expiresAt,
+    ),
   ],
 );
 
@@ -237,7 +324,15 @@ export const therapySessionsTable = pgTable(
     childId: integer("child_id")
       .notNull()
       .references(() => childProfilesTable.id, { onDelete: "restrict" }),
+    sessionMode: text("session_mode").notNull().default("recorded"),
+    sessionDate: date("session_date", { mode: "string" })
+      .notNull()
+      .default(sql`CURRENT_DATE`),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
     durationSeconds: integer("duration_seconds").notNull().default(0),
+    durationSource: text("duration_source").notNull().default("recording"),
+    durationEdited: boolean("duration_edited").notNull().default(false),
     clinicalObservations: text("clinical_observations").notNull().default(""),
     nextSteps: text("next_steps").notNull().default(""),
     note: text("note").notNull(),
@@ -245,10 +340,21 @@ export const therapySessionsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
-  (table) => [index("therapy_sessions_org_child_created_idx").on(table.organizationId, table.childId, table.createdAt)],
+  (table) => [
+    index("therapy_sessions_org_child_created_idx").on(
+      table.organizationId,
+      table.childId,
+      table.createdAt,
+    ),
+  ],
 );
 
 export const therapySessionGestaltsTable = pgTable(
@@ -258,7 +364,10 @@ export const therapySessionGestaltsTable = pgTable(
     sessionId: integer("session_id")
       .notNull()
       .references(() => therapySessionsTable.id, { onDelete: "cascade" }),
-    gestaltId: integer("gestalt_id").references(() => clinicalGestaltsTable.id, { onDelete: "set null" }),
+    gestaltId: integer("gestalt_id").references(
+      () => clinicalGestaltsTable.id,
+      { onDelete: "set null" },
+    ),
     transcriptPhraseId: integer("transcript_phrase_id"),
     phraseInboxItemId: integer("phrase_inbox_item_id"),
     /**
@@ -272,31 +381,64 @@ export const therapySessionGestaltsTable = pgTable(
     context: text("context").notNull(),
     emotionalState: text("emotional_state").notNull(),
     note: text("note").notNull().default(""),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
-  (table) => [index("therapy_session_gestalts_session_idx").on(table.sessionId)],
+  (table) => [
+    index("therapy_session_gestalts_session_idx").on(table.sessionId),
+  ],
 );
 
-export const audioObjectStatusValues = ["staged", "ready", "attached", "deleted", "failed"] as const;
-export const sessionAudioPurposeValues = ["session_recording", "speaker_calibration"] as const;
+export const audioObjectStatusValues = [
+  "staged",
+  "ready",
+  "attached",
+  "deleted",
+  "failed",
+] as const;
+export const sessionAudioPurposeValues = [
+  "session_recording",
+  "speaker_calibration",
+  "unintelligible_clip",
+] as const;
 export const calibrationRoleValues = ["clinician", "caregiver"] as const;
-export const sessionPreparationStatusValues = ["active", "ready", "completed", "revoked", "expired"] as const;
+export const sessionPreparationStatusValues = [
+  "active",
+  "ready",
+  "completed",
+  "revoked",
+  "expired",
+] as const;
 
 export const sessionRecordingPreparationsTable = pgTable(
   "session_recording_preparations",
   {
     id: text("id").primaryKey(),
-    organizationId: integer("organization_id").notNull().references(() => organizationsTable.id, { onDelete: "restrict" }),
-    childId: integer("child_id").notNull().references(() => childProfilesTable.id, { onDelete: "restrict" }),
-    createdByUserId: text("created_by_user_id").notNull().references(() => usersTable.id, { onDelete: "restrict" }),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    childId: integer("child_id")
+      .notNull()
+      .references(() => childProfilesTable.id, { onDelete: "restrict" }),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
     status: text("status").notNull().default("active"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     completedAt: timestamp("completed_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
   },
   (table) => [
-    index("session_recording_preparations_owner_idx").on(table.organizationId, table.childId, table.createdByUserId, table.status),
+    index("session_recording_preparations_owner_idx").on(
+      table.organizationId,
+      table.childId,
+      table.createdByUserId,
+      table.status,
+    ),
   ],
 );
 
@@ -310,9 +452,15 @@ export const sessionAudioObjectsTable = pgTable(
     childId: integer("child_id")
       .notNull()
       .references(() => childProfilesTable.id, { onDelete: "restrict" }),
-    sessionId: integer("session_id").references(() => therapySessionsTable.id, { onDelete: "set null" }),
-    preparationId: text("preparation_id").references(() => sessionRecordingPreparationsTable.id, { onDelete: "set null" }),
+    sessionId: integer("session_id").references(() => therapySessionsTable.id, {
+      onDelete: "set null",
+    }),
+    preparationId: text("preparation_id").references(
+      () => sessionRecordingPreparationsTable.id,
+      { onDelete: "set null" },
+    ),
     purpose: text("purpose").notNull().default("session_recording"),
+    sourceTranscriptSegmentId: integer("source_transcript_segment_id"),
     calibrationRole: text("calibration_role"),
     durationMilliseconds: integer("duration_milliseconds"),
     storageDriver: text("storage_driver").notNull(),
@@ -323,46 +471,101 @@ export const sessionAudioObjectsTable = pgTable(
     uploadedByUserId: text("uploaded_by_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
-    consentConfirmedAt: timestamp("consent_confirmed_at", { withTimezone: true }).notNull(),
+    consentConfirmedAt: timestamp("consent_confirmed_at", {
+      withTimezone: true,
+    }).notNull(),
     consentConfirmedByUserId: text("consent_confirmed_by_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
-    uniqueIndex("session_audio_objects_driver_key_unique").on(table.storageDriver, table.objectKey),
-    index("session_audio_objects_org_child_status_idx").on(table.organizationId, table.childId, table.status),
+    uniqueIndex("session_audio_objects_driver_key_unique").on(
+      table.storageDriver,
+      table.objectKey,
+    ),
+    index("session_audio_objects_org_child_status_idx").on(
+      table.organizationId,
+      table.childId,
+      table.status,
+    ),
     index("session_audio_objects_session_idx").on(table.sessionId),
     index("session_audio_objects_preparation_idx").on(table.preparationId),
+    uniqueIndex("session_audio_objects_source_segment_unique")
+      .on(table.sourceTranscriptSegmentId)
+      .where(
+        sql`${table.sourceTranscriptSegmentId} IS NOT NULL AND ${table.deletedAt} IS NULL`,
+      ),
   ],
 );
 
-export const insertOrganizationSchema = createInsertSchema(organizationsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertUserSchema = createInsertSchema(usersTable).omit({ createdAt: true, updatedAt: true });
-export const insertOrganizationMembershipSchema = createInsertSchema(organizationMembershipsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertChildProfileSchema = createInsertSchema(childProfilesTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertChildCareTeamMembershipSchema = createInsertSchema(childCareTeamMembershipsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertClinicalGestaltSchema = createInsertSchema(clinicalGestaltsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertClinicalObservationSchema = createInsertSchema(clinicalObservationsTable).omit({ id: true, createdAt: true });
-export const insertObservationVideoUploadSchema = createInsertSchema(observationVideoUploadsTable).omit({ createdAt: true, updatedAt: true });
-export const insertTherapySessionSchema = createInsertSchema(therapySessionsTable).omit({ id: true, createdAt: true, updatedAt: true });
-export const insertTherapySessionGestaltSchema = createInsertSchema(therapySessionGestaltsTable).omit({ id: true, createdAt: true });
-export const insertSessionAudioObjectSchema = createInsertSchema(sessionAudioObjectsTable).omit({ createdAt: true });
-export const insertSessionRecordingPreparationSchema = createInsertSchema(sessionRecordingPreparationsTable).omit({ createdAt: true, completedAt: true, revokedAt: true });
+export const insertOrganizationSchema = createInsertSchema(
+  organizationsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertUserSchema = createInsertSchema(usersTable).omit({
+  createdAt: true,
+  updatedAt: true,
+});
+export const insertOrganizationMembershipSchema = createInsertSchema(
+  organizationMembershipsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertChildProfileSchema = createInsertSchema(
+  childProfilesTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertChildCareTeamMembershipSchema = createInsertSchema(
+  childCareTeamMembershipsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertClinicalGestaltSchema = createInsertSchema(
+  clinicalGestaltsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertClinicalObservationSchema = createInsertSchema(
+  clinicalObservationsTable,
+).omit({ id: true, createdAt: true });
+export const insertObservationVideoUploadSchema = createInsertSchema(
+  observationVideoUploadsTable,
+).omit({ createdAt: true, updatedAt: true });
+export const insertTherapySessionSchema = createInsertSchema(
+  therapySessionsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertTherapySessionGestaltSchema = createInsertSchema(
+  therapySessionGestaltsTable,
+).omit({ id: true, createdAt: true });
+export const insertSessionAudioObjectSchema = createInsertSchema(
+  sessionAudioObjectsTable,
+).omit({ createdAt: true });
+export const insertSessionRecordingPreparationSchema = createInsertSchema(
+  sessionRecordingPreparationsTable,
+).omit({ createdAt: true, completedAt: true, revokedAt: true });
 
 export type ApplicationRole = (typeof applicationRoleValues)[number];
 export type InsertOrganization = z.infer<typeof insertOrganizationSchema>;
 export type InsertUser = z.infer<typeof insertUserSchema>;
-export type InsertOrganizationMembership = z.infer<typeof insertOrganizationMembershipSchema>;
+export type InsertOrganizationMembership = z.infer<
+  typeof insertOrganizationMembershipSchema
+>;
 export type InsertChildProfile = z.infer<typeof insertChildProfileSchema>;
-export type InsertChildCareTeamMembership = z.infer<typeof insertChildCareTeamMembershipSchema>;
+export type InsertChildCareTeamMembership = z.infer<
+  typeof insertChildCareTeamMembershipSchema
+>;
 export type InsertClinicalGestalt = z.infer<typeof insertClinicalGestaltSchema>;
-export type InsertClinicalObservation = z.infer<typeof insertClinicalObservationSchema>;
-export type InsertObservationVideoUpload = z.infer<typeof insertObservationVideoUploadSchema>;
+export type InsertClinicalObservation = z.infer<
+  typeof insertClinicalObservationSchema
+>;
+export type InsertObservationVideoUpload = z.infer<
+  typeof insertObservationVideoUploadSchema
+>;
 export type InsertTherapySession = z.infer<typeof insertTherapySessionSchema>;
-export type InsertTherapySessionGestalt = z.infer<typeof insertTherapySessionGestaltSchema>;
-export type InsertSessionAudioObject = z.infer<typeof insertSessionAudioObjectSchema>;
-export type InsertSessionRecordingPreparation = z.infer<typeof insertSessionRecordingPreparationSchema>;
+export type InsertTherapySessionGestalt = z.infer<
+  typeof insertTherapySessionGestaltSchema
+>;
+export type InsertSessionAudioObject = z.infer<
+  typeof insertSessionAudioObjectSchema
+>;
+export type InsertSessionRecordingPreparation = z.infer<
+  typeof insertSessionRecordingPreparationSchema
+>;
 export type SessionAudioPurpose = (typeof sessionAudioPurposeValues)[number];
 export type CalibrationRole = (typeof calibrationRoleValues)[number];

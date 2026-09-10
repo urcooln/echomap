@@ -395,22 +395,22 @@ function ProfileSection({ childId, canContribute, sectionData }: { childId: numb
 
 function HistoryModal({ history, onClose }: { history: SharedChildProfileHistoryEvent[], onClose: () => void }) {
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/45 p-4 backdrop-blur-sm animate-in fade-in duration-200">
-      <div role="dialog" aria-modal="true" className="brand-card flex max-h-[90dvh] w-full max-w-2xl flex-col overflow-hidden rounded-3xl border border-border bg-card shadow-2xl">
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border p-6 md:p-8">
+    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/45 p-2 backdrop-blur-sm animate-in fade-in duration-200 sm:p-4">
+      <div role="dialog" aria-modal="true" className="brand-card flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[90dvh] sm:rounded-3xl">
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border p-4 sm:p-6 md:p-8">
           <div>
             <h2 className="serif text-2xl font-semibold">Profile History</h2>
             <p className="mt-1 text-sm text-muted-foreground">Recent changes to the shared living profile.</p>
           </div>
           <button 
             onClick={onClose} 
-            className="focus-ring flex size-8 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground hover:text-foreground"
+            className="focus-ring flex size-11 shrink-0 items-center justify-center rounded-full bg-secondary text-muted-foreground hover:text-foreground sm:size-9"
           >
             <X size={16} />
           </button>
         </div>
         
-        <div className="flex-1 overflow-y-auto p-6 md:p-8">
+        <div className="flex-1 overflow-y-auto overscroll-contain p-4 sm:p-6 md:p-8">
           {history.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <History size={32} className="mb-4 text-muted-foreground/30" />
@@ -419,7 +419,7 @@ function HistoryModal({ history, onClose }: { history: SharedChildProfileHistory
           ) : (
             <div className="space-y-6 relative before:absolute before:inset-y-0 before:left-[15px] before:w-[2px] before:bg-border">
               {history.map((event) => (
-                <div key={event.id} className="relative flex gap-4 pl-10">
+                <div key={event.id} className="relative flex gap-3 pl-9 sm:gap-4 sm:pl-10">
                   <div className="absolute left-[11px] top-1 h-2.5 w-2.5 rounded-full border-2 border-card bg-primary shadow-sm" />
                   <div className="w-full">
                     <div className="flex flex-wrap items-center justify-between gap-2">

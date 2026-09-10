@@ -12,7 +12,6 @@ import type { Viewer, RolePreviewInputRole } from '@workspace/api-client-react';
 import {
   ShieldAlert,
   LogOut,
-  FlaskConical,
   Check,
   Minus,
   Play,
@@ -21,7 +20,7 @@ import {
   Info
 } from 'lucide-react';
 
-export function SuperAdminPreviewBanner({
+export function SuperAdminRoleSwitcher({
   viewer,
   onViewerChange,
 }: {
@@ -61,63 +60,40 @@ export function SuperAdminPreviewBanner({
   };
 
   return (
-    <div 
-      className="bg-primary px-5 py-3 text-primary-foreground flex flex-wrap items-center justify-between gap-4 border-b border-primary-foreground/10 shadow-[0_4px_12px_-4px_hsl(var(--primary)/.5)]"
-      data-testid="super-admin-preview-banner"
-    >
-      <div className="flex items-center gap-3">
-        <div className="grid size-9 place-items-center rounded-xl bg-primary-foreground/20 text-primary-foreground">
-          <FlaskConical size={18} />
-        </div>
-        <div>
-          <p className="text-sm font-semibold" data-testid="banner-role-status">
-            {isPreviewing ? `Viewing as ${viewer.role === 'Administrator' ? 'Admin' : viewer.role}` : 'Super Admin Mode'}
-          </p>
-          <p className="text-xs text-primary-foreground/80">
-            {isPreviewing 
-              ? 'You are viewing the workspace as a simulated user.' 
-              : 'You have full access to all roles and testing tools.'}
-          </p>
-        </div>
+    <div className="flex min-w-0 items-center gap-1.5" data-testid="super-admin-role-switcher">
+      <div className="relative min-w-0">
+        <Eye size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+        <select
+          aria-label="Select role to preview"
+          title="Preview the application as another role"
+          data-testid="select-role-preview"
+          value={isPreviewing ? viewer.role : ''}
+          onChange={(event) => handleRoleChange(event.target.value)}
+          disabled={setRolePreview.isPending}
+          className="h-11 w-[8.25rem] appearance-none rounded-md border border-input bg-card pl-8 pr-2 text-xs font-semibold text-foreground outline-none focus-ring disabled:opacity-50 sm:h-9 sm:w-[9.5rem]"
+        >
+          <option value="" disabled>Preview role</option>
+          <option value="SLP">SLP</option>
+          <option value="Parent">Parent</option>
+          <option value="Teacher">Teacher</option>
+          <option value="Administrator">Admin</option>
+        </select>
       </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative">
-          <select
-            aria-label="Select role to preview"
-            data-testid="select-role-preview"
-            value={isPreviewing ? viewer.role : ''}
-            onChange={(e) => handleRoleChange(e.target.value)}
-            disabled={setRolePreview.isPending}
-            className="appearance-none rounded-xl border border-primary-foreground/20 bg-primary-foreground/10 pl-4 pr-10 py-2.5 text-sm font-semibold text-primary-foreground outline-none transition-colors hover:bg-primary-foreground/20 focus-ring disabled:opacity-50"
-          >
-            <option value="" disabled className="text-foreground">Select role to preview...</option>
-            <option value="SLP" className="text-foreground">SLP</option>
-            <option value="Parent" className="text-foreground">Parent</option>
-            <option value="Teacher" className="text-foreground">Teacher</option>
-            <option value="Administrator" className="text-foreground">Admin</option>
-          </select>
-          <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-primary-foreground/70">
-            <Eye size={16} />
-          </div>
-        </div>
-
-        {isPreviewing && (
-          <button
-            onClick={handleClearPreview}
-            disabled={clearRolePreview.isPending}
-            data-testid="button-clear-role-preview"
-            className="inline-flex items-center gap-2 rounded-xl bg-primary-foreground px-4 py-2.5 text-sm font-semibold text-primary transition-all hover:-translate-y-0.5 hover:bg-primary-foreground/90 focus-ring disabled:opacity-50"
-          >
-            <LogOut size={16} />
-            Return to Admin View
-          </button>
-        )}
-      </div>
+      {isPreviewing && (
+        <button
+          onClick={handleClearPreview}
+          disabled={clearRolePreview.isPending}
+          data-testid="button-clear-role-preview"
+          aria-label="Return to super admin view"
+          title="Return to super admin view"
+          className="grid size-11 shrink-0 place-items-center rounded-md border border-input bg-card text-primary hover:bg-muted focus-ring disabled:opacity-50 sm:size-9"
+        >
+          <LogOut size={15} />
+        </button>
+      )}
     </div>
   );
 }
-
 export function UxTestingCenter({
   viewer,
   onViewerChange,
@@ -212,7 +188,7 @@ export function UxTestingCenter({
   }
 
   return (
-    <div className="animate-in fade-in duration-500">
+    <div className="min-w-0 max-w-full overflow-x-hidden animate-in fade-in duration-500">
       <div className="mb-8 flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="mono mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">Super Admin Tools</p>
@@ -223,8 +199,7 @@ export function UxTestingCenter({
         </div>
       </div>
 
-      <div className="brand-card mb-8 rounded-3xl border border-border bg-card p-6 md:p-8 soft-shadow relative overflow-hidden">
-        <div className="absolute -right-20 -top-20 size-64 rounded-full border-[30px] border-primary/5 opacity-50" />
+      <div className="brand-card relative mb-8 overflow-hidden rounded-3xl border border-border bg-card p-4 soft-shadow sm:p-6 md:p-8">
         <div className="relative">
           <div className="mb-6 flex items-center gap-3">
             <div className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
@@ -263,7 +238,7 @@ export function UxTestingCenter({
         <h2 className="serif mb-5 text-2xl font-semibold">Representative Workflows</h2>
         <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {uxTesting.workflows.map((workflow) => (
-            <div key={`${workflow.label}-${workflow.path}`} className="brand-card flex flex-col rounded-3xl border border-border bg-card p-6 soft-shadow transition-all hover:border-primary/20 hover:shadow-md">
+            <div key={`${workflow.label}-${workflow.path}`} className="brand-card flex flex-col rounded-3xl border border-border bg-card p-4 soft-shadow transition-all hover:border-primary/20 hover:shadow-md sm:p-6">
               <h3 className="font-semibold text-foreground">{workflow.label}</h3>
               <p className="mt-2 flex-1 text-sm text-muted-foreground">{workflow.description}</p>
               <div className="mt-6 flex flex-wrap gap-2 pt-4 border-t border-border/50">
@@ -287,8 +262,32 @@ export function UxTestingCenter({
 
       <div>
         <h2 className="serif mb-5 text-2xl font-semibold">Access Matrix</h2>
-        <div className="brand-card overflow-x-auto rounded-3xl border border-border bg-card soft-shadow">
-          <table className="w-full text-left text-sm whitespace-nowrap">
+        <div className="brand-card w-full max-w-full overflow-x-auto overscroll-x-contain rounded-3xl border border-border bg-card soft-shadow">
+          <div className="divide-y divide-border sm:hidden">
+            {uxTesting.permissions.map((permission) => (
+              <section key={permission.role} className="p-4">
+                <h3 className="font-semibold text-foreground">
+                  {permission.label}
+                </h3>
+                <ul className="mt-3 space-y-2">
+                  {permission.capabilities.map((capability) => (
+                    <li
+                      key={capability}
+                      className="flex items-start gap-2 text-sm text-muted-foreground"
+                    >
+                      <Check
+                        className="mt-0.5 shrink-0 text-primary"
+                        size={15}
+                        strokeWidth={3}
+                      />
+                      <span>{capability}</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+          <table className="hidden w-full min-w-[32rem] whitespace-nowrap text-left text-sm sm:table">
             <thead className="bg-secondary/30 text-muted-foreground">
               <tr>
                 <th className="p-5 font-semibold w-1/3">Capability</th>

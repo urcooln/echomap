@@ -33,6 +33,11 @@ export interface UnclearVocalizationOccurrence {
   /** @nullable */
   crossSessionLabel: string | null;
   /**
+     * Authenticated URL for the retained short clip; null when source timing was unavailable.
+     * @nullable
+     */
+  audioClipUrl: string | null;
+  /**
      * Revision token for optimistic concurrency. Null means no clinician review row existed when this occurrence was read.
      * @nullable
      */

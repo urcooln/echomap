@@ -112,6 +112,262 @@ export const UpdateCommunicationGoalResponse = zod.object({
 
 
 /**
+ * @summary Load active IEP goals and current service requirements for manual tracking
+ */
+export const GetManualSessionSetupQueryParams = zod.object({
+  "childId": zod.coerce.number()
+})
+
+export const getManualSessionSetupResponseServiceRequirementsItemSessionsCompletedMin = 0;
+
+export const getManualSessionSetupResponseServiceRequirementsItemSessionsRemainingMin = 0;
+
+export const getManualSessionSetupResponseServiceRequirementsItemMinutesCompletedMin = 0;
+
+export const getManualSessionSetupResponseServiceRequirementsItemMinutesRemainingMin = 0;
+
+
+
+export const GetManualSessionSetupResponse = zod.object({
+  "childId": zod.number(),
+  "goals": zod.array(zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "title": zod.string(),
+  "goalArea": zod.string(),
+  "description": zod.string(),
+  "status": zod.enum(['active', 'archived']),
+  "startDate": zod.coerce.date(),
+  "targetDate": zod.coerce.date().nullable(),
+  "version": zod.number(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})),
+  "serviceRequirements": zod.array(zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "serviceName": zod.string(),
+  "requiredSessions": zod.number(),
+  "requiredMinutes": zod.number(),
+  "sessionDurationMinutes": zod.number(),
+  "period": zod.enum(['weekly', 'monthly']),
+  "effectiveFrom": zod.coerce.date(),
+  "effectiveTo": zod.coerce.date().nullable(),
+  "periodLabel": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "sessionsCompleted": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemSessionsCompletedMin),
+  "sessionsRemaining": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemSessionsRemainingMin),
+  "minutesCompleted": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemMinutesCompletedMin),
+  "minutesRemaining": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemMinutesRemainingMin),
+  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "updatedAt": zod.coerce.date()
+}))
+})
+
+
+/**
+ * @summary Save a completed non-recorded therapy session
+ */
+export const CreateManualSessionQueryParams = zod.object({
+  "childId": zod.coerce.number()
+})
+
+export const createManualSessionBodyDurationSecondsMin = 60;
+export const createManualSessionBodyDurationSecondsMax = 28800;
+
+export const createManualSessionBodyTimerElapsedSecondsMin = 0;
+export const createManualSessionBodyTimerElapsedSecondsMax = 28800;
+
+export const createManualSessionBodyGoalsItemAccuracyPercentMin = 0;
+export const createManualSessionBodyGoalsItemAccuracyPercentMax = 100;
+
+export const createManualSessionBodyGoalsItemSuccessfulAttemptsMin = 0;
+
+export const createManualSessionBodyGoalsItemTotalAttemptsMin = 0;
+
+export const createManualSessionBodyGoalsItemProgressNoteMax = 4000;
+
+export const createManualSessionBodyGoalsMax = 50;
+
+export const createManualSessionBodyNoteMax = 10000;
+
+
+
+export const CreateManualSessionBody = zod.object({
+  "sessionDate": zod.coerce.date(),
+  "startedAt": zod.coerce.date().nullish(),
+  "endedAt": zod.coerce.date().nullish(),
+  "durationSeconds": zod.number().min(createManualSessionBodyDurationSecondsMin).max(createManualSessionBodyDurationSecondsMax),
+  "timerElapsedSeconds": zod.number().min(createManualSessionBodyTimerElapsedSecondsMin).max(createManualSessionBodyTimerElapsedSecondsMax),
+  "durationSource": zod.enum(['timer', 'manual', 'timer_edited']),
+  "durationEdited": zod.boolean(),
+  "goals": zod.array(zod.object({
+  "goalId": zod.number(),
+  "accuracyPercent": zod.number().min(createManualSessionBodyGoalsItemAccuracyPercentMin).max(createManualSessionBodyGoalsItemAccuracyPercentMax).nullish(),
+  "successfulAttempts": zod.number().min(createManualSessionBodyGoalsItemSuccessfulAttemptsMin).nullish(),
+  "totalAttempts": zod.number().min(createManualSessionBodyGoalsItemTotalAttemptsMin).nullish(),
+  "promptingLevel": zod.union([zod.literal('independent'),zod.literal('minimal'),zod.literal('moderate'),zod.literal('maximal'),zod.literal('total'),zod.literal(null)]).nullish(),
+  "progressNote": zod.string().max(createManualSessionBodyGoalsItemProgressNoteMax)
+})).min(1).max(createManualSessionBodyGoalsMax),
+  "note": zod.string().min(1).max(createManualSessionBodyNoteMax)
+})
+
+
+
+
+
+export const CreateManualSessionResponse = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "durationSeconds": zod.number(),
+  "gestalts": zod.array(zod.object({
+  "phrase": zod.string().min(1),
+  "meaning": zod.string().min(1),
+  "function": zod.string(),
+  "context": zod.string(),
+  "emotionalState": zod.string(),
+  "note": zod.string(),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "preserveDictionary": zod.boolean().optional().describe('Reuse an exact existing child dictionary entry without changing its clinician-owned fields.'),
+  "clinicianReviewed": zod.boolean().optional().describe('Explicitly attests that this new or changed Child phrase was reviewed by the clinician before saving.')
+})),
+  "clinicalObservations": zod.string(),
+  "nextSteps": zod.string(),
+  "note": zod.string(),
+  "audioUrl": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "createdBy": zod.string(),
+  "role": zod.string(),
+  "consent": zod.object({
+  "confirmed": zod.boolean(),
+  "confirmedAt": zod.coerce.date(),
+  "confirmedBy": zod.string(),
+  "childId": zod.number()
+}).nullable(),
+  "sessionMode": zod.enum(['recorded', 'manual']).optional(),
+  "sessionDate": zod.coerce.date().optional(),
+  "startedAt": zod.coerce.date().nullish(),
+  "endedAt": zod.coerce.date().nullish(),
+  "durationSource": zod.enum(['recording', 'timer', 'manual', 'timer_edited']).optional(),
+  "durationEdited": zod.boolean().optional(),
+  "slpName": zod.string().optional(),
+  "goalProgress": zod.array(zod.object({
+  "id": zod.number(),
+  "goalId": zod.number(),
+  "goalVersion": zod.number(),
+  "goalTitle": zod.string(),
+  "goalArea": zod.string(),
+  "accuracyPercent": zod.number().nullable(),
+  "successfulAttempts": zod.number().nullable(),
+  "totalAttempts": zod.number().nullable(),
+  "promptingLevel": zod.string().nullable(),
+  "progressNote": zod.string()
+})).optional()
+})
+
+
+/**
+ * @summary List IEP therapy service requirements and current-period completion
+ */
+export const ListIepServiceRequirementsQueryParams = zod.object({
+  "childId": zod.coerce.number()
+})
+
+export const listIepServiceRequirementsResponseSessionsCompletedMin = 0;
+
+export const listIepServiceRequirementsResponseSessionsRemainingMin = 0;
+
+export const listIepServiceRequirementsResponseMinutesCompletedMin = 0;
+
+export const listIepServiceRequirementsResponseMinutesRemainingMin = 0;
+
+
+
+export const ListIepServiceRequirementsResponseItem = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "serviceName": zod.string(),
+  "requiredSessions": zod.number(),
+  "requiredMinutes": zod.number(),
+  "sessionDurationMinutes": zod.number(),
+  "period": zod.enum(['weekly', 'monthly']),
+  "effectiveFrom": zod.coerce.date(),
+  "effectiveTo": zod.coerce.date().nullable(),
+  "periodLabel": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "sessionsCompleted": zod.number().min(listIepServiceRequirementsResponseSessionsCompletedMin),
+  "sessionsRemaining": zod.number().min(listIepServiceRequirementsResponseSessionsRemainingMin),
+  "minutesCompleted": zod.number().min(listIepServiceRequirementsResponseMinutesCompletedMin),
+  "minutesRemaining": zod.number().min(listIepServiceRequirementsResponseMinutesRemainingMin),
+  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "updatedAt": zod.coerce.date()
+})
+export const ListIepServiceRequirementsResponse = zod.array(ListIepServiceRequirementsResponseItem)
+
+
+/**
+ * @summary Create or update an IEP therapy service requirement
+ */
+export const UpsertIepServiceRequirementQueryParams = zod.object({
+  "childId": zod.coerce.number()
+})
+
+export const upsertIepServiceRequirementBodyServiceNameMax = 160;
+
+export const upsertIepServiceRequirementBodyRequiredSessionsMax = 100;
+
+export const upsertIepServiceRequirementBodyRequiredMinutesMax = 10000;
+
+export const upsertIepServiceRequirementBodySessionDurationMinutesMax = 480;
+
+
+
+export const UpsertIepServiceRequirementBody = zod.object({
+  "serviceName": zod.string().min(1).max(upsertIepServiceRequirementBodyServiceNameMax),
+  "requiredSessions": zod.number().min(1).max(upsertIepServiceRequirementBodyRequiredSessionsMax),
+  "requiredMinutes": zod.number().min(1).max(upsertIepServiceRequirementBodyRequiredMinutesMax),
+  "sessionDurationMinutes": zod.number().min(1).max(upsertIepServiceRequirementBodySessionDurationMinutesMax),
+  "period": zod.enum(['weekly', 'monthly']),
+  "effectiveFrom": zod.coerce.date(),
+  "effectiveTo": zod.coerce.date().nullish()
+})
+
+export const upsertIepServiceRequirementResponseSessionsCompletedMin = 0;
+
+export const upsertIepServiceRequirementResponseSessionsRemainingMin = 0;
+
+export const upsertIepServiceRequirementResponseMinutesCompletedMin = 0;
+
+export const upsertIepServiceRequirementResponseMinutesRemainingMin = 0;
+
+
+
+export const UpsertIepServiceRequirementResponse = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "serviceName": zod.string(),
+  "requiredSessions": zod.number(),
+  "requiredMinutes": zod.number(),
+  "sessionDurationMinutes": zod.number(),
+  "period": zod.enum(['weekly', 'monthly']),
+  "effectiveFrom": zod.coerce.date(),
+  "effectiveTo": zod.coerce.date().nullable(),
+  "periodLabel": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "sessionsCompleted": zod.number().min(upsertIepServiceRequirementResponseSessionsCompletedMin),
+  "sessionsRemaining": zod.number().min(upsertIepServiceRequirementResponseSessionsRemainingMin),
+  "minutesCompleted": zod.number().min(upsertIepServiceRequirementResponseMinutesCompletedMin),
+  "minutesRemaining": zod.number().min(upsertIepServiceRequirementResponseMinutesRemainingMin),
+  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * Returns server health status
  * @summary Health check
  */
@@ -300,6 +556,16 @@ export const GetClinicianOverviewQueryParams = zod.object({
   "since": zod.coerce.string().optional().describe('ISO timestamp marking the clinician\'s previous signed-in overview visit.')
 })
 
+export const getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin = 0;
+
+export const getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin = 0;
+
+export const getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin = 0;
+
+export const getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin = 0;
+
+
+
 export const GetClinicianOverviewResponse = zod.object({
   "caseloadCount": zod.number(),
   "activeChildren": zod.number(),
@@ -332,7 +598,27 @@ export const GetClinicianOverviewResponse = zod.object({
   "newActivityCount": zod.number(),
   "requiresReview": zod.boolean(),
   "latestActivityAt": zod.coerce.date().nullable(),
-  "latestActivityLabel": zod.string()
+  "latestActivityLabel": zod.string(),
+  "serviceRequirements": zod.array(zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "serviceName": zod.string(),
+  "requiredSessions": zod.number(),
+  "requiredMinutes": zod.number(),
+  "sessionDurationMinutes": zod.number(),
+  "period": zod.enum(['weekly', 'monthly']),
+  "effectiveFrom": zod.coerce.date(),
+  "effectiveTo": zod.coerce.date().nullable(),
+  "periodLabel": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "sessionsCompleted": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin),
+  "sessionsRemaining": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin),
+  "minutesCompleted": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin),
+  "minutesRemaining": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin),
+  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "updatedAt": zod.coerce.date()
+}))
 })),
   "recentActivity": zod.array(zod.object({
   "id": zod.number(),
@@ -352,6 +638,16 @@ export const GetClinicianOverviewResponse = zod.object({
 export const GetTeacherOverviewQueryParams = zod.object({
   "since": zod.coerce.string().optional().describe('ISO timestamp marking the teacher\'s previous signed-in overview visit.')
 })
+
+export const getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin = 0;
+
+export const getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin = 0;
+
+export const getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin = 0;
+
+export const getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin = 0;
+
+
 
 export const GetTeacherOverviewResponse = zod.object({
   "caseloadCount": zod.number(),
@@ -385,7 +681,27 @@ export const GetTeacherOverviewResponse = zod.object({
   "newActivityCount": zod.number(),
   "requiresReview": zod.boolean(),
   "latestActivityAt": zod.coerce.date().nullable(),
-  "latestActivityLabel": zod.string()
+  "latestActivityLabel": zod.string(),
+  "serviceRequirements": zod.array(zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "serviceName": zod.string(),
+  "requiredSessions": zod.number(),
+  "requiredMinutes": zod.number(),
+  "sessionDurationMinutes": zod.number(),
+  "period": zod.enum(['weekly', 'monthly']),
+  "effectiveFrom": zod.coerce.date(),
+  "effectiveTo": zod.coerce.date().nullable(),
+  "periodLabel": zod.string(),
+  "periodStart": zod.coerce.date(),
+  "periodEnd": zod.coerce.date(),
+  "sessionsCompleted": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin),
+  "sessionsRemaining": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin),
+  "minutesCompleted": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin),
+  "minutesRemaining": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin),
+  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "updatedAt": zod.coerce.date()
+}))
 })),
   "recentActivity": zod.array(zod.object({
   "id": zod.number(),
@@ -1986,6 +2302,406 @@ export const MarkTeamMessagesReadResponse = zod.object({
 
 
 /**
+ * @summary Get the saved communication passport for an authorized child
+ */
+export const GetCommunicationPassportQueryParams = zod.object({
+  "childId": zod.coerce.number()
+})
+
+export const getCommunicationPassportResponseContentOneChildNameMax = 160;
+
+export const getCommunicationPassportResponseContentOnePreferredNameMax = 160;
+
+export const getCommunicationPassportResponseContentOneAboutMeMax = 1500;
+
+export const getCommunicationPassportResponseContentOneCommunicationMethodsItemMax = 300;
+
+export const getCommunicationPassportResponseContentOneCommunicationMethodsMax = 20;
+
+export const getCommunicationPassportResponseContentOneCommunicationStrengthsItemMax = 500;
+
+export const getCommunicationPassportResponseContentOneCommunicationStrengthsMax = 20;
+
+export const getCommunicationPassportResponseContentOneWantsAndNeedsMax = 1500;
+
+export const getCommunicationPassportResponseContentOneCommonPhrasesItemPhraseMax = 300;
+
+export const getCommunicationPassportResponseContentOneCommonPhrasesItemMeaningMax = 600;
+
+export const getCommunicationPassportResponseContentOneCommonPhrasesMax = 20;
+
+export const getCommunicationPassportResponseContentOneGesturesItemMax = 500;
+
+export const getCommunicationPassportResponseContentOneGesturesMax = 20;
+
+export const getCommunicationPassportResponseContentOneAacInformationMax = 1500;
+
+export const getCommunicationPassportResponseContentOneHelpfulStrategiesItemMax = 500;
+
+export const getCommunicationPassportResponseContentOneHelpfulStrategiesMax = 20;
+
+export const getCommunicationPassportResponseContentOneCommunicationChallengesItemMax = 500;
+
+export const getCommunicationPassportResponseContentOneCommunicationChallengesMax = 20;
+
+export const getCommunicationPassportResponseContentOneFrustrationSupportsItemMax = 500;
+
+export const getCommunicationPassportResponseContentOneFrustrationSupportsMax = 20;
+
+export const getCommunicationPassportResponseContentOneImportantWordsItemPhraseMax = 300;
+
+export const getCommunicationPassportResponseContentOneImportantWordsItemMeaningMax = 600;
+
+export const getCommunicationPassportResponseContentOneImportantWordsMax = 20;
+
+export const getCommunicationPassportResponseContentOneInterestsItemMax = 500;
+
+export const getCommunicationPassportResponseContentOneInterestsMax = 20;
+
+export const getCommunicationPassportResponseContentOneCurrentGoalsItemMax = 700;
+
+export const getCommunicationPassportResponseContentOneCurrentGoalsMax = 20;
+
+export const getCommunicationPassportResponseContentOneAdditionalInformationMax = 2000;
+
+
+
+export const GetCommunicationPassportResponse = zod.object({
+  "exists": zod.boolean(),
+  "childId": zod.number(),
+  "canEdit": zod.boolean(),
+  "templateKey": zod.string(),
+  "language": zod.string(),
+  "content": zod.union([zod.object({
+  "childName": zod.string().min(1).max(getCommunicationPassportResponseContentOneChildNameMax),
+  "preferredName": zod.string().max(getCommunicationPassportResponseContentOnePreferredNameMax),
+  "aboutMe": zod.string().max(getCommunicationPassportResponseContentOneAboutMeMax),
+  "communicationMethods": zod.array(zod.string().min(1).max(getCommunicationPassportResponseContentOneCommunicationMethodsItemMax)).max(getCommunicationPassportResponseContentOneCommunicationMethodsMax),
+  "communicationStrengths": zod.array(zod.string().min(1).max(getCommunicationPassportResponseContentOneCommunicationStrengthsItemMax)).max(getCommunicationPassportResponseContentOneCommunicationStrengthsMax),
+  "wantsAndNeeds": zod.string().max(getCommunicationPassportResponseContentOneWantsAndNeedsMax),
+  "commonPhrases": zod.array(zod.object({
+  "phrase": zod.string().max(getCommunicationPassportResponseContentOneCommonPhrasesItemPhraseMax),
+  "meaning": zod.string().max(getCommunicationPassportResponseContentOneCommonPhrasesItemMeaningMax)
+})).max(getCommunicationPassportResponseContentOneCommonPhrasesMax),
+  "gestures": zod.array(zod.string().min(1).max(getCommunicationPassportResponseContentOneGesturesItemMax)).max(getCommunicationPassportResponseContentOneGesturesMax),
+  "aacInformation": zod.string().max(getCommunicationPassportResponseContentOneAacInformationMax),
+  "helpfulStrategies": zod.array(zod.string().min(1).max(getCommunicationPassportResponseContentOneHelpfulStrategiesItemMax)).max(getCommunicationPassportResponseContentOneHelpfulStrategiesMax),
+  "communicationChallenges": zod.array(zod.string().min(1).max(getCommunicationPassportResponseContentOneCommunicationChallengesItemMax)).max(getCommunicationPassportResponseContentOneCommunicationChallengesMax),
+  "frustrationSupports": zod.array(zod.string().min(1).max(getCommunicationPassportResponseContentOneFrustrationSupportsItemMax)).max(getCommunicationPassportResponseContentOneFrustrationSupportsMax),
+  "importantWords": zod.array(zod.object({
+  "phrase": zod.string().max(getCommunicationPassportResponseContentOneImportantWordsItemPhraseMax),
+  "meaning": zod.string().max(getCommunicationPassportResponseContentOneImportantWordsItemMeaningMax)
+})).max(getCommunicationPassportResponseContentOneImportantWordsMax),
+  "interests": zod.array(zod.string().min(1).max(getCommunicationPassportResponseContentOneInterestsItemMax)).max(getCommunicationPassportResponseContentOneInterestsMax),
+  "currentGoals": zod.array(zod.string().min(1).max(getCommunicationPassportResponseContentOneCurrentGoalsItemMax)).max(getCommunicationPassportResponseContentOneCurrentGoalsMax),
+  "additionalInformation": zod.string().max(getCommunicationPassportResponseContentOneAdditionalInformationMax)
+}),zod.null()]),
+  "version": zod.number().nullable(),
+  "createdAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date().nullable(),
+  "updatedBy": zod.string().nullable()
+})
+
+
+/**
+ * @summary Save an SLP-reviewed communication passport
+ */
+export const saveCommunicationPassportBodyTemplateKeyMax = 80;
+
+export const saveCommunicationPassportBodyLanguageMax = 35;
+
+export const saveCommunicationPassportBodyContentChildNameMax = 160;
+
+export const saveCommunicationPassportBodyContentPreferredNameMax = 160;
+
+export const saveCommunicationPassportBodyContentAboutMeMax = 1500;
+
+export const saveCommunicationPassportBodyContentCommunicationMethodsItemMax = 300;
+
+export const saveCommunicationPassportBodyContentCommunicationMethodsMax = 20;
+
+export const saveCommunicationPassportBodyContentCommunicationStrengthsItemMax = 500;
+
+export const saveCommunicationPassportBodyContentCommunicationStrengthsMax = 20;
+
+export const saveCommunicationPassportBodyContentWantsAndNeedsMax = 1500;
+
+export const saveCommunicationPassportBodyContentCommonPhrasesItemPhraseMax = 300;
+
+export const saveCommunicationPassportBodyContentCommonPhrasesItemMeaningMax = 600;
+
+export const saveCommunicationPassportBodyContentCommonPhrasesMax = 20;
+
+export const saveCommunicationPassportBodyContentGesturesItemMax = 500;
+
+export const saveCommunicationPassportBodyContentGesturesMax = 20;
+
+export const saveCommunicationPassportBodyContentAacInformationMax = 1500;
+
+export const saveCommunicationPassportBodyContentHelpfulStrategiesItemMax = 500;
+
+export const saveCommunicationPassportBodyContentHelpfulStrategiesMax = 20;
+
+export const saveCommunicationPassportBodyContentCommunicationChallengesItemMax = 500;
+
+export const saveCommunicationPassportBodyContentCommunicationChallengesMax = 20;
+
+export const saveCommunicationPassportBodyContentFrustrationSupportsItemMax = 500;
+
+export const saveCommunicationPassportBodyContentFrustrationSupportsMax = 20;
+
+export const saveCommunicationPassportBodyContentImportantWordsItemPhraseMax = 300;
+
+export const saveCommunicationPassportBodyContentImportantWordsItemMeaningMax = 600;
+
+export const saveCommunicationPassportBodyContentImportantWordsMax = 20;
+
+export const saveCommunicationPassportBodyContentInterestsItemMax = 500;
+
+export const saveCommunicationPassportBodyContentInterestsMax = 20;
+
+export const saveCommunicationPassportBodyContentCurrentGoalsItemMax = 700;
+
+export const saveCommunicationPassportBodyContentCurrentGoalsMax = 20;
+
+export const saveCommunicationPassportBodyContentAdditionalInformationMax = 2000;
+
+
+
+
+export const SaveCommunicationPassportBody = zod.object({
+  "childId": zod.number(),
+  "templateKey": zod.string().max(saveCommunicationPassportBodyTemplateKeyMax),
+  "language": zod.string().max(saveCommunicationPassportBodyLanguageMax),
+  "content": zod.object({
+  "childName": zod.string().min(1).max(saveCommunicationPassportBodyContentChildNameMax),
+  "preferredName": zod.string().max(saveCommunicationPassportBodyContentPreferredNameMax),
+  "aboutMe": zod.string().max(saveCommunicationPassportBodyContentAboutMeMax),
+  "communicationMethods": zod.array(zod.string().min(1).max(saveCommunicationPassportBodyContentCommunicationMethodsItemMax)).max(saveCommunicationPassportBodyContentCommunicationMethodsMax),
+  "communicationStrengths": zod.array(zod.string().min(1).max(saveCommunicationPassportBodyContentCommunicationStrengthsItemMax)).max(saveCommunicationPassportBodyContentCommunicationStrengthsMax),
+  "wantsAndNeeds": zod.string().max(saveCommunicationPassportBodyContentWantsAndNeedsMax),
+  "commonPhrases": zod.array(zod.object({
+  "phrase": zod.string().max(saveCommunicationPassportBodyContentCommonPhrasesItemPhraseMax),
+  "meaning": zod.string().max(saveCommunicationPassportBodyContentCommonPhrasesItemMeaningMax)
+})).max(saveCommunicationPassportBodyContentCommonPhrasesMax),
+  "gestures": zod.array(zod.string().min(1).max(saveCommunicationPassportBodyContentGesturesItemMax)).max(saveCommunicationPassportBodyContentGesturesMax),
+  "aacInformation": zod.string().max(saveCommunicationPassportBodyContentAacInformationMax),
+  "helpfulStrategies": zod.array(zod.string().min(1).max(saveCommunicationPassportBodyContentHelpfulStrategiesItemMax)).max(saveCommunicationPassportBodyContentHelpfulStrategiesMax),
+  "communicationChallenges": zod.array(zod.string().min(1).max(saveCommunicationPassportBodyContentCommunicationChallengesItemMax)).max(saveCommunicationPassportBodyContentCommunicationChallengesMax),
+  "frustrationSupports": zod.array(zod.string().min(1).max(saveCommunicationPassportBodyContentFrustrationSupportsItemMax)).max(saveCommunicationPassportBodyContentFrustrationSupportsMax),
+  "importantWords": zod.array(zod.object({
+  "phrase": zod.string().max(saveCommunicationPassportBodyContentImportantWordsItemPhraseMax),
+  "meaning": zod.string().max(saveCommunicationPassportBodyContentImportantWordsItemMeaningMax)
+})).max(saveCommunicationPassportBodyContentImportantWordsMax),
+  "interests": zod.array(zod.string().min(1).max(saveCommunicationPassportBodyContentInterestsItemMax)).max(saveCommunicationPassportBodyContentInterestsMax),
+  "currentGoals": zod.array(zod.string().min(1).max(saveCommunicationPassportBodyContentCurrentGoalsItemMax)).max(saveCommunicationPassportBodyContentCurrentGoalsMax),
+  "additionalInformation": zod.string().max(saveCommunicationPassportBodyContentAdditionalInformationMax)
+}),
+  "version": zod.number().min(1).nullable()
+})
+
+export const saveCommunicationPassportResponseContentOneChildNameMax = 160;
+
+export const saveCommunicationPassportResponseContentOnePreferredNameMax = 160;
+
+export const saveCommunicationPassportResponseContentOneAboutMeMax = 1500;
+
+export const saveCommunicationPassportResponseContentOneCommunicationMethodsItemMax = 300;
+
+export const saveCommunicationPassportResponseContentOneCommunicationMethodsMax = 20;
+
+export const saveCommunicationPassportResponseContentOneCommunicationStrengthsItemMax = 500;
+
+export const saveCommunicationPassportResponseContentOneCommunicationStrengthsMax = 20;
+
+export const saveCommunicationPassportResponseContentOneWantsAndNeedsMax = 1500;
+
+export const saveCommunicationPassportResponseContentOneCommonPhrasesItemPhraseMax = 300;
+
+export const saveCommunicationPassportResponseContentOneCommonPhrasesItemMeaningMax = 600;
+
+export const saveCommunicationPassportResponseContentOneCommonPhrasesMax = 20;
+
+export const saveCommunicationPassportResponseContentOneGesturesItemMax = 500;
+
+export const saveCommunicationPassportResponseContentOneGesturesMax = 20;
+
+export const saveCommunicationPassportResponseContentOneAacInformationMax = 1500;
+
+export const saveCommunicationPassportResponseContentOneHelpfulStrategiesItemMax = 500;
+
+export const saveCommunicationPassportResponseContentOneHelpfulStrategiesMax = 20;
+
+export const saveCommunicationPassportResponseContentOneCommunicationChallengesItemMax = 500;
+
+export const saveCommunicationPassportResponseContentOneCommunicationChallengesMax = 20;
+
+export const saveCommunicationPassportResponseContentOneFrustrationSupportsItemMax = 500;
+
+export const saveCommunicationPassportResponseContentOneFrustrationSupportsMax = 20;
+
+export const saveCommunicationPassportResponseContentOneImportantWordsItemPhraseMax = 300;
+
+export const saveCommunicationPassportResponseContentOneImportantWordsItemMeaningMax = 600;
+
+export const saveCommunicationPassportResponseContentOneImportantWordsMax = 20;
+
+export const saveCommunicationPassportResponseContentOneInterestsItemMax = 500;
+
+export const saveCommunicationPassportResponseContentOneInterestsMax = 20;
+
+export const saveCommunicationPassportResponseContentOneCurrentGoalsItemMax = 700;
+
+export const saveCommunicationPassportResponseContentOneCurrentGoalsMax = 20;
+
+export const saveCommunicationPassportResponseContentOneAdditionalInformationMax = 2000;
+
+
+
+export const SaveCommunicationPassportResponse = zod.object({
+  "exists": zod.boolean(),
+  "childId": zod.number(),
+  "canEdit": zod.boolean(),
+  "templateKey": zod.string(),
+  "language": zod.string(),
+  "content": zod.union([zod.object({
+  "childName": zod.string().min(1).max(saveCommunicationPassportResponseContentOneChildNameMax),
+  "preferredName": zod.string().max(saveCommunicationPassportResponseContentOnePreferredNameMax),
+  "aboutMe": zod.string().max(saveCommunicationPassportResponseContentOneAboutMeMax),
+  "communicationMethods": zod.array(zod.string().min(1).max(saveCommunicationPassportResponseContentOneCommunicationMethodsItemMax)).max(saveCommunicationPassportResponseContentOneCommunicationMethodsMax),
+  "communicationStrengths": zod.array(zod.string().min(1).max(saveCommunicationPassportResponseContentOneCommunicationStrengthsItemMax)).max(saveCommunicationPassportResponseContentOneCommunicationStrengthsMax),
+  "wantsAndNeeds": zod.string().max(saveCommunicationPassportResponseContentOneWantsAndNeedsMax),
+  "commonPhrases": zod.array(zod.object({
+  "phrase": zod.string().max(saveCommunicationPassportResponseContentOneCommonPhrasesItemPhraseMax),
+  "meaning": zod.string().max(saveCommunicationPassportResponseContentOneCommonPhrasesItemMeaningMax)
+})).max(saveCommunicationPassportResponseContentOneCommonPhrasesMax),
+  "gestures": zod.array(zod.string().min(1).max(saveCommunicationPassportResponseContentOneGesturesItemMax)).max(saveCommunicationPassportResponseContentOneGesturesMax),
+  "aacInformation": zod.string().max(saveCommunicationPassportResponseContentOneAacInformationMax),
+  "helpfulStrategies": zod.array(zod.string().min(1).max(saveCommunicationPassportResponseContentOneHelpfulStrategiesItemMax)).max(saveCommunicationPassportResponseContentOneHelpfulStrategiesMax),
+  "communicationChallenges": zod.array(zod.string().min(1).max(saveCommunicationPassportResponseContentOneCommunicationChallengesItemMax)).max(saveCommunicationPassportResponseContentOneCommunicationChallengesMax),
+  "frustrationSupports": zod.array(zod.string().min(1).max(saveCommunicationPassportResponseContentOneFrustrationSupportsItemMax)).max(saveCommunicationPassportResponseContentOneFrustrationSupportsMax),
+  "importantWords": zod.array(zod.object({
+  "phrase": zod.string().max(saveCommunicationPassportResponseContentOneImportantWordsItemPhraseMax),
+  "meaning": zod.string().max(saveCommunicationPassportResponseContentOneImportantWordsItemMeaningMax)
+})).max(saveCommunicationPassportResponseContentOneImportantWordsMax),
+  "interests": zod.array(zod.string().min(1).max(saveCommunicationPassportResponseContentOneInterestsItemMax)).max(saveCommunicationPassportResponseContentOneInterestsMax),
+  "currentGoals": zod.array(zod.string().min(1).max(saveCommunicationPassportResponseContentOneCurrentGoalsItemMax)).max(saveCommunicationPassportResponseContentOneCurrentGoalsMax),
+  "additionalInformation": zod.string().max(saveCommunicationPassportResponseContentOneAdditionalInformationMax)
+}),zod.null()]),
+  "version": zod.number().nullable(),
+  "createdAt": zod.coerce.date().nullable(),
+  "updatedAt": zod.coerce.date().nullable(),
+  "updatedBy": zod.string().nullable()
+})
+
+
+/**
+ * @summary Generate a share-safe communication passport draft
+ */
+export const generateCommunicationPassportBodyTemplateKeyDefault = `general`;
+export const generateCommunicationPassportBodyTemplateKeyMax = 80;
+
+export const generateCommunicationPassportBodyLanguageDefault = `en`;
+export const generateCommunicationPassportBodyLanguageMax = 35;
+
+
+
+export const GenerateCommunicationPassportBody = zod.object({
+  "childId": zod.number(),
+  "templateKey": zod.string().max(generateCommunicationPassportBodyTemplateKeyMax).default(generateCommunicationPassportBodyTemplateKeyDefault),
+  "language": zod.string().max(generateCommunicationPassportBodyLanguageMax).default(generateCommunicationPassportBodyLanguageDefault)
+})
+
+export const generateCommunicationPassportResponseContentChildNameMax = 160;
+
+export const generateCommunicationPassportResponseContentPreferredNameMax = 160;
+
+export const generateCommunicationPassportResponseContentAboutMeMax = 1500;
+
+export const generateCommunicationPassportResponseContentCommunicationMethodsItemMax = 300;
+
+export const generateCommunicationPassportResponseContentCommunicationMethodsMax = 20;
+
+export const generateCommunicationPassportResponseContentCommunicationStrengthsItemMax = 500;
+
+export const generateCommunicationPassportResponseContentCommunicationStrengthsMax = 20;
+
+export const generateCommunicationPassportResponseContentWantsAndNeedsMax = 1500;
+
+export const generateCommunicationPassportResponseContentCommonPhrasesItemPhraseMax = 300;
+
+export const generateCommunicationPassportResponseContentCommonPhrasesItemMeaningMax = 600;
+
+export const generateCommunicationPassportResponseContentCommonPhrasesMax = 20;
+
+export const generateCommunicationPassportResponseContentGesturesItemMax = 500;
+
+export const generateCommunicationPassportResponseContentGesturesMax = 20;
+
+export const generateCommunicationPassportResponseContentAacInformationMax = 1500;
+
+export const generateCommunicationPassportResponseContentHelpfulStrategiesItemMax = 500;
+
+export const generateCommunicationPassportResponseContentHelpfulStrategiesMax = 20;
+
+export const generateCommunicationPassportResponseContentCommunicationChallengesItemMax = 500;
+
+export const generateCommunicationPassportResponseContentCommunicationChallengesMax = 20;
+
+export const generateCommunicationPassportResponseContentFrustrationSupportsItemMax = 500;
+
+export const generateCommunicationPassportResponseContentFrustrationSupportsMax = 20;
+
+export const generateCommunicationPassportResponseContentImportantWordsItemPhraseMax = 300;
+
+export const generateCommunicationPassportResponseContentImportantWordsItemMeaningMax = 600;
+
+export const generateCommunicationPassportResponseContentImportantWordsMax = 20;
+
+export const generateCommunicationPassportResponseContentInterestsItemMax = 500;
+
+export const generateCommunicationPassportResponseContentInterestsMax = 20;
+
+export const generateCommunicationPassportResponseContentCurrentGoalsItemMax = 700;
+
+export const generateCommunicationPassportResponseContentCurrentGoalsMax = 20;
+
+export const generateCommunicationPassportResponseContentAdditionalInformationMax = 2000;
+
+
+
+export const GenerateCommunicationPassportResponse = zod.object({
+  "childId": zod.number(),
+  "templateKey": zod.string(),
+  "language": zod.string(),
+  "content": zod.object({
+  "childName": zod.string().min(1).max(generateCommunicationPassportResponseContentChildNameMax),
+  "preferredName": zod.string().max(generateCommunicationPassportResponseContentPreferredNameMax),
+  "aboutMe": zod.string().max(generateCommunicationPassportResponseContentAboutMeMax),
+  "communicationMethods": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentCommunicationMethodsItemMax)).max(generateCommunicationPassportResponseContentCommunicationMethodsMax),
+  "communicationStrengths": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentCommunicationStrengthsItemMax)).max(generateCommunicationPassportResponseContentCommunicationStrengthsMax),
+  "wantsAndNeeds": zod.string().max(generateCommunicationPassportResponseContentWantsAndNeedsMax),
+  "commonPhrases": zod.array(zod.object({
+  "phrase": zod.string().max(generateCommunicationPassportResponseContentCommonPhrasesItemPhraseMax),
+  "meaning": zod.string().max(generateCommunicationPassportResponseContentCommonPhrasesItemMeaningMax)
+})).max(generateCommunicationPassportResponseContentCommonPhrasesMax),
+  "gestures": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentGesturesItemMax)).max(generateCommunicationPassportResponseContentGesturesMax),
+  "aacInformation": zod.string().max(generateCommunicationPassportResponseContentAacInformationMax),
+  "helpfulStrategies": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentHelpfulStrategiesItemMax)).max(generateCommunicationPassportResponseContentHelpfulStrategiesMax),
+  "communicationChallenges": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentCommunicationChallengesItemMax)).max(generateCommunicationPassportResponseContentCommunicationChallengesMax),
+  "frustrationSupports": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentFrustrationSupportsItemMax)).max(generateCommunicationPassportResponseContentFrustrationSupportsMax),
+  "importantWords": zod.array(zod.object({
+  "phrase": zod.string().max(generateCommunicationPassportResponseContentImportantWordsItemPhraseMax),
+  "meaning": zod.string().max(generateCommunicationPassportResponseContentImportantWordsItemMeaningMax)
+})).max(generateCommunicationPassportResponseContentImportantWordsMax),
+  "interests": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentInterestsItemMax)).max(generateCommunicationPassportResponseContentInterestsMax),
+  "currentGoals": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentCurrentGoalsItemMax)).max(generateCommunicationPassportResponseContentCurrentGoalsMax),
+  "additionalInformation": zod.string().max(generateCommunicationPassportResponseContentAdditionalInformationMax)
+})
+})
+
+
+/**
  * @summary Get a child profile
  */
 export const GetChildQueryParams = zod.object({
@@ -2789,6 +3505,19 @@ export const CreateGestaltResponse = zod.object({
 
 
 /**
+ * @summary Remove a phrase from the active dictionary while retaining historical session evidence
+ */
+
+
+
+export const DeleteGestaltParams = zod.object({
+  "gestaltId": zod.coerce.number().min(1)
+})
+
+export const DeleteGestaltResponse = zod.void()
+
+
+/**
  * @summary Log a classroom or home phrase observation without changing a reviewed clinical interpretation
  */
 export const LogPhraseObservationQueryParams = zod.object({
@@ -3321,7 +4050,7 @@ export const CreateObservationResponse = zod.object({
 
 
 /**
- * @summary Reserve a private family observation video upload
+ * @summary Reserve a private care-team observation video upload
  */
 
 
@@ -3344,7 +4073,7 @@ export const RequestObservationVideoUploadResponse = zod.object({
 
 
 /**
- * @summary Stream a private family observation video
+ * @summary Stream a private care-team observation video
  */
 export const GetObservationVideoParams = zod.object({
   "observationId": zod.coerce.number()
@@ -3392,7 +4121,26 @@ export const ListSessionsResponseItem = zod.object({
   "confirmedAt": zod.coerce.date(),
   "confirmedBy": zod.string(),
   "childId": zod.number()
-}).nullable()
+}).nullable(),
+  "sessionMode": zod.enum(['recorded', 'manual']).optional(),
+  "sessionDate": zod.coerce.date().optional(),
+  "startedAt": zod.coerce.date().nullish(),
+  "endedAt": zod.coerce.date().nullish(),
+  "durationSource": zod.enum(['recording', 'timer', 'manual', 'timer_edited']).optional(),
+  "durationEdited": zod.boolean().optional(),
+  "slpName": zod.string().optional(),
+  "goalProgress": zod.array(zod.object({
+  "id": zod.number(),
+  "goalId": zod.number(),
+  "goalVersion": zod.number(),
+  "goalTitle": zod.string(),
+  "goalArea": zod.string(),
+  "accuracyPercent": zod.number().nullable(),
+  "successfulAttempts": zod.number().nullable(),
+  "totalAttempts": zod.number().nullable(),
+  "promptingLevel": zod.string().nullable(),
+  "progressNote": zod.string()
+})).optional()
 })
 export const ListSessionsResponse = zod.array(ListSessionsResponseItem)
 
@@ -3470,7 +4218,26 @@ export const CreateSessionResponse = zod.object({
   "confirmedAt": zod.coerce.date(),
   "confirmedBy": zod.string(),
   "childId": zod.number()
-}).nullable()
+}).nullable(),
+  "sessionMode": zod.enum(['recorded', 'manual']).optional(),
+  "sessionDate": zod.coerce.date().optional(),
+  "startedAt": zod.coerce.date().nullish(),
+  "endedAt": zod.coerce.date().nullish(),
+  "durationSource": zod.enum(['recording', 'timer', 'manual', 'timer_edited']).optional(),
+  "durationEdited": zod.boolean().optional(),
+  "slpName": zod.string().optional(),
+  "goalProgress": zod.array(zod.object({
+  "id": zod.number(),
+  "goalId": zod.number(),
+  "goalVersion": zod.number(),
+  "goalTitle": zod.string(),
+  "goalArea": zod.string(),
+  "accuracyPercent": zod.number().nullable(),
+  "successfulAttempts": zod.number().nullable(),
+  "totalAttempts": zod.number().nullable(),
+  "promptingLevel": zod.string().nullable(),
+  "progressNote": zod.string()
+})).optional()
 })
 
 
@@ -3513,7 +4280,8 @@ export const GetSessionsDashboardResponse = zod.object({
   "sessionId": zod.number(),
   "childId": zod.number(),
   "childName": zod.string(),
-  "sessionDate": zod.coerce.date()
+  "sessionDate": zod.coerce.date(),
+  "sessionMode": zod.enum(['recorded', 'manual'])
 })),
   "draftDocumentation": zod.array(zod.object({
   "id": zod.number(),
@@ -3568,6 +4336,7 @@ export const ListUnclearVocalizationsResponse = zod.object({
   "clinicianInterpretation": zod.string().nullable(),
   "note": zod.string().nullable(),
   "crossSessionLabel": zod.string().nullable(),
+  "audioClipUrl": zod.string().nullable().describe('Authenticated URL for the retained short clip; null when source timing was unavailable.'),
   "revision": zod.coerce.date().nullable().describe('Revision token for optimistic concurrency. Null means no clinician review row existed when this occurrence was read.')
 }))
 })),
@@ -3626,6 +4395,7 @@ export const UpdateUnclearVocalizationLabelResponse = zod.object({
   "clinicianInterpretation": zod.string().nullable(),
   "note": zod.string().nullable(),
   "crossSessionLabel": zod.string().nullable(),
+  "audioClipUrl": zod.string().nullable().describe('Authenticated URL for the retained short clip; null when source timing was unavailable.'),
   "revision": zod.coerce.date().nullable().describe('Revision token for optimistic concurrency. Null means no clinician review row existed when this occurrence was read.')
 }))
 })),
@@ -4179,6 +4949,217 @@ export const GetSessionTranscriptionAudioParams = zod.object({
 })
 
 export const GetSessionTranscriptionAudioResponse = zod.unknown()
+
+
+/**
+ * @summary Exclude a detected phrase from an unfinished transcript review
+ */
+
+
+
+export const DeleteSessionTranscriptPhraseParams = zod.object({
+  "phraseId": zod.coerce.number().min(1)
+})
+
+export const deleteSessionTranscriptPhraseResponseSpeakerSeparationAttemptMin = 0;
+
+export const deleteSessionTranscriptPhraseResponseSpeakersItemSpeakerConfidenceScoreMin = 0;
+export const deleteSessionTranscriptPhraseResponseSpeakersItemSpeakerConfidenceScoreMax = 100;
+
+export const deleteSessionTranscriptPhraseResponseSpeakersItemSuggestedRoleConfidenceScoreMin = 0;
+export const deleteSessionTranscriptPhraseResponseSpeakersItemSuggestedRoleConfidenceScoreMax = 100;
+
+export const deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceConfidenceScoreMin = 0;
+export const deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceConfidenceScoreMax = 100;
+
+export const deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceCompetingScoreMin = 0;
+export const deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceCompetingScoreMax = 100;
+
+export const deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceMarginMin = 0;
+export const deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceMarginMax = 100;
+
+export const deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceSignalSummaryItemContributionMin = 0;
+export const deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceSignalSummaryItemContributionMax = 100;
+
+export const deleteSessionTranscriptPhraseResponseSegmentsItemSpeakerConfidenceScoreMin = 0;
+export const deleteSessionTranscriptPhraseResponseSegmentsItemSpeakerConfidenceScoreMax = 100;
+
+export const deleteSessionTranscriptPhraseResponseSegmentsItemTranscriptionConfidenceScoreMin = 0;
+export const deleteSessionTranscriptPhraseResponseSegmentsItemTranscriptionConfidenceScoreMax = 100;
+
+export const deleteSessionTranscriptPhraseResponseSegmentsItemStartTimeMillisecondsMin = 0;
+
+export const deleteSessionTranscriptPhraseResponseSegmentsItemDurationMillisecondsMin = 0;
+
+export const deleteSessionTranscriptPhraseResponseChildUtterancesItemTimestampSecondsMin = 0;
+
+export const deleteSessionTranscriptPhraseResponseChildUtterancesItemDurationSecondsMin = 0;
+
+export const deleteSessionTranscriptPhraseResponseChildUtterancesItemTranscriptionConfidenceScoreMin = 0;
+export const deleteSessionTranscriptPhraseResponseChildUtterancesItemTranscriptionConfidenceScoreMax = 100;
+
+
+
+export const deleteSessionTranscriptPhraseResponseChildUtterancesItemWordCountMin = 0;
+
+
+
+
+export const DeleteSessionTranscriptPhraseResponse = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "audioId": zod.string(),
+  "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['processing', 'complete', 'failed']),
+  "rawTranscript": zod.string(),
+  "speakerSeparationStatus": zod.enum(['pending', 'processing', 'completed', 'unavailable', 'failed']),
+  "speakerSeparationAttempt": zod.number().min(deleteSessionTranscriptPhraseResponseSpeakerSeparationAttemptMin),
+  "speakerSeparationFailureCode": zod.string().nullable(),
+  "speakerSeparationFailureMessage": zod.string().nullable(),
+  "calibrationStatus": zod.enum(['not_provided', 'stored_only', 'applied', 'unavailable', 'unsupported']),
+  "calibrationStatusMessage": zod.string(),
+  "processingStages": zod.array(zod.object({
+  "stage": zod.enum(['recording', 'upload', 'transcription', 'speaker_grouping', 'clinician_identification', 'phrase_extraction', 'gestalt_review', 'insight_generation']),
+  "label": zod.string(),
+  "status": zod.enum(['pending', 'processing', 'completed', 'unavailable', 'failed', 'blocked']),
+  "reason": zod.string().nullable()
+})),
+  "provider": zod.string(),
+  "model": zod.string(),
+  "transcriptionAttempted": zod.boolean(),
+  "transcriptionSucceeded": zod.boolean(),
+  "speakers": zod.array(zod.object({
+  "label": zod.string(),
+  "role": zod.enum(['unassigned', 'child', 'slp', 'parent', 'teacher', 'caregiver', 'unknown']),
+  "speakerConfidence": zod.enum(['high', 'medium', 'low']),
+  "speakerConfidenceScore": zod.number().min(deleteSessionTranscriptPhraseResponseSpeakersItemSpeakerConfidenceScoreMin).max(deleteSessionTranscriptPhraseResponseSpeakersItemSpeakerConfidenceScoreMax).nullable(),
+  "lowConfidenceTurnCount": zod.number(),
+  "reviewedTurnCount": zod.number(),
+  "suggestedRole": zod.union([zod.literal('child'),zod.literal('slp'),zod.literal('parent'),zod.literal('teacher'),zod.literal('caregiver'),zod.literal('unknown'),zod.literal(null)]).nullable(),
+  "suggestedRoleConfidenceScore": zod.number().min(deleteSessionTranscriptPhraseResponseSpeakersItemSuggestedRoleConfidenceScoreMin).max(deleteSessionTranscriptPhraseResponseSpeakersItemSuggestedRoleConfidenceScoreMax).nullable(),
+  "suggestedProfileId": zod.number().nullable(),
+  "canRememberProfile": zod.boolean().describe('Whether the provider supplied an opaque reusable characteristic. The characteristic itself is never returned to the browser.'),
+  "roleInference": zod.object({
+  "state": zod.enum(['provisional', 'review_required', 'unavailable', 'confirmed', 'rejected']),
+  "predictedRole": zod.union([zod.literal('child'),zod.literal('slp'),zod.literal('parent'),zod.literal('teacher'),zod.literal('caregiver'),zod.literal('unknown'),zod.literal(null)]).nullable(),
+  "confidenceScore": zod.number().min(deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceConfidenceScoreMin).max(deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceConfidenceScoreMax).nullable(),
+  "competingRole": zod.union([zod.literal('child'),zod.literal('slp'),zod.literal('parent'),zod.literal('teacher'),zod.literal('caregiver'),zod.literal('unknown'),zod.literal(null)]).nullable(),
+  "competingScore": zod.number().min(deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceCompetingScoreMin).max(deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceCompetingScoreMax).nullable(),
+  "margin": zod.number().min(deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceMarginMin).max(deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceMarginMax).nullable(),
+  "signalCount": zod.number(),
+  "signalSummary": zod.array(zod.object({
+  "signal": zod.enum(['diarization_consistency', 'profile_match', 'transcript_cues', 'conversation_behavior', 'confirmed_child_patterns', 'confirmed_slp_patterns', 'confirmed_feedback']),
+  "available": zod.boolean(),
+  "contribution": zod.number().min(deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceSignalSummaryItemContributionMin).max(deleteSessionTranscriptPhraseResponseSpeakersItemRoleInferenceSignalSummaryItemContributionMax),
+  "detail": zod.string()
+}))
+}).describe('Explainable, temporary role-review guidance. It is never identity evidence and cannot unlock Child clinical evidence without clinician confirmation.')
+})),
+  "segments": zod.array(zod.object({
+  "id": zod.number(),
+  "speakerLabel": zod.string(),
+  "text": zod.string(),
+  "position": zod.number(),
+  "speakerConfidence": zod.enum(['high', 'medium', 'low']),
+  "speakerConfidenceScore": zod.number().min(deleteSessionTranscriptPhraseResponseSegmentsItemSpeakerConfidenceScoreMin).max(deleteSessionTranscriptPhraseResponseSegmentsItemSpeakerConfidenceScoreMax).nullable(),
+  "intelligibility": zod.enum(['intelligible', 'partially_intelligible', 'unintelligible']),
+  "transcriptionConfidenceScore": zod.number().min(deleteSessionTranscriptPhraseResponseSegmentsItemTranscriptionConfidenceScoreMin).max(deleteSessionTranscriptPhraseResponseSegmentsItemTranscriptionConfidenceScoreMax).nullable(),
+  "startTimeMilliseconds": zod.number().min(deleteSessionTranscriptPhraseResponseSegmentsItemStartTimeMillisecondsMin).nullable(),
+  "durationMilliseconds": zod.number().min(deleteSessionTranscriptPhraseResponseSegmentsItemDurationMillisecondsMin).nullable(),
+  "speakerReviewed": zod.boolean(),
+  "role": zod.enum(['unassigned', 'child', 'slp', 'parent', 'teacher', 'caregiver', 'unknown'])
+})),
+  "childUtterances": zod.array(zod.object({
+  "id": zod.number(),
+  "segmentId": zod.number(),
+  "text": zod.string(),
+  "suggestedTranscription": zod.string().nullable(),
+  "speakerLabel": zod.string(),
+  "position": zod.number(),
+  "timestampSeconds": zod.number().min(deleteSessionTranscriptPhraseResponseChildUtterancesItemTimestampSecondsMin).nullable(),
+  "durationSeconds": zod.number().min(deleteSessionTranscriptPhraseResponseChildUtterancesItemDurationSecondsMin).nullable(),
+  "intelligibility": zod.enum(['intelligible', 'partially_intelligible', 'unintelligible']),
+  "transcriptionConfidenceScore": zod.number().min(deleteSessionTranscriptPhraseResponseChildUtterancesItemTranscriptionConfidenceScoreMin).max(deleteSessionTranscriptPhraseResponseChildUtterancesItemTranscriptionConfidenceScoreMax).nullable(),
+  "intelligibilityReviewStatus": zod.enum(['pending', 'confirmed', 'unlabeled']),
+  "disposition": zod.enum(['pending', 'child', 'not_child', 'unsure', 'unintelligible', 'confirmed_gestalt', 'not_gestalt', 'context', 'unlabeled']).describe('Explicit clinician classification. Legacy values remain readable for previously saved reviews.'),
+  "reviewRank": zod.number().min(1),
+  "priorityScore": zod.number(),
+  "priorityReasons": zod.array(zod.enum(['repeated', 'distinct', 'longer', 'new', 'high_confidence'])),
+  "repeatedInSession": zod.number().min(1),
+  "previouslyObserved": zod.boolean(),
+  "wordCount": zod.number().min(deleteSessionTranscriptPhraseResponseChildUtterancesItemWordCountMin),
+  "context": zod.string().nullable(),
+  "meaning": zod.string().nullable(),
+  "interpretation": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "crossSessionLabel": zod.string().nullable(),
+  "nlaStage": zod.enum(['stage_0', 'stage_1', 'stage_2', 'stage_3', 'stage_4_plus']).nullable().describe('Optional clinician-assigned Natural Language Acquisition reference stage. Null is shown as Not Yet Assigned.'),
+  "updatedAt": zod.coerce.date()
+})).describe('Every transcript segment is available for explicit clinician classification. Ranking is review guidance only.'),
+  "reviewProgress": zod.object({
+  "total": zod.number(),
+  "reviewed": zod.number(),
+  "unresolved": zod.number(),
+  "child": zod.number(),
+  "notChild": zod.number(),
+  "unsure": zod.number(),
+  "unintelligible": zod.number(),
+  "phraseCandidates": zod.number(),
+  "nextStep": zod.string()
+}),
+  "childLanguagePrompts": zod.object({
+  "utteranceCount": zod.number(),
+  "possibleGestaltCount": zod.number(),
+  "possibleMitigationCount": zod.number(),
+  "possibleCommunicationFunctionCount": zod.number()
+}).describe('Transient review prompts from clinician-attributed Child turns. These values are never clinical evidence or saved language conclusions.'),
+  "provisionalPhrases": zod.array(zod.object({
+  "id": zod.number(),
+  "phrase": zod.string(),
+  "frequency": zod.number().min(1),
+  "candidateKind": zod.enum(['potential_phrase', 'repeated_phrase', 'recurring_utterance']),
+  "disposition": zod.enum(['pending', 'approved', 'flagged', 'dismissed', 'saved_for_later']),
+  "workingMeaning": zod.string().nullable(),
+  "attributionLabel": zod.enum(['Speaker attribution pending']),
+  "sourceLabel": zod.enum(['Mixed-speaker transcript']),
+  "evidenceLabel": zod.enum(['Not clinical evidence']),
+  "updatedAt": zod.coerce.date()
+}).describe('Mixed-speaker review prompt. It is never clinical evidence and is excluded from dictionaries, reports, insights, and NLA analytics.')),
+  "phrases": zod.array(zod.object({
+  "id": zod.number(),
+  "phrase": zod.string(),
+  "frequency": zod.number(),
+  "childAttributed": zod.boolean(),
+  "occurrenceCount": zod.number(),
+  "firstObservedAt": zod.coerce.date().nullable(),
+  "mostRecentAt": zod.coerce.date().nullable(),
+  "exampleUtterances": zod.array(zod.string()),
+  "existingGestalt": zod.object({
+  "id": zod.number(),
+  "phrase": zod.string(),
+  "meaning": zod.string(),
+  "source": zod.string(),
+  "occurrences": zod.number(),
+  "lastSeen": zod.coerce.date().nullable()
+}).nullable()
+})),
+  "error": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Stream the retained short audio clip for one saved unclear moment
+ */
+
+
+
+export const GetUnclearVocalizationAudioParams = zod.object({
+  "segmentId": zod.coerce.number().min(1)
+})
+
+export const GetUnclearVocalizationAudioResponse = zod.unknown()
 
 
 /**

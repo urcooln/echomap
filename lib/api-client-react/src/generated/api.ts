@@ -74,10 +74,15 @@ import type {
   CommunicationGoal,
   CommunicationGoalInput,
   CommunicationGoalUpdate,
+  CommunicationPassport,
+  CommunicationPassportDraft,
+  CommunicationPassportGenerateInput,
+  CommunicationPassportSaveInput,
   CreateChildInterestParams,
   CreateChildSharedProfileEntryParams,
   CreateDeletionRequestParams,
   CreateGestaltParams,
+  CreateManualSessionParams,
   CreateObservationParams,
   CreateSessionParams,
   Dashboard,
@@ -104,9 +109,11 @@ import type {
   GetChildParams,
   GetChildSharedProfileParams,
   GetClinicianOverviewParams,
+  GetCommunicationPassportParams,
   GetDashboardParams,
   GetDictionaryInsightsParams,
   GetFrequentScriptsParams,
+  GetManualSessionSetupParams,
   GetParentLearningCenterParams,
   GetParentLearningModuleParams,
   GetPhraseTrendsParams,
@@ -120,6 +127,8 @@ import type {
   GetTeacherResourceCenterParams,
   GetTeamInboxParams,
   HealthStatus,
+  IepServiceRequirement,
+  IepServiceRequirementInput,
   InterestInput,
   InterestUpdate,
   InvitationAcceptance,
@@ -138,10 +147,13 @@ import type {
   ListDeletionRequestsParams,
   ListDictionaryDuplicateSuggestionsParams,
   ListGestaltsParams,
+  ListIepServiceRequirementsParams,
   ListLegacyPhraseObservationsParams,
   ListSessionsParams,
   ListUnclearVocalizationsParams,
   LogPhraseObservationParams,
+  ManualSessionInput,
+  ManualSessionSetup,
   MergeGestaltsParams,
   Observation,
   ObservationInput,
@@ -215,6 +227,7 @@ import type {
   UpdateTranscriptProvisionalPhrasesParams,
   UpdateTranscriptSpeakersParams,
   UpdateUnclearVocalizationLabelParams,
+  UpsertIepServiceRequirementParams,
   ValidateInvitationParams,
   Viewer
 } from './api.schemas';
@@ -471,6 +484,332 @@ export const useUpdateCommunicationGoal = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpdateCommunicationGoalMutationOptions(options));
+    }
+
+export const getGetManualSessionSetupUrl = (params: GetManualSessionSetupParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/manual-sessions/setup?${stringifiedParams}` : `/api/manual-sessions/setup`
+}
+
+/**
+ * @summary Load active IEP goals and current service requirements for manual tracking
+ */
+export const getManualSessionSetup = async (params: GetManualSessionSetupParams, options?: Parameters<typeof customFetch>[1]): Promise<ManualSessionSetup> => {
+
+  return customFetch<ManualSessionSetup>(getGetManualSessionSetupUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetManualSessionSetupQueryKey = (params?: GetManualSessionSetupParams,) => {
+    return [
+    `/api/manual-sessions/setup`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetManualSessionSetupQueryOptions = <TData = Awaited<ReturnType<typeof getManualSessionSetup>>, TError = ErrorType<void>>(params: GetManualSessionSetupParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getManualSessionSetup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetManualSessionSetupQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getManualSessionSetup>>> = ({ signal }) => getManualSessionSetup(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getManualSessionSetup>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetManualSessionSetupQueryResult = NonNullable<Awaited<ReturnType<typeof getManualSessionSetup>>>
+export type GetManualSessionSetupQueryError = ErrorType<void>
+
+
+/**
+ * @summary Load active IEP goals and current service requirements for manual tracking
+ */
+
+export function useGetManualSessionSetup<TData = Awaited<ReturnType<typeof getManualSessionSetup>>, TError = ErrorType<void>>(
+ params: GetManualSessionSetupParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getManualSessionSetup>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetManualSessionSetupQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateManualSessionUrl = (params: CreateManualSessionParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/manual-sessions?${stringifiedParams}` : `/api/manual-sessions`
+}
+
+/**
+ * @summary Save a completed non-recorded therapy session
+ */
+export const createManualSession = async (manualSessionInput: ManualSessionInput,
+    params: CreateManualSessionParams, options?: Parameters<typeof customFetch>[1]): Promise<Session> => {
+
+  return customFetch<Session>(getCreateManualSessionUrl(params),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(manualSessionInput)
+  }
+);}
+
+
+
+
+
+export const getCreateManualSessionMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createManualSession>>, TError,{data: BodyType<ManualSessionInput>;params: CreateManualSessionParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createManualSession>>, TError,{data: BodyType<ManualSessionInput>;params: CreateManualSessionParams}, TContext> => {
+
+const mutationKey = ['createManualSession'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createManualSession>>, {data: BodyType<ManualSessionInput>;params: CreateManualSessionParams}> = (props) => {
+          const {data,params} = props ?? {};
+
+          return  createManualSession(data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateManualSessionMutationResult = NonNullable<Awaited<ReturnType<typeof createManualSession>>>
+    export type CreateManualSessionMutationBody = BodyType<ManualSessionInput>
+    export type CreateManualSessionMutationError = ErrorType<void>
+
+    /**
+ * @summary Save a completed non-recorded therapy session
+ */
+export const useCreateManualSession = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createManualSession>>, TError,{data: BodyType<ManualSessionInput>;params: CreateManualSessionParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createManualSession>>,
+        TError,
+        {data: BodyType<ManualSessionInput>;params: CreateManualSessionParams},
+        TContext
+      > => {
+      return useMutation(getCreateManualSessionMutationOptions(options));
+    }
+
+export const getListIepServiceRequirementsUrl = (params: ListIepServiceRequirementsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/iep-service-requirements?${stringifiedParams}` : `/api/iep-service-requirements`
+}
+
+/**
+ * @summary List IEP therapy service requirements and current-period completion
+ */
+export const listIepServiceRequirements = async (params: ListIepServiceRequirementsParams, options?: Parameters<typeof customFetch>[1]): Promise<IepServiceRequirement[]> => {
+
+  return customFetch<IepServiceRequirement[]>(getListIepServiceRequirementsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListIepServiceRequirementsQueryKey = (params?: ListIepServiceRequirementsParams,) => {
+    return [
+    `/api/iep-service-requirements`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListIepServiceRequirementsQueryOptions = <TData = Awaited<ReturnType<typeof listIepServiceRequirements>>, TError = ErrorType<void>>(params: ListIepServiceRequirementsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIepServiceRequirements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListIepServiceRequirementsQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listIepServiceRequirements>>> = ({ signal }) => listIepServiceRequirements(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listIepServiceRequirements>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListIepServiceRequirementsQueryResult = NonNullable<Awaited<ReturnType<typeof listIepServiceRequirements>>>
+export type ListIepServiceRequirementsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List IEP therapy service requirements and current-period completion
+ */
+
+export function useListIepServiceRequirements<TData = Awaited<ReturnType<typeof listIepServiceRequirements>>, TError = ErrorType<void>>(
+ params: ListIepServiceRequirementsParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listIepServiceRequirements>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListIepServiceRequirementsQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpsertIepServiceRequirementUrl = (params: UpsertIepServiceRequirementParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/iep-service-requirements?${stringifiedParams}` : `/api/iep-service-requirements`
+}
+
+/**
+ * @summary Create or update an IEP therapy service requirement
+ */
+export const upsertIepServiceRequirement = async (iepServiceRequirementInput: IepServiceRequirementInput,
+    params: UpsertIepServiceRequirementParams, options?: Parameters<typeof customFetch>[1]): Promise<IepServiceRequirement> => {
+
+  return customFetch<IepServiceRequirement>(getUpsertIepServiceRequirementUrl(params),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(iepServiceRequirementInput)
+  }
+);}
+
+
+
+
+
+export const getUpsertIepServiceRequirementMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertIepServiceRequirement>>, TError,{data: BodyType<IepServiceRequirementInput>;params: UpsertIepServiceRequirementParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof upsertIepServiceRequirement>>, TError,{data: BodyType<IepServiceRequirementInput>;params: UpsertIepServiceRequirementParams}, TContext> => {
+
+const mutationKey = ['upsertIepServiceRequirement'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof upsertIepServiceRequirement>>, {data: BodyType<IepServiceRequirementInput>;params: UpsertIepServiceRequirementParams}> = (props) => {
+          const {data,params} = props ?? {};
+
+          return  upsertIepServiceRequirement(data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpsertIepServiceRequirementMutationResult = NonNullable<Awaited<ReturnType<typeof upsertIepServiceRequirement>>>
+    export type UpsertIepServiceRequirementMutationBody = BodyType<IepServiceRequirementInput>
+    export type UpsertIepServiceRequirementMutationError = ErrorType<void>
+
+    /**
+ * @summary Create or update an IEP therapy service requirement
+ */
+export const useUpsertIepServiceRequirement = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof upsertIepServiceRequirement>>, TError,{data: BodyType<IepServiceRequirementInput>;params: UpsertIepServiceRequirementParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof upsertIepServiceRequirement>>,
+        TError,
+        {data: BodyType<IepServiceRequirementInput>;params: UpsertIepServiceRequirementParams},
+        TContext
+      > => {
+      return useMutation(getUpsertIepServiceRequirementMutationOptions(options));
     }
 
 export const getHealthCheckUrl = () => {
@@ -4242,6 +4581,232 @@ export const useMarkTeamMessagesRead = <TError = ErrorType<void>,
       return useMutation(getMarkTeamMessagesReadMutationOptions(options));
     }
 
+export const getGetCommunicationPassportUrl = (params: GetCommunicationPassportParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/communication-passport?${stringifiedParams}` : `/api/communication-passport`
+}
+
+/**
+ * @summary Get the saved communication passport for an authorized child
+ */
+export const getCommunicationPassport = async (params: GetCommunicationPassportParams, options?: Parameters<typeof customFetch>[1]): Promise<CommunicationPassport> => {
+
+  return customFetch<CommunicationPassport>(getGetCommunicationPassportUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCommunicationPassportQueryKey = (params?: GetCommunicationPassportParams,) => {
+    return [
+    `/api/communication-passport`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCommunicationPassportQueryOptions = <TData = Awaited<ReturnType<typeof getCommunicationPassport>>, TError = ErrorType<void>>(params: GetCommunicationPassportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommunicationPassport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCommunicationPassportQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCommunicationPassport>>> = ({ signal }) => getCommunicationPassport(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCommunicationPassport>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCommunicationPassportQueryResult = NonNullable<Awaited<ReturnType<typeof getCommunicationPassport>>>
+export type GetCommunicationPassportQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the saved communication passport for an authorized child
+ */
+
+export function useGetCommunicationPassport<TData = Awaited<ReturnType<typeof getCommunicationPassport>>, TError = ErrorType<void>>(
+ params: GetCommunicationPassportParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCommunicationPassport>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCommunicationPassportQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getSaveCommunicationPassportUrl = () => {
+
+
+
+
+  return `/api/communication-passport`
+}
+
+/**
+ * @summary Save an SLP-reviewed communication passport
+ */
+export const saveCommunicationPassport = async (communicationPassportSaveInput: CommunicationPassportSaveInput, options?: Parameters<typeof customFetch>[1]): Promise<CommunicationPassport> => {
+
+  return customFetch<CommunicationPassport>(getSaveCommunicationPassportUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(communicationPassportSaveInput)
+  }
+);}
+
+
+
+
+
+export const getSaveCommunicationPassportMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveCommunicationPassport>>, TError,{data: BodyType<CommunicationPassportSaveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof saveCommunicationPassport>>, TError,{data: BodyType<CommunicationPassportSaveInput>}, TContext> => {
+
+const mutationKey = ['saveCommunicationPassport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof saveCommunicationPassport>>, {data: BodyType<CommunicationPassportSaveInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  saveCommunicationPassport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SaveCommunicationPassportMutationResult = NonNullable<Awaited<ReturnType<typeof saveCommunicationPassport>>>
+    export type SaveCommunicationPassportMutationBody = BodyType<CommunicationPassportSaveInput>
+    export type SaveCommunicationPassportMutationError = ErrorType<void>
+
+    /**
+ * @summary Save an SLP-reviewed communication passport
+ */
+export const useSaveCommunicationPassport = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof saveCommunicationPassport>>, TError,{data: BodyType<CommunicationPassportSaveInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof saveCommunicationPassport>>,
+        TError,
+        {data: BodyType<CommunicationPassportSaveInput>},
+        TContext
+      > => {
+      return useMutation(getSaveCommunicationPassportMutationOptions(options));
+    }
+
+export const getGenerateCommunicationPassportUrl = () => {
+
+
+
+
+  return `/api/communication-passport/generate`
+}
+
+/**
+ * @summary Generate a share-safe communication passport draft
+ */
+export const generateCommunicationPassport = async (communicationPassportGenerateInput: CommunicationPassportGenerateInput, options?: Parameters<typeof customFetch>[1]): Promise<CommunicationPassportDraft> => {
+
+  return customFetch<CommunicationPassportDraft>(getGenerateCommunicationPassportUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(communicationPassportGenerateInput)
+  }
+);}
+
+
+
+
+
+export const getGenerateCommunicationPassportMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateCommunicationPassport>>, TError,{data: BodyType<CommunicationPassportGenerateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof generateCommunicationPassport>>, TError,{data: BodyType<CommunicationPassportGenerateInput>}, TContext> => {
+
+const mutationKey = ['generateCommunicationPassport'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof generateCommunicationPassport>>, {data: BodyType<CommunicationPassportGenerateInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  generateCommunicationPassport(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type GenerateCommunicationPassportMutationResult = NonNullable<Awaited<ReturnType<typeof generateCommunicationPassport>>>
+    export type GenerateCommunicationPassportMutationBody = BodyType<CommunicationPassportGenerateInput>
+    export type GenerateCommunicationPassportMutationError = ErrorType<void>
+
+    /**
+ * @summary Generate a share-safe communication passport draft
+ */
+export const useGenerateCommunicationPassport = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof generateCommunicationPassport>>, TError,{data: BodyType<CommunicationPassportGenerateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof generateCommunicationPassport>>,
+        TError,
+        {data: BodyType<CommunicationPassportGenerateInput>},
+        TContext
+      > => {
+      return useMutation(getGenerateCommunicationPassportMutationOptions(options));
+    }
+
 export const getGetChildUrl = (params: GetChildParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -5502,6 +6067,77 @@ export const useCreateGestalt = <TError = ErrorType<unknown>,
       return useMutation(getCreateGestaltMutationOptions(options));
     }
 
+export const getDeleteGestaltUrl = (gestaltId: number,) => {
+
+
+
+
+  return `/api/gestalts/${gestaltId}`
+}
+
+/**
+ * @summary Remove a phrase from the active dictionary while retaining historical session evidence
+ */
+export const deleteGestalt = async (gestaltId: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getDeleteGestaltUrl(gestaltId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteGestaltMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteGestalt>>, TError,{gestaltId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteGestalt>>, TError,{gestaltId: number}, TContext> => {
+
+const mutationKey = ['deleteGestalt'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteGestalt>>, {gestaltId: number}> = (props) => {
+          const {gestaltId} = props ?? {};
+
+          return  deleteGestalt(gestaltId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteGestaltMutationResult = NonNullable<Awaited<ReturnType<typeof deleteGestalt>>>
+
+    export type DeleteGestaltMutationError = ErrorType<void>
+
+    /**
+ * @summary Remove a phrase from the active dictionary while retaining historical session evidence
+ */
+export const useDeleteGestalt = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteGestalt>>, TError,{gestaltId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteGestalt>>,
+        TError,
+        {gestaltId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteGestaltMutationOptions(options));
+    }
+
 export const getLogPhraseObservationUrl = (params: LogPhraseObservationParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -6705,7 +7341,7 @@ export const getRequestObservationVideoUploadUrl = () => {
 }
 
 /**
- * @summary Reserve a private family observation video upload
+ * @summary Reserve a private care-team observation video upload
  */
 export const requestObservationVideoUpload = async (observationVideoUploadRequest: ObservationVideoUploadRequest, options?: Parameters<typeof customFetch>[1]): Promise<ObservationVideoUpload> => {
 
@@ -6754,7 +7390,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type RequestObservationVideoUploadMutationError = ErrorType<void>
 
     /**
- * @summary Reserve a private family observation video upload
+ * @summary Reserve a private care-team observation video upload
  */
 export const useRequestObservationVideoUpload = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof requestObservationVideoUpload>>, TError,{data: BodyType<ObservationVideoUploadRequest>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -6776,7 +7412,7 @@ export const getGetObservationVideoUrl = (observationId: number,) => {
 }
 
 /**
- * @summary Stream a private family observation video
+ * @summary Stream a private care-team observation video
  */
 export const getObservationVideo = async (observationId: number, options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
 
@@ -6823,7 +7459,7 @@ export type GetObservationVideoQueryError = ErrorType<void>
 
 
 /**
- * @summary Stream a private family observation video
+ * @summary Stream a private care-team observation video
  */
 
 export function useGetObservationVideo<TData = Awaited<ReturnType<typeof getObservationVideo>>, TError = ErrorType<void>>(
@@ -7921,6 +8557,154 @@ export function useGetSessionTranscriptionAudio<TData = Awaited<ReturnType<typeo
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetSessionTranscriptionAudioQueryOptions(transcriptId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getDeleteSessionTranscriptPhraseUrl = (phraseId: number,) => {
+
+
+
+
+  return `/api/sessions/transcription/phrases/${phraseId}`
+}
+
+/**
+ * @summary Exclude a detected phrase from an unfinished transcript review
+ */
+export const deleteSessionTranscriptPhrase = async (phraseId: number, options?: Parameters<typeof customFetch>[1]): Promise<SessionTranscript> => {
+
+  return customFetch<SessionTranscript>(getDeleteSessionTranscriptPhraseUrl(phraseId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+
+
+export const getDeleteSessionTranscriptPhraseMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSessionTranscriptPhrase>>, TError,{phraseId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof deleteSessionTranscriptPhrase>>, TError,{phraseId: number}, TContext> => {
+
+const mutationKey = ['deleteSessionTranscriptPhrase'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof deleteSessionTranscriptPhrase>>, {phraseId: number}> = (props) => {
+          const {phraseId} = props ?? {};
+
+          return  deleteSessionTranscriptPhrase(phraseId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type DeleteSessionTranscriptPhraseMutationResult = NonNullable<Awaited<ReturnType<typeof deleteSessionTranscriptPhrase>>>
+
+    export type DeleteSessionTranscriptPhraseMutationError = ErrorType<void>
+
+    /**
+ * @summary Exclude a detected phrase from an unfinished transcript review
+ */
+export const useDeleteSessionTranscriptPhrase = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof deleteSessionTranscriptPhrase>>, TError,{phraseId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof deleteSessionTranscriptPhrase>>,
+        TError,
+        {phraseId: number},
+        TContext
+      > => {
+      return useMutation(getDeleteSessionTranscriptPhraseMutationOptions(options));
+    }
+
+export const getGetUnclearVocalizationAudioUrl = (segmentId: number,) => {
+
+
+
+
+  return `/api/sessions/unclear-vocalizations/${segmentId}/audio`
+}
+
+/**
+ * @summary Stream the retained short audio clip for one saved unclear moment
+ */
+export const getUnclearVocalizationAudio = async (segmentId: number, options?: Parameters<typeof customFetch>[1]): Promise<void> => {
+
+  return customFetch<void>(getGetUnclearVocalizationAudioUrl(segmentId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetUnclearVocalizationAudioQueryKey = (segmentId: number,) => {
+    return [
+    `/api/sessions/unclear-vocalizations/${segmentId}/audio`
+    ] as const;
+    }
+
+
+export const getGetUnclearVocalizationAudioQueryOptions = <TData = Awaited<ReturnType<typeof getUnclearVocalizationAudio>>, TError = ErrorType<void>>(segmentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUnclearVocalizationAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetUnclearVocalizationAudioQueryKey(segmentId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getUnclearVocalizationAudio>>> = ({ signal }) => getUnclearVocalizationAudio(segmentId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: segmentId !== null && segmentId !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getUnclearVocalizationAudio>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetUnclearVocalizationAudioQueryResult = NonNullable<Awaited<ReturnType<typeof getUnclearVocalizationAudio>>>
+export type GetUnclearVocalizationAudioQueryError = ErrorType<void>
+
+
+/**
+ * @summary Stream the retained short audio clip for one saved unclear moment
+ */
+
+export function useGetUnclearVocalizationAudio<TData = Awaited<ReturnType<typeof getUnclearVocalizationAudio>>, TError = ErrorType<void>>(
+ segmentId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getUnclearVocalizationAudio>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetUnclearVocalizationAudioQueryOptions(segmentId,options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

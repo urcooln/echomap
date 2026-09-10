@@ -66,6 +66,10 @@ import {
   clinicalDocumentationTable,
   communicationGoalsTable,
   communicationGoalHistoryTable,
+  communicationPassportsTable,
+  type CommunicationPassportContent,
+  therapySessionGoalProgressTable,
+  iepServiceRequirementsTable,
   clinicalKnowledgeChunksTable,
   clinicalKnowledgeAppliedFactsTable,
   clinicalKnowledgeIngestionJobsTable,
@@ -135,6 +139,12 @@ import {
   objectStoreForStorageDriver,
 } from "../lib/audio-object-store-factory";
 import { persistedAudioObjectMetadata } from "../lib/audio-object-store";
+import { extractUnclearAudioClip } from "../lib/unclear-audio-clip";
+import {
+  dateString,
+  serviceDeliveryStatus,
+  servicePeriodWindow,
+} from "../lib/service-requirement";
 import { RecordingObjectStorage } from "../lib/recording-object-storage";
 import {
   calibrationDatabaseSaveFailure,
@@ -239,15 +249,21 @@ import {
 } from "../lib/dictionary-duplicate-matcher";
 import { logger } from "../lib/logger";
 import {
+  acceptedInvitationChildScope,
   createInvitationToken,
   hashInvitationToken,
 } from "../lib/invitation-security";
+import {
+  issueApplicationInvitation,
+  revokeApplicationInvitation,
+} from "../lib/clerk-invitations";
 import {
   DEVELOPMENT_DEMO_COOKIE,
   DEVELOPMENT_DEMO_EMAIL,
   seedDevelopmentSpeakerReviewFixture,
   seedDevelopmentDemo,
 } from "../lib/development-demo";
+import { hasValidDevelopmentAccessKey } from "../lib/development-login-access";
 import {
   isManagedObjectStorageDriver,
   runtimeConfig,
@@ -271,6 +287,7 @@ import {
   DeleteChildInterestParams,
   CreateGestaltBody,
   CreateGestaltQueryParams,
+  DeleteGestaltParams,
   MergeGestaltsBody,
   MergeGestaltsQueryParams,
   ListDictionaryDuplicateSuggestionsQueryParams,
@@ -339,6 +356,16 @@ import {
   UpdateSessionSoapNoteBody,
   ListGestaltsQueryParams,
   ListSessionsQueryParams,
+  GetManualSessionSetupQueryParams,
+  GetManualSessionSetupResponse,
+  CreateManualSessionQueryParams,
+  CreateManualSessionBody,
+  CreateManualSessionResponse,
+  ListIepServiceRequirementsQueryParams,
+  ListIepServiceRequirementsResponse,
+  UpsertIepServiceRequirementQueryParams,
+  UpsertIepServiceRequirementBody,
+  UpsertIepServiceRequirementResponse,
   GetSessionsDashboardResponse,
   ListUnclearVocalizationsQueryParams,
   ListChildInterestsQueryParams,
@@ -381,6 +408,8 @@ import {
   GetSessionTranscriptionDraftQueryParams,
   DeleteSessionTranscriptionDraftQueryParams,
   GetSessionTranscriptionAudioParams,
+  DeleteSessionTranscriptPhraseParams,
+  GetUnclearVocalizationAudioParams,
   TranscribeSessionAudioBody,
   TranscribeSessionAudioQueryParams,
   UpdateTranscriptSpeakersBody,
@@ -460,6 +489,12 @@ import {
   UpdateCommunicationGoalParams,
   UpdateCommunicationGoalBody,
   UpdateCommunicationGoalResponse,
+  GetCommunicationPassportQueryParams,
+  GetCommunicationPassportResponse,
+  SaveCommunicationPassportBody,
+  SaveCommunicationPassportResponse,
+  GenerateCommunicationPassportBody,
+  GenerateCommunicationPassportResponse,
 } from "@workspace/api-zod";
 import {
   legacyNoteHasTypedObservation,
@@ -959,13 +994,124 @@ const observations: Observation[] = [
 let nextGestaltId = 5;
 let nextCommentId = 3;
 let nextObservationId = 3;
-const storeDirectory = path.resolve(process.cwd(), ".data", "childled-sessions");
+const storeDirectory = path.resolve(
+  process.cwd(),
+  ".data",
+  "childled-sessions",
+);
 const storePath = path.join(storeDirectory, "sessions.json");
 const audioObjectStore = createAudioObjectStore();
 const recordingObjectStorage = new RecordingObjectStorage();
 const persistedAudioObjectStore = (
   audio: typeof sessionAudioObjectsTable.$inferSelect,
 ) => objectStoreForStorageDriver(audio.storageDriver);
+
+type PreparedUnclearAudioClip = {
+  id: string;
+  segmentId: number;
+  durationMilliseconds: number;
+  storageDriver: string;
+  objectKey: string;
+  contentType: string;
+  sizeBytes: number;
+};
+
+const prepareUnclearAudioClips = async (
+  audio: typeof sessionAudioObjectsTable.$inferSelect,
+  transcript: typeof sessionTranscriptsTable.$inferSelect,
+) => {
+  const [segments, reviews] = await Promise.all([
+    db
+      .select()
+      .from(transcriptSpeakerSegmentsTable)
+      .where(eq(transcriptSpeakerSegmentsTable.transcriptId, transcript.id)),
+    db
+      .select()
+      .from(transcriptChildUtteranceReviewsTable)
+      .where(
+        eq(transcriptChildUtteranceReviewsTable.transcriptId, transcript.id),
+      ),
+  ]);
+  const eligibleReviewBySegmentId = new Map(
+    reviews
+      .filter((review) =>
+        ["child", "confirmed_gestalt", "unintelligible"].includes(
+          review.disposition,
+        ),
+      )
+      .map((review) => [review.segmentId, review]),
+  );
+  const eligibleSegments = segments.filter(
+    (segment) =>
+      eligibleReviewBySegmentId.has(segment.id) &&
+      ["partially_intelligible", "unintelligible"].includes(
+        segment.intelligibility,
+      ) &&
+      segment.startTimeMilliseconds !== null &&
+      segment.durationMilliseconds !== null &&
+      segment.durationMilliseconds > 0,
+  );
+  if (!eligibleSegments.length) return [];
+
+  const sourceAudio = await persistedAudioObjectStore(audio).get(
+    audio.objectKey,
+  );
+  const prepared: PreparedUnclearAudioClip[] = [];
+  try {
+    for (const segment of eligibleSegments) {
+      const clip = await extractUnclearAudioClip({
+        audio: sourceAudio,
+        startTimeMilliseconds: segment.startTimeMilliseconds!,
+        durationMilliseconds: segment.durationMilliseconds!,
+      });
+      const id = randomUUID();
+      const stored = await audioObjectStore.put({
+        key: `${audio.organizationId}/audio/unclear/${id}.wav`,
+        contentType: clip.contentType,
+        data: clip.data,
+      });
+      prepared.push({
+        id,
+        segmentId: segment.id,
+        durationMilliseconds: clip.durationMilliseconds,
+        ...persistedAudioObjectMetadata(
+          runtimeConfig.audioStorage.driver,
+          stored,
+        ),
+        contentType: clip.contentType,
+        sizeBytes: clip.data.length,
+      });
+    }
+    return prepared;
+  } catch (error) {
+    await Promise.allSettled(
+      prepared.map((clip) =>
+        objectStoreForStorageDriver(clip.storageDriver).delete(clip.objectKey),
+      ),
+    );
+    throw error;
+  }
+};
+
+const deleteFinalizedFullAudio = async (
+  audioObjects: Array<typeof sessionAudioObjectsTable.$inferSelect>,
+) => {
+  const deletedAt = new Date();
+  for (const audio of audioObjects) {
+    try {
+      await persistedAudioObjectStore(audio).delete(audio.objectKey);
+      await db
+        .update(sessionAudioObjectsTable)
+        .set({ status: "deleted", deletedAt })
+        .where(eq(sessionAudioObjectsTable.id, audio.id));
+    } catch (error) {
+      logger.error(
+        { err: error, audioId: audio.id },
+        "Could not immediately delete finalized full recording; retention cleanup will retry",
+      );
+    }
+  }
+};
 let sessionStore: SessionStore = {
   sessions: [],
   audio: [],
@@ -1099,11 +1245,9 @@ const requireChildAccess = (req: Request, res: any, childId: number) => {
     return false;
   }
   if (!canAccessChild(req, childId)) {
-    res
-      .status(403)
-      .json({
-        error: "This care-team role does not have access to this child.",
-      });
+    res.status(403).json({
+      error: "This care-team role does not have access to this child.",
+    });
     return false;
   }
   return true;
@@ -1117,12 +1261,10 @@ const requireAdmin = (req: Request, res: any) => {
     return null;
   }
   if (!actor.isAdmin) {
-    res
-      .status(403)
-      .json({
-        error:
-          "Administrator access is required to view security administration.",
-      });
+    res.status(403).json({
+      error:
+        "Administrator access is required to view security administration.",
+    });
     return null;
   }
   return actor;
@@ -1144,11 +1286,9 @@ const requireSuperAdmin = (req: Request, res: any) => {
     }).catch((error) =>
       req.log.warn({ err: error }, "Could not audit denied owner-tools access"),
     );
-    res
-      .status(403)
-      .json({
-        error: "Super Admin access is required to use owner testing tools.",
-      });
+    res.status(403).json({
+      error: "Super Admin access is required to use owner testing tools.",
+    });
     return null;
   }
   return actor;
@@ -1188,19 +1328,15 @@ const requireFamilyLearningAccess = (
     return null;
   }
   if (actor.role !== "Parent") {
-    res
-      .status(403)
-      .json({
-        error: "Parent, caregiver, or authorized family access is required.",
-      });
+    res.status(403).json({
+      error: "Parent, caregiver, or authorized family access is required.",
+    });
     return null;
   }
   if (!actor.organizationId || !canAccessAssignedChild(actor, childId)) {
-    res
-      .status(403)
-      .json({
-        error: "This family account does not have access to this child.",
-      });
+    res.status(403).json({
+      error: "This family account does not have access to this child.",
+    });
     return null;
   }
   return actor;
@@ -1223,12 +1359,9 @@ const requireTeacherResourceAccess = (
     !actor.organizationId ||
     !canAccessAssignedChild(actor, childId)
   ) {
-    res
-      .status(403)
-      .json({
-        error:
-          "Authorized teacher access is required for this resource center.",
-      });
+    res.status(403).json({
+      error: "Authorized teacher access is required for this resource center.",
+    });
     return null;
   }
   return actor;
@@ -1986,6 +2119,215 @@ const ensureLegacySharedProfileEntries = async (
     }
   });
 };
+const cleanPassportList = (values: string[]) => {
+  const seen = new Set<string>();
+  return values.flatMap((value) => {
+    const cleaned = value.replace(/\s+/g, " ").trim();
+    const key = cleaned.toLocaleLowerCase();
+    if (!cleaned || seen.has(key)) return [];
+    seen.add(key);
+    return [cleaned];
+  });
+};
+const normalizeCommunicationPassportContent = (
+  content: CommunicationPassportContent,
+): CommunicationPassportContent => ({
+  childName: content.childName.replace(/\s+/g, " ").trim(),
+  preferredName: content.preferredName.replace(/\s+/g, " ").trim(),
+  aboutMe: content.aboutMe.trim(),
+  communicationMethods: cleanPassportList(content.communicationMethods),
+  communicationStrengths: cleanPassportList(content.communicationStrengths),
+  wantsAndNeeds: content.wantsAndNeeds.trim(),
+  commonPhrases: content.commonPhrases.flatMap((entry) => {
+    const phrase = entry.phrase.replace(/\s+/g, " ").trim();
+    if (!phrase) return [];
+    return [{ phrase, meaning: entry.meaning.trim() }];
+  }),
+  gestures: cleanPassportList(content.gestures),
+  aacInformation: content.aacInformation.trim(),
+  helpfulStrategies: cleanPassportList(content.helpfulStrategies),
+  communicationChallenges: cleanPassportList(content.communicationChallenges),
+  frustrationSupports: cleanPassportList(content.frustrationSupports),
+  importantWords: content.importantWords.flatMap((entry) => {
+    const phrase = entry.phrase.replace(/\s+/g, " ").trim();
+    if (!phrase) return [];
+    return [{ phrase, meaning: entry.meaning.trim() }];
+  }),
+  interests: cleanPassportList(content.interests),
+  currentGoals: cleanPassportList(content.currentGoals),
+  additionalInformation: content.additionalInformation.trim(),
+});
+const generatedCommunicationPassportFor = async (
+  organizationId: number,
+  childId: number,
+) => {
+  const [profile] = await db
+    .select()
+    .from(childProfilesTable)
+    .where(
+      and(
+        eq(childProfilesTable.id, childId),
+        eq(childProfilesTable.organizationId, organizationId),
+        isNull(childProfilesTable.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (!profile) return null;
+  await ensureLegacySharedProfileEntries(profile);
+  const [sharedEntries, dictionaryEntries, aacProfile, goals] =
+    await Promise.all([
+      db
+        .select()
+        .from(sharedChildProfileEntriesTable)
+        .where(
+          and(
+            eq(sharedChildProfileEntriesTable.organizationId, organizationId),
+            eq(sharedChildProfileEntriesTable.childId, childId),
+            isNull(sharedChildProfileEntriesTable.deletedAt),
+          ),
+        )
+        .orderBy(sharedChildProfileEntriesTable.id),
+      db
+        .select()
+        .from(clinicalGestaltsTable)
+        .where(
+          and(
+            eq(clinicalGestaltsTable.organizationId, organizationId),
+            eq(clinicalGestaltsTable.childId, childId),
+            isNull(clinicalGestaltsTable.archivedAt),
+          ),
+        )
+        .orderBy(desc(clinicalGestaltsTable.updatedAt)),
+      db
+        .select()
+        .from(aacProfilesTable)
+        .where(
+          and(
+            eq(aacProfilesTable.organizationId, organizationId),
+            eq(aacProfilesTable.childId, childId),
+            isNull(aacProfilesTable.removedAt),
+          ),
+        )
+        .limit(1)
+        .then((rows) => rows[0]),
+      db
+        .select()
+        .from(communicationGoalsTable)
+        .where(
+          and(
+            eq(communicationGoalsTable.organizationId, organizationId),
+            eq(communicationGoalsTable.childId, childId),
+            eq(communicationGoalsTable.status, "active"),
+          ),
+        )
+        .orderBy(communicationGoalsTable.id),
+    ]);
+  const names = canonicalChildNames(profile);
+  const entriesFor = (section: SharedProfileSection, category?: string) =>
+    sharedEntries
+      .filter(
+        (entry) =>
+          entry.section === section &&
+          (category === undefined || entry.category === category),
+      )
+      .map((entry) => entry.value);
+  const reviewedPhrases = dictionaryEntries
+    .filter(
+      (entry) =>
+        !entry.source.toLocaleLowerCase().includes("review pending") &&
+        !entry.meaning
+          .toLocaleLowerCase()
+          .includes("awaiting clinician review") &&
+        entry.communicationFunction !== "Not yet reviewed",
+    )
+    .slice(0, 8)
+    .map((entry) => ({ phrase: entry.phrase, meaning: entry.meaning }));
+  const confirmedAac =
+    aacProfile?.confirmedAt && aacProfile.aacUserStatus !== "unknown"
+      ? aacProfile
+      : undefined;
+  const child = childFromProfile(
+    profile,
+    dictionaryEntries.length,
+    confirmedAac,
+  );
+  const modalityLabels: Record<string, string> = {
+    aac: "AAC",
+    spoken_language: "Spoken language",
+    sign_language: "Sign language",
+    gestures: "Gestures and nonverbal communication",
+    written_language: "Written language",
+    other: confirmedAac?.otherModalityLabel || "Other communication method",
+  };
+  const communicationMethods = cleanPassportList([
+    profile.communicationStyle,
+    ...(confirmedAac?.communicationModalities ?? []).map(
+      (modality) => modalityLabels[modality] ?? modality,
+    ),
+  ]);
+  const aacDetails = child.aacSnapshot?.isUser
+    ? [
+        child.aacSnapshot.device
+          ? `Device/system: ${child.aacSnapshot.device}`
+          : "Uses AAC",
+        child.aacSnapshot.vocabularySystem
+          ? `Vocabulary: ${child.aacSnapshot.vocabularySystem}`
+          : "",
+        child.aacSnapshot.accessMethod
+          ? `Access method: ${child.aacSnapshot.accessMethod}`
+          : "",
+      ]
+        .filter(Boolean)
+        .join("\n")
+    : "";
+  return normalizeCommunicationPassportContent({
+    childName: names.name,
+    preferredName: names.preferredName,
+    aboutMe: profile.communicationStyle
+      ? `${names.name} communicates ${profile.communicationStyle.toLocaleLowerCase()}.`
+      : "",
+    communicationMethods,
+    communicationStrengths: entriesFor("strengths"),
+    wantsAndNeeds: "",
+    commonPhrases: reviewedPhrases,
+    gestures: confirmedAac?.communicationModalities.includes("gestures")
+      ? ["Uses gestures and nonverbal communication."]
+      : [],
+    aacInformation: aacDetails,
+    helpfulStrategies: entriesFor("sensory_supports", "support"),
+    communicationChallenges: entriesFor("sensory_supports", "challenge"),
+    frustrationSupports: entriesFor("regulation_notes"),
+    importantWords: [],
+    interests: entriesFor("interests"),
+    currentGoals: goals.map((goal) => goal.title),
+    additionalInformation: "",
+  });
+};
+const communicationPassportResponse = async (
+  childId: number,
+  actor: CareTeamActor,
+  passport?: typeof communicationPassportsTable.$inferSelect,
+) => {
+  const [updatedBy] = passport
+    ? await db
+        .select({ displayName: usersTable.displayName })
+        .from(usersTable)
+        .where(eq(usersTable.id, passport.updatedByUserId))
+        .limit(1)
+    : [];
+  return {
+    exists: Boolean(passport),
+    childId,
+    canEdit: canUseClinicalTools(actor),
+    templateKey: passport?.templateKey ?? "general",
+    language: passport?.languageTag ?? "en",
+    content: passport?.content ?? null,
+    version: passport?.version ?? null,
+    createdAt: passport?.createdAt.toISOString() ?? null,
+    updatedAt: passport?.updatedAt.toISOString() ?? null,
+    updatedBy: updatedBy?.displayName ?? null,
+  };
+};
 const sharedProfileResponse = async (
   organizationId: number,
   childId: number,
@@ -2361,33 +2703,57 @@ const purgeSessionAudioObjects = async () => {
       .where(eq(sessionAudioObjectsTable.id, calibration.id));
   }
 
-  const retentionSettings = await db
-    .select()
-    .from(retentionSettingsTable)
-    .where(eq(retentionSettingsTable.scope, "organization"));
   const attachedAudio = await db
     .select()
     .from(sessionAudioObjectsTable)
     .where(
       and(
         eq(sessionAudioObjectsTable.status, "attached"),
+        inArray(sessionAudioObjectsTable.purpose, [
+          "session_recording",
+          "speaker_calibration",
+        ]),
         isNull(sessionAudioObjectsTable.deletedAt),
       ),
     );
   for (const audio of attachedAudio) {
-    const retentionDays =
-      retentionSettings.find(
-        (settings) => settings.organizationId === audio.organizationId,
-      )?.audioRetentionDays ?? 365;
-    const cutoff = new Date(
-      now.getTime() - retentionDays * 24 * 60 * 60 * 1000,
-    );
-    if (audio.createdAt >= cutoff) continue;
     await persistedAudioObjectStore(audio).delete(audio.objectKey);
     await db
       .update(sessionAudioObjectsTable)
       .set({ status: "deleted", deletedAt: now })
       .where(eq(sessionAudioObjectsTable.id, audio.id));
+  }
+
+  const [retentionSettings, retainedClips] = await Promise.all([
+    db
+      .select()
+      .from(retentionSettingsTable)
+      .where(eq(retentionSettingsTable.scope, "organization")),
+    db
+      .select()
+      .from(sessionAudioObjectsTable)
+      .where(
+        and(
+          eq(sessionAudioObjectsTable.status, "attached"),
+          eq(sessionAudioObjectsTable.purpose, "unintelligible_clip"),
+          isNull(sessionAudioObjectsTable.deletedAt),
+        ),
+      ),
+  ]);
+  for (const clip of retainedClips) {
+    const retentionDays =
+      retentionSettings.find(
+        (settings) => settings.organizationId === clip.organizationId,
+      )?.audioRetentionDays ?? 365;
+    const cutoff = new Date(
+      now.getTime() - retentionDays * 24 * 60 * 60 * 1000,
+    );
+    if (clip.createdAt >= cutoff) continue;
+    await persistedAudioObjectStore(clip).delete(clip.objectKey);
+    await db
+      .update(sessionAudioObjectsTable)
+      .set({ status: "deleted", deletedAt: now })
+      .where(eq(sessionAudioObjectsTable.id, clip.id));
   }
 };
 setInterval(() => {
@@ -3437,6 +3803,7 @@ const teacherCommunicationHelperFor = async (
           and(
             eq(teamMessagesTable.organizationId, organizationId),
             eq(teamMessagesTable.childId, childId),
+            isNull(teamMessagesTable.recipientUserId),
           ),
         )
         .orderBy(desc(teamMessagesTable.createdAt)),
@@ -4408,6 +4775,164 @@ const communicationGoalSnapshot = (
   archivedByUserId: goal.archivedByUserId,
 });
 
+type ServiceSessionDelivery = {
+  childId: number;
+  sessionDate: string;
+  durationSeconds: number;
+};
+
+const serviceRequirementResponseFromSessions = (
+  requirement: typeof iepServiceRequirementsTable.$inferSelect,
+  sessions: ServiceSessionDelivery[],
+) => {
+  const window = servicePeriodWindow(requirement.period);
+  const completedSessions = sessions.filter(
+    (session) =>
+      session.childId === requirement.childId &&
+      session.sessionDate >= window.start &&
+      session.sessionDate < window.endExclusive,
+  );
+  const sessionsCompleted = completedSessions.length;
+  const minutesCompleted = Math.round(
+    completedSessions.reduce(
+      (total, session) => total + session.durationSeconds,
+      0,
+    ) / 60,
+  );
+  const { sessionsRemaining, minutesRemaining, status } = serviceDeliveryStatus(
+    {
+      requiredSessions: requirement.requiredSessions,
+      requiredMinutes: requirement.requiredMinutes,
+      sessionsCompleted,
+      minutesCompleted,
+      periodProgress: window.progress,
+    },
+  );
+  return {
+    id: requirement.id,
+    childId: requirement.childId,
+    serviceName: requirement.serviceName,
+    requiredSessions: requirement.requiredSessions,
+    requiredMinutes: requirement.requiredMinutes,
+    sessionDurationMinutes: requirement.sessionDurationMinutes,
+    period: requirement.period,
+    effectiveFrom: requirement.effectiveFrom,
+    effectiveTo: requirement.effectiveTo,
+    periodLabel: window.label,
+    periodStart: window.start,
+    periodEnd: window.end,
+    sessionsCompleted,
+    sessionsRemaining,
+    minutesCompleted,
+    minutesRemaining,
+    status,
+    updatedAt: requirement.updatedAt.toISOString(),
+  };
+};
+
+const serviceRequirementResponse = async (
+  requirement: typeof iepServiceRequirementsTable.$inferSelect,
+) => {
+  const window = servicePeriodWindow(requirement.period);
+  const sessions = await db
+    .select({
+      childId: therapySessionsTable.childId,
+      sessionDate: therapySessionsTable.sessionDate,
+      durationSeconds: therapySessionsTable.durationSeconds,
+    })
+    .from(therapySessionsTable)
+    .where(
+      and(
+        eq(therapySessionsTable.organizationId, requirement.organizationId),
+        eq(therapySessionsTable.childId, requirement.childId),
+        isNull(therapySessionsTable.archivedAt),
+        gte(therapySessionsTable.sessionDate, window.start),
+        lt(therapySessionsTable.sessionDate, window.endExclusive),
+      ),
+    );
+  return serviceRequirementResponseFromSessions(requirement, sessions);
+};
+
+const activeServiceRequirementsForChildren = async (
+  organizationId: number,
+  childIds: number[],
+) => {
+  const byChild = new Map<
+    number,
+    Awaited<ReturnType<typeof serviceRequirementResponse>>[]
+  >(childIds.map((childId) => [childId, []]));
+  if (!childIds.length) return byChild;
+
+  const today = dateString(new Date());
+  const requirements = await db
+    .select()
+    .from(iepServiceRequirementsTable)
+    .where(
+      and(
+        eq(iepServiceRequirementsTable.organizationId, organizationId),
+        inArray(iepServiceRequirementsTable.childId, childIds),
+        eq(iepServiceRequirementsTable.status, "active"),
+        gte(sql`${today}::date`, iepServiceRequirementsTable.effectiveFrom),
+        or(
+          isNull(iepServiceRequirementsTable.effectiveTo),
+          gte(iepServiceRequirementsTable.effectiveTo, today),
+        ),
+      ),
+    )
+    .orderBy(
+      iepServiceRequirementsTable.childId,
+      iepServiceRequirementsTable.serviceName,
+    );
+
+  if (!requirements.length) return byChild;
+  const windows = requirements.map((requirement) =>
+    servicePeriodWindow(requirement.period),
+  );
+  const earliestStart = windows.reduce(
+    (earliest, window) => (window.start < earliest ? window.start : earliest),
+    windows[0].start,
+  );
+  const latestEnd = windows.reduce(
+    (latest, window) =>
+      window.endExclusive > latest ? window.endExclusive : latest,
+    windows[0].endExclusive,
+  );
+  const sessions = await db
+    .select({
+      childId: therapySessionsTable.childId,
+      sessionDate: therapySessionsTable.sessionDate,
+      durationSeconds: therapySessionsTable.durationSeconds,
+    })
+    .from(therapySessionsTable)
+    .where(
+      and(
+        eq(therapySessionsTable.organizationId, organizationId),
+        inArray(therapySessionsTable.childId, childIds),
+        isNull(therapySessionsTable.archivedAt),
+        gte(therapySessionsTable.sessionDate, earliestStart),
+        lt(therapySessionsTable.sessionDate, latestEnd),
+      ),
+    );
+  const responses = requirements.map((requirement) =>
+    serviceRequirementResponseFromSessions(requirement, sessions),
+  );
+  for (const requirement of responses) {
+    byChild.get(requirement.childId)?.push(requirement);
+  }
+  return byChild;
+};
+
+const activeServiceRequirementsFor = async (
+  organizationId: number,
+  childId: number,
+) => {
+  const requirements = await activeServiceRequirementsForChildren(
+    organizationId,
+    [childId],
+  );
+  return requirements.get(childId) ?? [];
+};
+
 /**
  * Server-owned, deterministic provenance. These connections are references for
  * clinician review, never a measure of achievement, progress, or mastery.
@@ -5130,6 +5655,19 @@ const rebuildChildTranscriptPhrases = async (
   childChunks: string[],
 ) => {
   const phrases = segmentTranscript(childChunks);
+  const rejectedPhraseKeys = new Set(
+    (
+      await transaction
+        .select({
+          normalizedPhrase: transcriptPhrasesTable.normalizedPhrase,
+          accepted: transcriptPhrasesTable.accepted,
+        })
+        .from(transcriptPhrasesTable)
+        .where(eq(transcriptPhrasesTable.transcriptId, transcript.id))
+    )
+      .filter((phrase: { accepted: boolean }) => !phrase.accepted)
+      .map((phrase: { normalizedPhrase: string }) => phrase.normalizedPhrase),
+  );
   const clinicalGestalts: Array<{ id: number; phrase: string }> =
     await transaction
       .select()
@@ -5156,6 +5694,7 @@ const rebuildChildTranscriptPhrases = async (
         phrase: phrase.phrase,
         normalizedPhrase: phrase.normalizedPhrase,
         frequency: phrase.frequency,
+        accepted: !rejectedPhraseKeys.has(phrase.normalizedPhrase),
         matchedGestaltId:
           gestaltByKey.get(matchPhraseKey(phrase.normalizedPhrase))?.id ?? null,
         attributedRole: "child",
@@ -5215,7 +5754,12 @@ const refreshChildPhraseInboxPointers = async (
     transaction
       .select()
       .from(transcriptPhrasesTable)
-      .where(eq(transcriptPhrasesTable.transcriptId, transcriptId)),
+      .where(
+        and(
+          eq(transcriptPhrasesTable.transcriptId, transcriptId),
+          eq(transcriptPhrasesTable.accepted, true),
+        ),
+      ),
     transaction
       .select()
       .from(childPhraseInboxItemsTable)
@@ -5267,7 +5811,12 @@ const syncChildPhraseInboxForReviews = async (
     await transaction
       .select()
       .from(transcriptPhrasesTable)
-      .where(eq(transcriptPhrasesTable.transcriptId, transcript.id));
+      .where(
+        and(
+          eq(transcriptPhrasesTable.transcriptId, transcript.id),
+          eq(transcriptPhrasesTable.accepted, true),
+        ),
+      );
   const transcriptPhraseByNormalized = new Map(
     transcriptPhrases.map((phrase) => [phrase.normalizedPhrase, phrase]),
   );
@@ -5479,7 +6028,12 @@ const transcriptResponse = async (
     db
       .select()
       .from(transcriptPhrasesTable)
-      .where(eq(transcriptPhrasesTable.transcriptId, transcript.id)),
+      .where(
+        and(
+          eq(transcriptPhrasesTable.transcriptId, transcript.id),
+          eq(transcriptPhrasesTable.accepted, true),
+        ),
+      ),
     db
       .select()
       .from(transcriptProvisionalPhrasesTable)
@@ -5715,29 +6269,6 @@ const transcriptResponse = async (
         reason: transcript.status === "failed" ? transcript.errorMessage : null,
       },
       {
-        stage: "speaker_grouping",
-        label: "Speaker grouping",
-        status: speakerSeparationStatus,
-        reason: transcript.speakerSeparationFailureMessage,
-      },
-      {
-        stage: "clinician_identification",
-        label: "Clinician identification",
-        status: assignedSpeakers.length
-          ? "completed"
-          : speakerContext.speakers.length
-            ? "pending"
-            : speakerSeparationStatus === "failed" ||
-                speakerSeparationStatus === "unavailable"
-              ? "unavailable"
-              : "pending",
-        reason: assignedSpeakers.length
-          ? null
-          : speakerContext.speakers.length
-            ? "Confirm a clinical role for each temporary speaker group."
-            : "No temporary speaker groups are available yet.",
-      },
-      {
         stage: "phrase_extraction",
         label: "Phrase review",
         status:
@@ -5747,7 +6278,7 @@ const transcriptResponse = async (
         reason: phraseRows.length
           ? null
           : provisionalPhraseRows.length
-            ? "Mixed-speaker provisional candidates are ready for review."
+            ? "Transcript candidates are ready for Child-language review."
             : "ChildLed is preparing phrase candidates from the completed transcript.",
       },
       {
@@ -5762,7 +6293,7 @@ const transcriptResponse = async (
               : "blocked",
         reason: phraseRows.length
           ? null
-          : "Provisional decisions remain outside clinical evidence until Child attribution and meaning-backed review are complete.",
+          : "Transcript decisions remain outside clinical evidence until Child attribution and meaning-backed review are complete.",
       },
       {
         stage: "insight_generation",
@@ -5866,8 +6397,8 @@ const transcriptResponse = async (
       candidateKind: phrase.candidateKind,
       disposition: phrase.disposition,
       workingMeaning: phrase.workingMeaning,
-      attributionLabel: "Speaker attribution pending",
-      sourceLabel: "Mixed-speaker transcript",
+      attributionLabel: "Child-language review pending",
+      sourceLabel: "Completed transcript",
       evidenceLabel: "Not clinical evidence",
       updatedAt: phrase.updatedAt.toISOString(),
     })),
@@ -5995,7 +6526,7 @@ const unclearVocalizationReviewFor = async (
     };
   }
 
-  const [segments, roles, reviews] = await Promise.all([
+  const [segments, reviews, audioClips] = await Promise.all([
     db
       .select()
       .from(transcriptSpeakerSegmentsTable)
@@ -6016,10 +6547,6 @@ const unclearVocalizationReviewFor = async (
       ),
     db
       .select()
-      .from(transcriptSpeakerRolesTable)
-      .where(inArray(transcriptSpeakerRolesTable.transcriptId, transcriptIds)),
-    db
-      .select()
       .from(transcriptChildUtteranceReviewsTable)
       .where(
         inArray(
@@ -6027,19 +6554,40 @@ const unclearVocalizationReviewFor = async (
           transcriptIds,
         ),
       ),
+    db
+      .select({
+        sourceTranscriptSegmentId:
+          sessionAudioObjectsTable.sourceTranscriptSegmentId,
+      })
+      .from(sessionAudioObjectsTable)
+      .where(
+        and(
+          eq(sessionAudioObjectsTable.organizationId, organizationId),
+          eq(sessionAudioObjectsTable.childId, childId),
+          eq(sessionAudioObjectsTable.purpose, "unintelligible_clip"),
+          eq(sessionAudioObjectsTable.status, "attached"),
+          inArray(sessionAudioObjectsTable.sessionId, sessionIds),
+          isNull(sessionAudioObjectsTable.deletedAt),
+        ),
+      ),
   ]);
-  const childRoleKeys = new Set(
-    roles
-      .filter((role) => normalizedSpeakerRole(role.role) === "child")
-      .map((role) => `${role.transcriptId}:${role.speakerLabel}`),
+  const audioClipSegmentIds = new Set(
+    audioClips
+      .map((clip) => clip.sourceTranscriptSegmentId)
+      .filter((id): id is number => id !== null),
   );
   const reviewBySegmentId = new Map(
     reviews.map((review) => [review.segmentId, review]),
   );
   const occurrences: UnclearVocalizationOccurrenceResponse[] = segments
-    .filter((segment) =>
-      childRoleKeys.has(`${segment.transcriptId}:${segment.speakerLabel}`),
-    )
+    .filter((segment) => {
+      const disposition = reviewBySegmentId.get(segment.id)?.disposition;
+      return (
+        disposition === "child" ||
+        disposition === "confirmed_gestalt" ||
+        disposition === "unintelligible"
+      );
+    })
     .flatMap((segment) => {
       const transcript = transcriptById.get(segment.transcriptId);
       const session = transcript?.sessionId
@@ -6074,6 +6622,9 @@ const unclearVocalizationReviewFor = async (
           clinicianInterpretation: review?.interpretation ?? null,
           note: review?.note ?? null,
           crossSessionLabel: review?.crossSessionLabel ?? null,
+          audioClipUrl: audioClipSegmentIds.has(segment.id)
+            ? `/api/sessions/unclear-vocalizations/${segment.id}/audio`
+            : null,
           revision: review?.updatedAt.toISOString() ?? null,
         },
       ];
@@ -6586,6 +7137,15 @@ router.post("/development/login", async (req, res): Promise<void> => {
     res.sendStatus(404);
     return;
   }
+  if (
+    !hasValidDevelopmentAccessKey(
+      runtimeConfig.demoLogin.accessKey,
+      req.body?.accessKey,
+    )
+  ) {
+    res.status(403).json({ error: "Development access was not authorized." });
+    return;
+  }
   try {
     await seedDevelopmentDemo();
     res.cookie(DEVELOPMENT_DEMO_COOKIE, "active", {
@@ -6609,11 +7169,9 @@ router.post("/development/login", async (req, res): Promise<void> => {
       { err: error },
       "Could not start the development demo session",
     );
-    res
-      .status(500)
-      .json({
-        error: "The demo workspace could not be prepared. Please try again.",
-      });
+    res.status(500).json({
+      error: "The demo workspace could not be prepared. Please try again.",
+    });
   }
 });
 
@@ -6626,12 +7184,10 @@ router.post(
     }
     const actor = viewerFrom(req);
     if (!isNativeDevelopmentDemo(actor) || !actor?.organizationId) {
-      res
-        .status(401)
-        .json({
-          error:
-            "Start the development demo before loading a speaker-review fixture.",
-        });
+      res.status(401).json({
+        error:
+          "Start the development demo before loading a speaker-review fixture.",
+      });
       return;
     }
     const childId = Number(req.query.childId);
@@ -6640,12 +7196,10 @@ router.post(
       childId <= 0 ||
       !canAccessAssignedChild(actor, childId)
     ) {
-      res
-        .status(403)
-        .json({
-          error:
-            "Choose an assigned child before loading a speaker-review fixture.",
-        });
+      res.status(403).json({
+        error:
+          "Choose an assigned child before loading a speaker-review fixture.",
+      });
       return;
     }
     try {
@@ -6752,11 +7306,9 @@ router.get("/admin/ux-testing", async (req, res): Promise<void> => {
         "Could not audit preview-restricted owner-tools access",
       ),
     );
-    res
-      .status(403)
-      .json({
-        error: "Return to Super Admin view before using owner testing tools.",
-      });
+    res.status(403).json({
+      error: "Return to Super Admin view before using owner testing tools.",
+    });
     return;
   }
   const payload = {
@@ -6933,12 +7485,10 @@ router.put("/admin/retention", async (req, res) => {
     });
   }
   if (!actor.organizationId) {
-    return res
-      .status(503)
-      .json({
-        error:
-          "An organization workspace is required to update retention settings.",
-      });
+    return res.status(503).json({
+      error:
+        "An organization workspace is required to update retention settings.",
+    });
   }
   const body = UpdateRetentionSettingsBody.safeParse(req.body);
   if (!body.success) {
@@ -7269,11 +7819,9 @@ router.post("/reports/export", async (req, res) => {
         .status(404)
         .json({ error: "The documentation record was not found." });
     if (!canExportClinicalDocumentation(document.status)) {
-      return res
-        .status(409)
-        .json({
-          error: "Finalize this documentation record before exporting it.",
-        });
+      return res.status(409).json({
+        error: "Finalize this documentation record before exporting it.",
+      });
     }
     auditedFormat = document.format as typeof body.data.format;
   }
@@ -7704,12 +8252,9 @@ const handleDocumentationLifecycle = async (
       return res
         .status(410)
         .json({ error: "This draft is outside its 30-day recovery window." });
-    return res
-      .status(409)
-      .json({
-        error:
-          "This documentation record cannot make that lifecycle transition.",
-      });
+    return res.status(409).json({
+      error: "This documentation record cannot make that lifecycle transition.",
+    });
   }
   return res.json(responseSchema.parse(result));
 };
@@ -8232,12 +8777,10 @@ router.patch("/communication-goals/:goalId", async (req, res) => {
       .status(404)
       .json({ error: "The communication goal was not found." });
   if ("conflict" in result)
-    return res
-      .status(409)
-      .json({
-        error:
-          "This goal was changed by another clinician. Reload before saving.",
-      });
+    return res.status(409).json({
+      error:
+        "This goal was changed by another clinician. Reload before saving.",
+    });
   await writeSecurityAudit({
     actor,
     action: "COMMUNICATION_GOAL_UPDATED",
@@ -8358,12 +8901,10 @@ router.put("/clinical-documentation", async (req, res) => {
       .status(404)
       .json({ error: "The documentation record was not found." });
   if (current.status !== "draft")
-    return res
-      .status(409)
-      .json({
-        error:
-          "Finalized documentation cannot be edited. Create a new draft to make changes.",
-      });
+    return res.status(409).json({
+      error:
+        "Finalized documentation cannot be edited. Create a new draft to make changes.",
+    });
   const nextContent: DocumentationDraftContent = {
     ...body.data.content,
     // Provenance is server-owned. A stale or direct client may return it, but
@@ -8400,12 +8941,10 @@ router.put("/clinical-documentation", async (req, res) => {
           !byKey.has(`${item.goalId}:${item.sourceKind}:${item.sourceId}`),
       )
     ) {
-      return res
-        .status(422)
-        .json({
-          error:
-            "A goal connection does not belong to this child or is no longer an eligible reviewed source.",
-        });
+      return res.status(422).json({
+        error:
+          "A goal connection does not belong to this child or is no longer an eligible reviewed source.",
+      });
     }
     const selected = new Map(
       selections.map((item) => [
@@ -8700,19 +9239,15 @@ router.post("/clinical-documentation/approve", async (req, res) => {
       });
     }
     if (result.error === "ineligible_goal_connection") {
-      return res
-        .status(422)
-        .json({
-          error:
-            "A selected goal connection is no longer an eligible source for this child. Review the draft before finalizing.",
-        });
-    }
-    return res
-      .status(409)
-      .json({
+      return res.status(422).json({
         error:
-          "This documentation changed while it was being finalized. Reload before trying again.",
+          "A selected goal connection is no longer an eligible source for this child. Review the draft before finalizing.",
       });
+    }
+    return res.status(409).json({
+      error:
+        "This documentation changed while it was being finalized. Reload before trying again.",
+    });
   }
   const approvedBy = result.transitioned
     ? actor.author
@@ -8833,12 +9368,10 @@ router.put("/session-soap-note", async (req, res) => {
         .onConflictDoNothing()
         .returning({ id: clinicalSoapNotesTable.id });
   if (!savedRows.length) {
-    return res
-      .status(409)
-      .json({
-        error:
-          "This SOAP draft changed while you were editing it. Reload before trying again.",
-      });
+    return res.status(409).json({
+      error:
+        "This SOAP draft changed while you were editing it. Reload before trying again.",
+    });
   }
   await writeSecurityAudit({
     actor,
@@ -9051,17 +9584,15 @@ router.post("/clinical-knowledge/sources", async (req, res) => {
       });
     }
   }
-  return res
-    .status(201)
-    .json(
-      CreateClinicalKnowledgeSourceResponse.parse(
-        clinicalKnowledgeSourceResponse(ready, {
-          ...version,
-          checksum: "",
-          extractionStatus: "ready",
-        }),
-      ),
-    );
+  return res.status(201).json(
+    CreateClinicalKnowledgeSourceResponse.parse(
+      clinicalKnowledgeSourceResponse(ready, {
+        ...version,
+        checksum: "",
+        extractionStatus: "ready",
+      }),
+    ),
+  );
 });
 
 router.post(
@@ -9151,12 +9682,10 @@ router.post("/clinical-knowledge/insights", async (req, res) => {
     (left, right) => right.createdAt.getTime() - left.createdAt.getTime(),
   )[0]?.id;
   if (!triggerSessionId) {
-    return res
-      .status(400)
-      .json({
-        error:
-          "Create reviewed Child phrase evidence before refreshing clinical insights.",
-      });
+    return res.status(400).json({
+      error:
+        "Create reviewed Child phrase evidence before refreshing clinical insights.",
+    });
   }
 
   await runClinicalInsights({
@@ -9208,11 +9737,9 @@ router.patch("/clinical-knowledge/insights/:insightId", async (req, res) => {
       .json({ error: "Only automatically applied findings can be reverted." });
   }
   if (body.data.status === "reviewed" && existing.disposition !== "exception") {
-    return res
-      .status(400)
-      .json({
-        error: "Only clinician-review exceptions can be marked reviewed.",
-      });
+    return res.status(400).json({
+      error: "Only clinician-review exceptions can be marked reviewed.",
+    });
   }
   const [updated] = await db
     .update(clinicalKnowledgeInsightsTable)
@@ -9325,12 +9852,10 @@ router.get("/deletion-requests", async (req, res) => {
     query.data.childId !== undefined &&
     !actor.childIds.includes(query.data.childId)
   )
-    return res
-      .status(403)
-      .json({
-        error:
-          "This care-team role does not have access to this child's requests.",
-      });
+    return res.status(403).json({
+      error:
+        "This care-team role does not have access to this child's requests.",
+    });
   const records = await db
     .select()
     .from(deletionRequestsTable)
@@ -9363,11 +9888,9 @@ router.post("/deletion-requests", async (req, res) => {
       .status(401)
       .json({ error: "Please sign in to submit a deletion request." });
   if (!actor.childIds.includes(query.data.childId))
-    return res
-      .status(403)
-      .json({
-        error: "This care-team role does not have access to this child.",
-      });
+    return res.status(403).json({
+      error: "This care-team role does not have access to this child.",
+    });
   const [request] = await db.transaction(async (tx) => {
     const created = (
       await tx
@@ -9383,16 +9906,14 @@ router.post("/deletion-requests", async (req, res) => {
         .returning()
     )[0];
     if (!created) throw new Error("Deletion request could not be created.");
-    await tx
-      .insert(deletionRequestAuditEventsTable)
-      .values({
-        requestId: created.id,
-        action: "request_submitted",
-        actorUserId: actor.userId,
-        actorName: actor.author,
-        actorRole: actor.role,
-        note: "Deletion request submitted for staff review.",
-      });
+    await tx.insert(deletionRequestAuditEventsTable).values({
+      requestId: created.id,
+      action: "request_submitted",
+      actorUserId: actor.userId,
+      actorName: actor.author,
+      actorRole: actor.role,
+      note: "Deletion request submitted for staff review.",
+    });
     return [created];
   });
   return res
@@ -9469,16 +9990,14 @@ router.post("/deletion-requests/:requestId", async (req, res) => {
           .returning()
       )[0];
       if (!updated) return [];
-      await tx
-        .insert(deletionRequestAuditEventsTable)
-        .values({
-          requestId: request.id,
-          action: "request_rejected",
-          actorUserId: actor.userId,
-          actorName: actor.author,
-          actorRole: actor.role,
-          note: note || "Request rejected during staff review.",
-        });
+      await tx.insert(deletionRequestAuditEventsTable).values({
+        requestId: request.id,
+        action: "request_rejected",
+        actorUserId: actor.userId,
+        actorName: actor.author,
+        actorRole: actor.role,
+        note: note || "Request rejected during staff review.",
+      });
       return [updated];
     });
     if (!rejected)
@@ -9513,16 +10032,14 @@ router.post("/deletion-requests/:requestId", async (req, res) => {
         .returning()
     )[0];
     if (!updated) return [];
-    await tx
-      .insert(deletionRequestAuditEventsTable)
-      .values({
-        requestId: request.id,
-        action: "request_approved",
-        actorUserId: actor.userId,
-        actorName: actor.author,
-        actorRole: actor.role,
-        note: note || "Request approved and queued for processing.",
-      });
+    await tx.insert(deletionRequestAuditEventsTable).values({
+      requestId: request.id,
+      action: "request_approved",
+      actorUserId: actor.userId,
+      actorName: actor.author,
+      actorRole: actor.role,
+      note: note || "Request approved and queued for processing.",
+    });
     return [updated];
   });
   if (!claimed)
@@ -9552,16 +10069,14 @@ router.post("/deletion-requests/:requestId", async (req, res) => {
           .returning()
       )[0];
       if (!updated) throw new Error("Deletion request could not be approved.");
-      await tx
-        .insert(deletionRequestAuditEventsTable)
-        .values({
-          requestId: request.id,
-          action: "records_processed",
-          actorUserId: actor.userId,
-          actorName: actor.author,
-          actorRole: actor.role,
-          note: `${outcome.processedCategories.join(", ") || "No mutable categories"} processed. ${outcome.retentionNote}`,
-        });
+      await tx.insert(deletionRequestAuditEventsTable).values({
+        requestId: request.id,
+        action: "records_processed",
+        actorUserId: actor.userId,
+        actorName: actor.author,
+        actorRole: actor.role,
+        note: `${outcome.processedCategories.join(", ") || "No mutable categories"} processed. ${outcome.retentionNote}`,
+      });
       return [updated];
     });
     return res.json(
@@ -9587,12 +10102,10 @@ router.post("/deletion-requests/:requestId", async (req, res) => {
           eq(deletionRequestsTable.status, "processing"),
         ),
       );
-    return res
-      .status(500)
-      .json({
-        error:
-          "The deletion request needs staff reconciliation before processing can be confirmed.",
-      });
+    return res.status(500).json({
+      error:
+        "The deletion request needs staff reconciliation before processing can be confirmed.",
+    });
   }
 });
 
@@ -9813,6 +10326,7 @@ router.get("/clinician-overview", async (req, res) => {
     phraseObservations,
     insights,
     sessionRows,
+    serviceRequirementsByChild,
   ] = await Promise.all([
     db
       .select()
@@ -9838,6 +10352,10 @@ router.get("/clinician-overview", async (req, res) => {
           eq(teamMessagesTable.organizationId, actor.organizationId),
           inArray(teamMessagesTable.childId, scopedChildIds),
           gte(teamMessagesTable.createdAt, since),
+          or(
+            isNull(teamMessagesTable.recipientUserId),
+            eq(teamMessagesTable.recipientUserId, actor.userId),
+          ),
         ),
       )
       .orderBy(desc(teamMessagesTable.createdAt)),
@@ -9906,6 +10424,7 @@ router.get("/clinician-overview", async (req, res) => {
         ),
       )
       .orderBy(desc(therapySessionsTable.createdAt)),
+    activeServiceRequirementsForChildren(actor.organizationId, childIds),
   ]);
   const reviewedGestalts = gestalts.filter(
     (item) =>
@@ -10208,6 +10727,7 @@ router.get("/clinician-overview", async (req, res) => {
         latestActivityAt: latestByChild.get(profile.id)?.time ?? null,
         latestActivityLabel:
           latestByChild.get(profile.id)?.label ?? "No new activity",
+        serviceRequirements: serviceRequirementsByChild.get(profile.id) ?? [],
       })),
       recentActivity: activity,
     }),
@@ -10224,12 +10744,10 @@ router.get("/teacher-overview", async (req, res) => {
       .json({ error: authenticationError(req) });
   }
   if (actor.role !== "Teacher" || !actor.organizationId) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "Authorized teacher access is required for this classroom overview.",
-      });
+    return res.status(403).json({
+      error:
+        "Authorized teacher access is required for this classroom overview.",
+    });
   }
   const sinceValue = parsed.data.since ? Date.parse(parsed.data.since) : 0;
   const since = Number.isNaN(sinceValue) ? new Date(0) : new Date(sinceValue);
@@ -10275,6 +10793,10 @@ router.get("/teacher-overview", async (req, res) => {
             eq(teamMessagesTable.organizationId, actor.organizationId),
             inArray(teamMessagesTable.childId, scopedChildIds),
             gte(teamMessagesTable.createdAt, since),
+            or(
+              isNull(teamMessagesTable.recipientUserId),
+              eq(teamMessagesTable.recipientUserId, actor.userId),
+            ),
           ),
         )
         .orderBy(desc(teamMessagesTable.createdAt)),
@@ -10405,6 +10927,7 @@ router.get("/teacher-overview", async (req, res) => {
       latestActivityLabel: latest
         ? `${latest.activity.action} ${latest.activity.target}`
         : "No new classroom activity",
+      serviceRequirements: [],
     };
   });
   return res.json(
@@ -10442,11 +10965,9 @@ router.get("/teacher-phrase-lookup", async (req, res) => {
       .json({ error: authenticationError(req) });
   }
   if (actor.role !== "Teacher" || !actor.organizationId) {
-    return res
-      .status(403)
-      .json({
-        error: "Authorized teacher access is required for phrase lookup.",
-      });
+    return res.status(403).json({
+      error: "Authorized teacher access is required for phrase lookup.",
+    });
   }
   const profiles = await db
     .select({
@@ -10466,11 +10987,9 @@ router.get("/teacher-phrase-lookup", async (req, res) => {
       ),
     );
   if (!profiles.length) {
-    return res
-      .status(403)
-      .json({
-        error: "You are not authorized to look up phrases for this student.",
-      });
+    return res.status(403).json({
+      error: "You are not authorized to look up phrases for this student.",
+    });
   }
   const profileById = new Map(
     profiles.map((profile) => [profile.id, profile.displayName]),
@@ -10529,11 +11048,9 @@ router.get("/frequent-scripts", async (req, res): Promise<void> => {
   // This is a clinical evidence aggregation. Parent and Teacher portals keep
   // their smaller, deliberately role-safe dictionary projections.
   if (!canUseClinicalTools(actor)) {
-    res
-      .status(403)
-      .json({
-        error: "Frequent Scripts is available in the clinical workspace only.",
-      });
+    res.status(403).json({
+      error: "Frequent Scripts is available in the clinical workspace only.",
+    });
     return;
   }
   const summary = await frequentScriptsFor(
@@ -10561,12 +11078,10 @@ router.get("/recurring-language-patterns", async (req, res): Promise<void> => {
     return;
   }
   if (!canUseClinicalTools(actor)) {
-    res
-      .status(403)
-      .json({
-        error:
-          "Recurring Language Patterns is available in the clinical workspace only.",
-      });
+    res.status(403).json({
+      error:
+        "Recurring Language Patterns is available in the clinical workspace only.",
+    });
     return;
   }
   const result = await recurringLanguagePatternsFor(
@@ -10599,12 +11114,10 @@ router.get(
       return;
     }
     if (!canUseClinicalTools(actor)) {
-      res
-        .status(403)
-        .json({
-          error:
-            "Recurring Language Patterns is available in the clinical workspace only.",
-        });
+      res.status(403).json({
+        error:
+          "Recurring Language Patterns is available in the clinical workspace only.",
+      });
       return;
     }
     const result = await recurringLanguagePatternsFor(
@@ -11314,6 +11827,11 @@ router.post("/children", async (req, res) => {
     return res
       .status(401)
       .json({ error: "Please sign in to create a child profile." });
+  if (!canManageClinicalData(actor.role) && !isNativeDevelopmentDemo(actor)) {
+    return res
+      .status(403)
+      .json({ error: "Only an SLP can create a child profile." });
+  }
   const result = CreateChildBody.safeParse(req.body);
   if (!result.success)
     return fail(
@@ -11368,15 +11886,13 @@ router.post("/children", async (req, res) => {
       if (!profile)
         throw new Error("Child profile was not returned after insert.");
       await db.transaction(async (transaction) => {
-        await transaction
-          .insert(childProfileConsentRecordsTable)
-          .values(
-            buildChildProfileConsentRecord({
-              childId: profile.id,
-              userId: actor.userId,
-              confirmedBy: actor.author,
-            }),
-          );
+        await transaction.insert(childProfileConsentRecordsTable).values(
+          buildChildProfileConsentRecord({
+            childId: profile.id,
+            userId: actor.userId,
+            confirmedBy: actor.author,
+          }),
+        );
         await transaction.insert(childCareTeamMembershipsTable).values({
           childId: profile.id,
           userId: actor.userId,
@@ -11401,11 +11917,9 @@ router.post("/children", async (req, res) => {
         .json({ error: "We could not securely create the child profile." });
     }
   }
-  return res
-    .status(403)
-    .json({
-      error: "Your verified account has no active organization membership.",
-    });
+  return res.status(403).json({
+    error: "Your verified account has no active organization membership.",
+  });
 });
 router.get("/care-team-invitations", async (req, res) => {
   const actor = viewerFrom(req);
@@ -11451,20 +11965,12 @@ router.post("/care-team-invitations", async (req, res) => {
   const actor = viewerFrom(req);
   if (!actor?.organizationId)
     return res.status(401).json({ error: authenticationError(req) });
-  if (
-    !canManageClinicalData(actor.role) &&
-    !actor.isAdmin &&
-    !isNativeDevelopmentDemo(actor)
-  ) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "Only organization administrators or clinicians can invite a care-team member.",
-      });
+  if (!canManageClinicalData(actor.role) && !isNativeDevelopmentDemo(actor)) {
+    return res.status(403).json({
+      error: "Only an SLP can invite a care-team member.",
+    });
   }
-  if (!actor.isAdmin && !requireChildAccess(req, res, body.data.childId))
-    return;
+  if (!requireChildAccess(req, res, body.data.childId)) return;
   const [organization] = await db
     .select()
     .from(organizationsTable)
@@ -11481,12 +11987,10 @@ router.post("/care-team-invitations", async (req, res) => {
     (!isNativeDevelopmentDemo(actor) &&
       (!organization.betaApprovedAt || !controls || !controls.enabled))
   ) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "This organization is not currently approved to invite private-beta members.",
-      });
+    return res.status(403).json({
+      error:
+        "This organization is not currently approved to invite private-beta members.",
+    });
   }
   const [child] = await db
     .select({ id: childProfilesTable.id })
@@ -11561,16 +12065,54 @@ router.post("/care-team-invitations", async (req, res) => {
       .status(429)
       .json({ error: "Invitation limit reached. Try again later." });
   if (issuance.kind === "duplicate")
-    return res
-      .status(409)
-      .json({
-        error: "A pending invitation already exists for this email address.",
-      });
+    return res.status(409).json({
+      error: "A pending invitation already exists for this email address.",
+    });
   if (issuance.kind !== "created")
     return res
       .status(500)
       .json({ error: "The invitation could not be created." });
   const invitation = issuance.invitation;
+  let invitationPath: string;
+  let clerkInvitationId: string | null = null;
+  try {
+    const issued = await issueApplicationInvitation({
+      emailAddress: invitation.invitedEmail,
+      token,
+      childledInvitationId: invitation.id,
+    });
+    clerkInvitationId = issued.clerkInvitationId;
+    invitationPath = issued.invitationPath;
+    if (clerkInvitationId) {
+      await db
+        .update(careTeamInvitationsTable)
+        .set({ clerkInvitationId })
+        .where(eq(careTeamInvitationsTable.id, invitation.id));
+    }
+  } catch (error) {
+    await revokeApplicationInvitation(clerkInvitationId).catch((revokeError) =>
+      logger.warn(
+        { err: revokeError, clerkInvitationId },
+        "Could not roll back Clerk invitation after provisioning failure",
+      ),
+    );
+    await db
+      .update(careTeamInvitationsTable)
+      .set({
+        status: "revoked",
+        revokedAt: new Date(),
+        revokedByUserId: actor.userId,
+      })
+      .where(eq(careTeamInvitationsTable.id, invitation.id));
+    logger.error(
+      { err: error, invitationId: invitation.id },
+      "Could not issue Clerk application invitation",
+    );
+    return res.status(502).json({
+      error:
+        "The invitation could not be delivered securely. No active invitation was saved; please try again.",
+    });
+  }
   await writeSecurityAudit({
     actor,
     action: "CAREGIVER_INVITED_TO_CHILD",
@@ -11587,7 +12129,7 @@ router.post("/care-team-invitations", async (req, res) => {
       role: invitation.invitedRole,
       status: invitation.status,
       createdAt: invitation.createdAt.toISOString(),
-      invitationPath: `/sign-up?token=${encodeURIComponent(token)}`,
+      invitationPath,
     }),
   );
 });
@@ -11635,6 +12177,10 @@ router.get("/team-inbox", async (req, res) => {
         senderRoleStorageValues,
       )
     : undefined;
+  const recipientCondition = or(
+    isNull(teamMessagesTable.recipientUserId),
+    eq(teamMessagesTable.recipientUserId, actor.userId),
+  );
   const summaryRows = await db
     .select({
       childId: teamMessagesTable.childId,
@@ -11655,6 +12201,7 @@ router.get("/team-inbox", async (req, res) => {
       and(
         eq(teamMessagesTable.organizationId, actor.organizationId),
         inArray(teamMessagesTable.childId, scopedIds),
+        recipientCondition,
         ...(senderRoleCondition ? [senderRoleCondition] : []),
       ),
     )
@@ -11662,6 +12209,7 @@ router.get("/team-inbox", async (req, res) => {
   const messageConditions = [
     eq(teamMessagesTable.organizationId, actor.organizationId),
     inArray(teamMessagesTable.childId, scopedIds),
+    recipientCondition,
   ];
   if (senderRoleCondition) messageConditions.push(senderRoleCondition);
   if (query.data.childId !== undefined)
@@ -11865,6 +12413,10 @@ router.post("/team-inbox/read", async (req, res) => {
       and(
         eq(teamMessagesTable.organizationId, actor.organizationId),
         inArray(teamMessagesTable.id, messageIds),
+        or(
+          isNull(teamMessagesTable.recipientUserId),
+          eq(teamMessagesTable.recipientUserId, actor.userId),
+        ),
       ),
     );
   if (
@@ -12211,12 +12763,10 @@ router.put("/aac-profile", async (req, res) => {
       return { profile, changed: true };
     });
     if (!result)
-      return res
-        .status(409)
-        .json({
-          error:
-            "This AAC profile changed since you opened it. Refresh and try again.",
-        });
+      return res.status(409).json({
+        error:
+          "This AAC profile changed since you opened it. Refresh and try again.",
+      });
     if (result.changed) {
       await writeSecurityAudit({
         actor,
@@ -12241,12 +12791,10 @@ router.put("/aac-profile", async (req, res) => {
     );
   } catch (error: any) {
     if (error?.code === "23505") {
-      return res
-        .status(409)
-        .json({
-          error:
-            "This AAC profile changed since you opened it. Refresh and try again.",
-        });
+      return res.status(409).json({
+        error:
+          "This AAC profile changed since you opened it. Refresh and try again.",
+      });
     }
     throw error;
   }
@@ -12319,12 +12867,10 @@ router.delete("/aac-profile", async (req, res) => {
   if (result.status === "missing")
     return res.status(404).json({ error: "No current AAC profile was found." });
   if (result.status === "conflict")
-    return res
-      .status(409)
-      .json({
-        error:
-          "This AAC profile changed since you opened it. Refresh and try again.",
-      });
+    return res.status(409).json({
+      error:
+        "This AAC profile changed since you opened it. Refresh and try again.",
+    });
   await writeSecurityAudit({
     actor,
     action: "AAC_PROFILE_REMOVED",
@@ -12338,6 +12884,186 @@ router.delete("/aac-profile", async (req, res) => {
       await aacProfileResponse(actor.organizationId, query.data.childId, actor),
     ),
   );
+});
+router.get("/communication-passport", async (req, res) => {
+  const query = GetCommunicationPassportQueryParams.safeParse(req.query);
+  if (!query.success) return fail(res, "A child is required.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId)
+    return res.status(401).json({ error: authenticationError(req) });
+  const [child, passport] = await Promise.all([
+    db
+      .select({ id: childProfilesTable.id })
+      .from(childProfilesTable)
+      .where(
+        and(
+          eq(childProfilesTable.id, query.data.childId),
+          eq(childProfilesTable.organizationId, actor.organizationId),
+          isNull(childProfilesTable.archivedAt),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0]),
+    db
+      .select()
+      .from(communicationPassportsTable)
+      .where(
+        and(
+          eq(communicationPassportsTable.organizationId, actor.organizationId),
+          eq(communicationPassportsTable.childId, query.data.childId),
+        ),
+      )
+      .limit(1)
+      .then((rows) => rows[0]),
+  ]);
+  if (!child) return res.status(404).json({ error: "Child not found." });
+  return res.json(
+    GetCommunicationPassportResponse.parse(
+      await communicationPassportResponse(child.id, actor, passport),
+    ),
+  );
+});
+router.post("/communication-passport/generate", async (req, res) => {
+  const body = GenerateCommunicationPassportBody.safeParse(req.body);
+  if (!body.success)
+    return fail(res, "Choose a child to generate a communication passport.");
+  if (!requireChildAccess(req, res, body.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+  const content = await generatedCommunicationPassportFor(
+    actor.organizationId,
+    body.data.childId,
+  );
+  if (!content) return res.status(404).json({ error: "Child not found." });
+  await writeSecurityAudit({
+    actor,
+    action: "COMMUNICATION_PASSPORT_DRAFT_GENERATED",
+    targetType: "communication_passport",
+    childId: body.data.childId,
+    metadata: {
+      templateKey: body.data.templateKey,
+      language: body.data.language,
+    },
+  });
+  return res.json(
+    GenerateCommunicationPassportResponse.parse({
+      childId: body.data.childId,
+      templateKey: body.data.templateKey,
+      language: body.data.language,
+      content,
+    }),
+  );
+});
+router.put("/communication-passport", async (req, res) => {
+  const body = SaveCommunicationPassportBody.safeParse(req.body);
+  if (!body.success)
+    return fail(res, "Review the communication passport fields and try again.");
+  if (!requireChildAccess(req, res, body.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+  const content = normalizeCommunicationPassportContent(body.data.content);
+  if (!content.childName)
+    return fail(res, "The communication passport needs the child's name.");
+  try {
+    const result = await db.transaction(async (transaction) => {
+      const [child] = await transaction
+        .select({ id: childProfilesTable.id })
+        .from(childProfilesTable)
+        .where(
+          and(
+            eq(childProfilesTable.id, body.data.childId),
+            eq(childProfilesTable.organizationId, actor.organizationId!),
+            isNull(childProfilesTable.archivedAt),
+          ),
+        )
+        .limit(1);
+      if (!child) return { status: "missing" as const };
+      const [current] = await transaction
+        .select()
+        .from(communicationPassportsTable)
+        .where(
+          and(
+            eq(
+              communicationPassportsTable.organizationId,
+              actor.organizationId!,
+            ),
+            eq(communicationPassportsTable.childId, child.id),
+          ),
+        )
+        .for("update")
+        .limit(1);
+      if ((current?.version ?? null) !== body.data.version)
+        return { status: "conflict" as const };
+      const [passport] = current
+        ? await transaction
+            .update(communicationPassportsTable)
+            .set({
+              templateKey: body.data.templateKey,
+              languageTag: body.data.language,
+              content,
+              version: sql`${communicationPassportsTable.version} + 1`,
+              updatedByUserId: actor.userId,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(communicationPassportsTable.id, current.id),
+                eq(communicationPassportsTable.version, current.version),
+              ),
+            )
+            .returning()
+        : await transaction
+            .insert(communicationPassportsTable)
+            .values({
+              organizationId: actor.organizationId!,
+              childId: child.id,
+              templateKey: body.data.templateKey,
+              languageTag: body.data.language,
+              content,
+              createdByUserId: actor.userId,
+              updatedByUserId: actor.userId,
+            })
+            .returning();
+      if (!passport) return { status: "conflict" as const };
+      return { status: "saved" as const, passport };
+    });
+    if (result.status === "missing")
+      return res.status(404).json({ error: "Child not found." });
+    if (result.status === "conflict")
+      return res.status(409).json({
+        error:
+          "This passport changed since you opened it. Refresh before saving again.",
+      });
+    await writeSecurityAudit({
+      actor,
+      action: "COMMUNICATION_PASSPORT_SAVED",
+      targetType: "communication_passport",
+      targetId: result.passport.id,
+      childId: result.passport.childId,
+      metadata: {
+        version: result.passport.version,
+        templateKey: result.passport.templateKey,
+        language: result.passport.languageTag,
+      },
+    });
+    return res.json(
+      SaveCommunicationPassportResponse.parse(
+        await communicationPassportResponse(
+          result.passport.childId,
+          actor,
+          result.passport,
+        ),
+      ),
+    );
+  } catch (error: any) {
+    if (error?.code === "23505")
+      return res.status(409).json({
+        error:
+          "This passport changed since you opened it. Refresh before saving again.",
+      });
+    throw error;
+  }
 });
 router.get("/child-shared-profile", async (req, res) => {
   const query = GetChildSharedProfileQueryParams.safeParse(req.query);
@@ -12378,12 +13104,10 @@ router.post("/child-shared-profile", async (req, res) => {
     !canContributeSharedChildContext(actor.role) &&
     !isNativeDevelopmentDemo(actor)
   ) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "Only a clinician, parent, or teacher can contribute to the shared profile.",
-      });
+    return res.status(403).json({
+      error:
+        "Only a clinician, parent, or teacher can contribute to the shared profile.",
+    });
   }
   const [profile] = await db
     .select()
@@ -12480,12 +13204,10 @@ router.patch("/child-shared-profile/entries/:entryId", async (req, res) => {
     !canContributeSharedChildContext(actor.role) &&
     !isNativeDevelopmentDemo(actor)
   ) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "Only a clinician, parent, or teacher can contribute to the shared profile.",
-      });
+    return res.status(403).json({
+      error:
+        "Only a clinician, parent, or teacher can contribute to the shared profile.",
+    });
   }
   if (actor.role !== "SLP" && current.authorUserId !== actor.userId) {
     return res
@@ -12548,12 +13270,9 @@ router.patch("/child-shared-profile/entries/:entryId", async (req, res) => {
       return entry;
     });
     if (!updated)
-      return res
-        .status(409)
-        .json({
-          error:
-            "This entry changed since you opened it. Refresh and try again.",
-        });
+      return res.status(409).json({
+        error: "This entry changed since you opened it. Refresh and try again.",
+      });
     await writeSecurityAudit({
       actor,
       action: "SHARED_CHILD_PROFILE_ENTRY_UPDATED",
@@ -12605,12 +13324,10 @@ router.delete(
       !canContributeSharedChildContext(actor.role) &&
       !isNativeDevelopmentDemo(actor)
     ) {
-      return res
-        .status(403)
-        .json({
-          error:
-            "Only a clinician, parent, or teacher can contribute to the shared profile.",
-        });
+      return res.status(403).json({
+        error:
+          "Only a clinician, parent, or teacher can contribute to the shared profile.",
+      });
     }
     if (actor.role !== "SLP" && current.authorUserId !== actor.userId) {
       return res
@@ -12665,12 +13382,9 @@ router.delete(
       return entry;
     });
     if (!removed)
-      return res
-        .status(409)
-        .json({
-          error:
-            "This entry changed since you opened it. Refresh and try again.",
-        });
+      return res.status(409).json({
+        error: "This entry changed since you opened it. Refresh and try again.",
+      });
     await writeSecurityAudit({
       actor,
       action: "SHARED_CHILD_PROFILE_ENTRY_REMOVED",
@@ -12723,11 +13437,9 @@ router.post("/child-interests", async (req, res) => {
     !canContributeSharedChildContext(actor.role) &&
     !isNativeDevelopmentDemo(actor)
   ) {
-    return res
-      .status(403)
-      .json({
-        error: "Only an SLP, parent, or teacher can contribute interests.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP, parent, or teacher can contribute interests.",
+    });
   }
   const [profile] = await db
     .select()
@@ -12897,11 +13609,9 @@ router.delete("/child-interests/:interestId", async (req, res) => {
   const mayDelete =
     actor.role === "SLP" || current.addedByUserId === actor.userId;
   if (!mayDelete)
-    return res
-      .status(403)
-      .json({
-        error: "Only the contributor or an SLP can remove this interest.",
-      });
+    return res.status(403).json({
+      error: "Only the contributor or an SLP can remove this interest.",
+    });
   await db
     .update(childProfilesTable)
     .set({
@@ -12937,12 +13647,9 @@ router.patch("/child-sensory", async (req, res) => {
     !canContributeSharedChildContext(actor.role) &&
     !isNativeDevelopmentDemo(actor)
   ) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "Only an SLP, parent, or teacher can update home sensory context.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP, parent, or teacher can update home sensory context.",
+    });
   }
   const [profile] = await db
     .select()
@@ -13273,20 +13980,16 @@ router.post("/gestalts", async (req, res) => {
     !canSubmitDictionaryPhrase(actor.role) &&
     !isNativeDevelopmentDemo(actor)
   ) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "Only an SLP, parent, or teacher can add a phrase to the shared dictionary.",
-      });
+    return res.status(403).json({
+      error:
+        "Only an SLP, parent, or teacher can add a phrase to the shared dictionary.",
+    });
   }
   if (!canUseClinicalTools(actor)) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "Use the care-team phrase observation flow so an SLP can review the interpretation safely.",
-      });
+    return res.status(403).json({
+      error:
+        "Use the care-team phrase observation flow so an SLP can review the interpretation safely.",
+    });
   }
 
   const normalizedPhrase = normalizePhrase(body.data.phrase);
@@ -13395,12 +14098,10 @@ router.post("/gestalts", async (req, res) => {
   }
   const record = creation.record;
   if (!record)
-    return res
-      .status(409)
-      .json({
-        error:
-          "That phrase was added by another contributor. Review the existing dictionary entry before continuing.",
-      });
+    return res.status(409).json({
+      error:
+        "That phrase was added by another contributor. Review the existing dictionary entry before continuing.",
+    });
   await writeSecurityAudit({
     actor,
     action: actor.role === "SLP" ? "GESTALT_CREATED" : "GESTALT_SUBMITTED",
@@ -13409,6 +14110,45 @@ router.post("/gestalts", async (req, res) => {
     childId: record.childId,
   });
   return res.status(201).json(gestaltFromRecord(record));
+});
+
+router.delete("/gestalts/:gestaltId", async (req, res) => {
+  const parsed = DeleteGestaltParams.safeParse(req.params);
+  if (!parsed.success)
+    return res.status(404).json({ error: "Dictionary phrase not found." });
+  const actor = viewerFrom(req);
+  if (!canUseClinicalTools(actor) || !actor?.organizationId) {
+    return res
+      .status(403)
+      .json({ error: "Only an SLP can delete a dictionary phrase." });
+  }
+  const [phrase] = await db
+    .select()
+    .from(clinicalGestaltsTable)
+    .where(
+      and(
+        eq(clinicalGestaltsTable.id, parsed.data.gestaltId),
+        eq(clinicalGestaltsTable.organizationId, actor.organizationId),
+        isNull(clinicalGestaltsTable.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (!phrase || !requireChildAccess(req, res, phrase.childId)) {
+    return res.status(404).json({ error: "Dictionary phrase not found." });
+  }
+  await db
+    .update(clinicalGestaltsTable)
+    .set({ archivedAt: new Date(), updatedAt: new Date() })
+    .where(eq(clinicalGestaltsTable.id, phrase.id));
+  await writeSecurityAudit({
+    actor,
+    action: "GESTALT_DELETED",
+    targetType: "gestalt",
+    targetId: phrase.id,
+    childId: phrase.childId,
+    metadata: { historicalSessionEvidenceRetained: true },
+  });
+  return res.status(204).end();
 });
 router.get("/dictionary/duplicate-suggestions", async (req, res) => {
   const query = ListDictionaryDuplicateSuggestionsQueryParams.safeParse(
@@ -13724,25 +14464,18 @@ router.post("/dictionary/duplicate-suggestions/decision", async (req, res) => {
     return { canonical };
   });
   if ("unavailable" in result)
-    return res
-      .status(404)
-      .json({
-        error: "One or both phrases are no longer available for this child.",
-      });
+    return res.status(404).json({
+      error: "One or both phrases are no longer available for this child.",
+    });
   if ("unrelated" in result)
-    return res
-      .status(400)
-      .json({
-        error:
-          "These phrases are no longer a conservative duplicate suggestion.",
-      });
+    return res.status(400).json({
+      error: "These phrases are no longer a conservative duplicate suggestion.",
+    });
   if ("keptSeparate" in result)
-    return res
-      .status(409)
-      .json({
-        error:
-          "These phrases were explicitly kept separate and cannot be merged.",
-      });
+    return res.status(409).json({
+      error:
+        "These phrases were explicitly kept separate and cannot be merged.",
+    });
   const suggestionId = duplicateSuggestionId(firstGestaltId, secondGestaltId);
   return res.json(
     DecideDictionaryDuplicateSuggestionResponse.parse({
@@ -13822,18 +14555,14 @@ router.post("/gestalts/merge", async (req, res) => {
       .status(404)
       .json({ error: "One of the phrases is unavailable for this child." });
   if ("unrelated" in merged)
-    return res
-      .status(400)
-      .json({
-        error: "Only exact or conservatively similar phrases can be merged.",
-      });
+    return res.status(400).json({
+      error: "Only exact or conservatively similar phrases can be merged.",
+    });
   if ("keptSeparate" in merged)
-    return res
-      .status(409)
-      .json({
-        error:
-          "These phrases were explicitly kept separate and cannot be merged.",
-      });
+    return res.status(409).json({
+      error:
+        "These phrases were explicitly kept separate and cannot be merged.",
+    });
   return res.json(gestaltFromRecord(merged));
 });
 router.post("/gestalts/comments", async (req, res) => {
@@ -13904,12 +14633,10 @@ router.post("/phrase-observations", async (req, res) => {
     !canContributeSharedChildContext(actor.role) &&
     !isNativeDevelopmentDemo(actor)
   ) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "Only an SLP, parent, or teacher can log a shared phrase observation.",
-      });
+    return res.status(403).json({
+      error:
+        "Only an SLP, parent, or teacher can log a shared phrase observation.",
+    });
   }
   const observedAt = new Date(body.data.observedAt);
   if (
@@ -14070,12 +14797,10 @@ router.post("/phrase-observations", async (req, res) => {
       .status(404)
       .json({ error: "The selected existing phrase is unavailable." });
   if (outcome.unrelated)
-    return res
-      .status(400)
-      .json({
-        error:
-          "The selected phrase is not an exact or close match for this observation.",
-      });
+    return res.status(400).json({
+      error:
+        "The selected phrase is not an exact or close match for this observation.",
+    });
   const { record, occurrence } = outcome;
   if (!record)
     return res
@@ -14110,11 +14835,9 @@ router.get("/phrase-observations/recovery", async (req, res) => {
   if (!actor?.organizationId)
     return res.status(401).json({ error: authenticationError(req) });
   if (!canUseClinicalTools(actor)) {
-    return res
-      .status(403)
-      .json({
-        error: "Only an SLP can review historical phrase observations.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP can review historical phrase observations.",
+    });
   }
   const [notes, observations, records, recoveries] = await Promise.all([
     db
@@ -14222,11 +14945,9 @@ router.post("/phrase-observations/recovery-action", async (req, res) => {
   if (!actor?.organizationId)
     return res.status(401).json({ error: authenticationError(req) });
   if (!canUseClinicalTools(actor)) {
-    return res
-      .status(403)
-      .json({
-        error: "Only an SLP can recover historical phrase observations.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP can recover historical phrase observations.",
+    });
   }
   const observedAt = new Date(body.data.observedAt);
   if (
@@ -14443,26 +15164,20 @@ router.post("/phrase-observations/recovery-action", async (req, res) => {
       .status(404)
       .json({ error: "That historical phrase note is unavailable." });
   if ("alreadyRecovered" in outcome || "alreadyAccountedFor" in outcome) {
-    return res
-      .status(409)
-      .json({
-        error: "That historical phrase note has already been accounted for.",
-      });
+    return res.status(409).json({
+      error: "That historical phrase note has already been accounted for.",
+    });
   }
   if ("targetUnavailable" in outcome) {
-    return res
-      .status(409)
-      .json({
-        error: "Choose an active clinician-reviewed dictionary phrase.",
-      });
+    return res.status(409).json({
+      error: "Choose an active clinician-reviewed dictionary phrase.",
+    });
   }
   if ("unrelated" in outcome) {
-    return res
-      .status(400)
-      .json({
-        error:
-          "The reviewed phrase must match or conservatively preserve the shared phrase.",
-      });
+    return res.status(400).json({
+      error:
+        "The reviewed phrase must match or conservatively preserve the shared phrase.",
+    });
   }
   return res.status(201).json(
     RecoverLegacyPhraseObservationResponse.parse({
@@ -14656,11 +15371,9 @@ router.get("/teacher/communication-helper", async (req, res): Promise<void> => {
     return;
   }
   if (actor.role !== "Teacher") {
-    res
-      .status(403)
-      .json({
-        error: "This classroom helper is available to assigned teachers.",
-      });
+    res.status(403).json({
+      error: "This classroom helper is available to assigned teachers.",
+    });
     return;
   }
   const helper = await teacherCommunicationHelperFor(
@@ -14689,11 +15402,9 @@ router.get("/phrase-trends", async (req, res) => {
       childId: query.data.childId,
       outcome: "failure",
     });
-    return res
-      .status(403)
-      .json({
-        error: "Only an SLP can view detailed clinical language trends.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP can view detailed clinical language trends.",
+    });
   }
   const from = query.data.from
     ? new Date(query.data.from)
@@ -14841,16 +15552,18 @@ router.post("/observation-videos/upload-url", async (req, res) => {
   if (!requireChildAccess(req, res, body.data.childId)) return;
   const actor = viewerFrom(req);
   if (!actor) return res.status(401).json({ error: authenticationError(req) });
+  if (actor.role === "Parent") {
+    return res.status(403).json({
+      error: "Parent accounts cannot upload observation videos.",
+    });
+  }
   if (
     !canContributeSharedChildContext(actor.role) &&
     !isNativeDevelopmentDemo(actor)
   ) {
-    return res
-      .status(403)
-      .json({
-        error:
-          "Only an SLP, parent, or teacher can share an observation video.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP or teacher can share an observation video.",
+    });
   }
   const contentType = normalizeRecordingUploadContentType(
     body.data.contentType,
@@ -14871,12 +15584,10 @@ router.post("/observation-videos/upload-url", async (req, res) => {
     );
   }
   if (!actor.organizationId) {
-    return res
-      .status(503)
-      .json({
-        error:
-          "A private care-team workspace is required before sharing observation videos.",
-      });
+    return res.status(503).json({
+      error:
+        "A private care-team workspace is required before sharing observation videos.",
+    });
   }
   try {
     const reservation =
@@ -14922,12 +15633,10 @@ router.post("/observation-videos/upload-url", async (req, res) => {
       { err: error, childId: body.data.childId },
       "Could not reserve private observation video upload",
     );
-    return res
-      .status(503)
-      .json({
-        error:
-          "We couldn’t prepare a private upload right now. Please try again.",
-      });
+    return res.status(503).json({
+      error:
+        "We couldn’t prepare a private upload right now. Please try again.",
+    });
   }
 });
 
@@ -14943,13 +15652,16 @@ router.post("/observations", async (req, res) => {
     !canContributeSharedChildContext(actor.role) &&
     !isNativeDevelopmentDemo(actor)
   ) {
-    return res
-      .status(403)
-      .json({
-        error: "Only an SLP, parent, or teacher can add a shared observation.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP, parent, or teacher can add a shared observation.",
+    });
   }
   const submittedVideo = body.data.video;
+  if (actor.role === "Parent" && submittedVideo) {
+    return res.status(403).json({
+      error: "Parent accounts cannot attach videos to observations.",
+    });
+  }
   let finalizedVideoPath: string | undefined;
   let videoUpload: typeof observationVideoUploadsTable.$inferSelect | undefined;
   let videoConsentConfirmedAt: Date | undefined;
@@ -14965,12 +15677,10 @@ router.post("/observations", async (req, res) => {
       );
     }
     if (!actor.organizationId) {
-      return res
-        .status(503)
-        .json({
-          error:
-            "A private care-team workspace is required before attaching observation videos.",
-        });
+      return res.status(503).json({
+        error:
+          "A private care-team workspace is required before attaching observation videos.",
+      });
     }
     [videoUpload] = await db
       .update(observationVideoUploadsTable)
@@ -15021,12 +15731,10 @@ router.post("/observations", async (req, res) => {
         { err: error, childId: query.data.childId },
         "Could not finalize private observation video",
       );
-      return res
-        .status(503)
-        .json({
-          error:
-            "We couldn’t securely attach this video. Your note was not saved; please try again.",
-        });
+      return res.status(503).json({
+        error:
+          "We couldn’t securely attach this video. Your note was not saved; please try again.",
+      });
     }
     if (!finalizedVideoPath) {
       await db
@@ -15043,40 +15751,119 @@ router.post("/observations", async (req, res) => {
   }
   if (actor.organizationId) {
     let record: typeof clinicalObservationsTable.$inferSelect | undefined;
+    let notifiedSlpCount = 0;
     try {
-      [record] = await db
-        .insert(clinicalObservationsTable)
-        .values({
-          organizationId: actor.organizationId,
-          childId: query.data.childId,
-          body: body.data.body,
-          context: body.data.context,
-          videoObjectPath: finalizedVideoPath,
-          videoContentType: videoUpload?.contentType ?? null,
-          videoSizeBytes: videoUpload?.sizeBytes ?? null,
-          videoConsentConfirmedAt: videoUpload?.consentConfirmedAt ?? null,
-          videoConsentConfirmedByUserId: finalizedVideoPath
-            ? actor.userId
-            : null,
-          createdByUserId: actor.userId,
-        })
-        .returning();
-      if (record && videoUpload && finalizedVideoPath) {
-        await db
-          .update(observationVideoUploadsTable)
-          .set({
-            observationId: record.id,
-            status: "attached",
-            attachedAt: new Date(),
-            updatedAt: new Date(),
+      const saved = await db.transaction(async (transaction) => {
+        const [savedRecord] = await transaction
+          .insert(clinicalObservationsTable)
+          .values({
+            organizationId: actor.organizationId!,
+            childId: query.data.childId,
+            body: body.data.body,
+            context: body.data.context,
+            videoObjectPath: finalizedVideoPath,
+            videoContentType: videoUpload?.contentType ?? null,
+            videoSizeBytes: videoUpload?.sizeBytes ?? null,
+            videoConsentConfirmedAt: videoUpload?.consentConfirmedAt ?? null,
+            videoConsentConfirmedByUserId: finalizedVideoPath
+              ? actor.userId
+              : null,
+            createdByUserId: actor.userId,
           })
+          .returning();
+        if (!savedRecord) throw new Error("observation-insert-failed");
+
+        if (videoUpload && finalizedVideoPath) {
+          await transaction
+            .update(observationVideoUploadsTable)
+            .set({
+              observationId: savedRecord.id,
+              status: "attached",
+              attachedAt: new Date(),
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(observationVideoUploadsTable.id, videoUpload.id),
+                eq(observationVideoUploadsTable.status, "finalizing"),
+              ),
+            );
+        }
+
+        if (actor.role !== "Parent") {
+          return { record: savedRecord, notifiedSlpCount: 0 };
+        }
+
+        const [child] = await transaction
+          .select({ name: childProfilesTable.displayName })
+          .from(childProfilesTable)
           .where(
             and(
-              eq(observationVideoUploadsTable.id, videoUpload.id),
-              eq(observationVideoUploadsTable.status, "finalizing"),
+              eq(childProfilesTable.id, query.data.childId),
+              eq(childProfilesTable.organizationId, actor.organizationId!),
+            ),
+          )
+          .limit(1);
+        if (!child) throw new Error("observation-child-not-found");
+
+        const assignedSlps = await transaction
+          .selectDistinct({ userId: childCareTeamMembershipsTable.userId })
+          .from(childCareTeamMembershipsTable)
+          .innerJoin(
+            organizationMembershipsTable,
+            and(
+              eq(
+                organizationMembershipsTable.userId,
+                childCareTeamMembershipsTable.userId,
+              ),
+              eq(
+                organizationMembershipsTable.organizationId,
+                actor.organizationId!,
+              ),
+              eq(organizationMembershipsTable.active, true),
+            ),
+          )
+          .where(
+            and(
+              eq(childCareTeamMembershipsTable.childId, query.data.childId),
+              eq(childCareTeamMembershipsTable.active, true),
+              inArray(
+                sql<string>`lower(${childCareTeamMembershipsTable.role})`,
+                ["clinician", "slp"],
+              ),
             ),
           );
-      }
+        const preview = body.data.body
+          .replace(/\s+/g, " ")
+          .trim()
+          .slice(0, 180);
+        if (assignedSlps.length) {
+          await transaction.insert(teamMessagesTable).values(
+            assignedSlps.map(({ userId }) => ({
+              organizationId: actor.organizationId!,
+              childId: query.data.childId,
+              senderUserId: actor.userId,
+              recipientUserId: userId,
+              senderRole: "parent",
+              messageType: "notification",
+              audience: "entire_team",
+              body: [
+                `New Parent Update — ${child.name}`,
+                "A parent added a new communication log.",
+                preview,
+              ]
+                .filter(Boolean)
+                .join("\n\n"),
+            })),
+          );
+        }
+        return {
+          record: savedRecord,
+          notifiedSlpCount: assignedSlps.length,
+        };
+      });
+      record = saved.record;
+      notifiedSlpCount = saved.notifiedSlpCount;
     } catch (error) {
       if (finalizedVideoPath)
         await recordingObjectStorage
@@ -15096,12 +15883,9 @@ router.post("/observations", async (req, res) => {
         { err: error, childId: query.data.childId },
         "Could not create observation with private video",
       );
-      return res
-        .status(500)
-        .json({
-          error:
-            "We couldn’t securely save that observation. Please try again.",
-        });
+      return res.status(500).json({
+        error: "We couldn’t securely save that observation. Please try again.",
+      });
     }
     if (!record)
       return res
@@ -15119,6 +15903,7 @@ router.post("/observations", async (req, res) => {
       metadata: {
         hasVideo: Boolean(finalizedVideoPath),
         videoSizeBytes: videoUpload?.sizeBytes ?? null,
+        notifiedSlpCount,
       },
     });
     return res
@@ -15256,6 +16041,298 @@ router.get("/observations/:observationId/video", async (req, res) => {
   }
 });
 
+router.get("/manual-sessions/setup", async (req, res) => {
+  const query = GetManualSessionSetupQueryParams.safeParse(req.query);
+  if (!query.success) return fail(res, "A valid child is required.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+  const goals = await db
+    .select()
+    .from(communicationGoalsTable)
+    .where(
+      and(
+        eq(communicationGoalsTable.organizationId, actor.organizationId),
+        eq(communicationGoalsTable.childId, query.data.childId),
+        eq(communicationGoalsTable.status, "active"),
+      ),
+    )
+    .orderBy(communicationGoalsTable.goalArea, communicationGoalsTable.title);
+  return res.json(
+    GetManualSessionSetupResponse.parse({
+      childId: query.data.childId,
+      goals: goals.map(communicationGoalResponse),
+      serviceRequirements: await activeServiceRequirementsFor(
+        actor.organizationId,
+        query.data.childId,
+      ),
+    }),
+  );
+});
+
+router.get("/iep-service-requirements", async (req, res) => {
+  const query = ListIepServiceRequirementsQueryParams.safeParse(req.query);
+  if (!query.success) return fail(res, "A valid child is required.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+  return res.json(
+    ListIepServiceRequirementsResponse.parse(
+      await activeServiceRequirementsFor(
+        actor.organizationId,
+        query.data.childId,
+      ),
+    ),
+  );
+});
+
+router.put("/iep-service-requirements", async (req, res) => {
+  const query = UpsertIepServiceRequirementQueryParams.safeParse(req.query);
+  const body = UpsertIepServiceRequirementBody.safeParse(req.body);
+  if (!query.success || !body.success)
+    return fail(res, "Complete the therapy service requirement fields.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+  const effectiveFrom = dateString(body.data.effectiveFrom);
+  const effectiveTo = body.data.effectiveTo
+    ? dateString(body.data.effectiveTo)
+    : null;
+  if (effectiveTo && effectiveTo < effectiveFrom)
+    return fail(res, "The service end date cannot be before its start date.");
+  const serviceName = body.data.serviceName.trim();
+  if (
+    !Number.isInteger(body.data.requiredSessions) ||
+    !Number.isInteger(body.data.requiredMinutes) ||
+    !Number.isInteger(body.data.sessionDurationMinutes)
+  )
+    return fail(
+      res,
+      "Service requirements must use whole sessions and minutes.",
+    );
+  const normalizedServiceName = serviceName.toLocaleLowerCase();
+  const [requirement] = await db
+    .insert(iepServiceRequirementsTable)
+    .values({
+      organizationId: actor.organizationId,
+      childId: query.data.childId,
+      serviceName,
+      normalizedServiceName,
+      requiredSessions: Math.round(body.data.requiredSessions),
+      requiredMinutes: Math.round(body.data.requiredMinutes),
+      sessionDurationMinutes: Math.round(body.data.sessionDurationMinutes),
+      period: body.data.period,
+      effectiveFrom,
+      effectiveTo,
+      createdByUserId: actor.userId,
+      updatedByUserId: actor.userId,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [
+        iepServiceRequirementsTable.organizationId,
+        iepServiceRequirementsTable.childId,
+        iepServiceRequirementsTable.normalizedServiceName,
+      ],
+      set: {
+        serviceName,
+        requiredSessions: Math.round(body.data.requiredSessions),
+        requiredMinutes: Math.round(body.data.requiredMinutes),
+        sessionDurationMinutes: Math.round(body.data.sessionDurationMinutes),
+        period: body.data.period,
+        effectiveFrom,
+        effectiveTo,
+        status: "active",
+        updatedByUserId: actor.userId,
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  if (!requirement)
+    return res
+      .status(500)
+      .json({ error: "The service requirement was not saved." });
+  await writeSecurityAudit({
+    actor,
+    action: "IEP_SERVICE_REQUIREMENT_UPDATED",
+    targetType: "iep_service_requirement",
+    targetId: requirement.id,
+    childId: query.data.childId,
+  });
+  return res.json(
+    UpsertIepServiceRequirementResponse.parse(
+      await serviceRequirementResponse(requirement),
+    ),
+  );
+});
+
+router.post("/manual-sessions", async (req, res) => {
+  const query = CreateManualSessionQueryParams.safeParse(req.query);
+  const body = CreateManualSessionBody.safeParse(req.body);
+  if (!query.success || !body.success)
+    return fail(res, "Complete the session duration, goal data, and note.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+  const goalIds = body.data.goals.map((goal) => goal.goalId);
+  if (new Set(goalIds).size !== goalIds.length)
+    return fail(res, "Each IEP goal can be included only once per session.");
+  if (
+    !Number.isInteger(body.data.durationSeconds) ||
+    !Number.isInteger(body.data.timerElapsedSeconds)
+  )
+    return fail(res, "Session duration must be saved in whole seconds.");
+  if (
+    body.data.durationSource === "timer" &&
+    (body.data.timerElapsedSeconds <= 0 ||
+      body.data.timerElapsedSeconds !== body.data.durationSeconds)
+  )
+    return fail(
+      res,
+      "The timer duration changed. Review the final minutes before saving.",
+    );
+  if (
+    body.data.durationSource === "timer_edited" &&
+    (!body.data.durationEdited || body.data.timerElapsedSeconds <= 0)
+  )
+    return fail(
+      res,
+      "Edited timer duration must retain the original timer value.",
+    );
+  const invalidGoalProgress = body.data.goals.some((goal) => {
+    const attemptsInvalid =
+      goal.successfulAttempts != null &&
+      (goal.totalAttempts == null ||
+        goal.successfulAttempts > goal.totalAttempts ||
+        !Number.isInteger(goal.successfulAttempts));
+    const totalInvalid =
+      goal.totalAttempts != null && !Number.isInteger(goal.totalAttempts);
+    const noData =
+      goal.accuracyPercent == null &&
+      goal.totalAttempts == null &&
+      goal.promptingLevel == null &&
+      !goal.progressNote.trim();
+    return attemptsInvalid || totalInvalid || noData;
+  });
+  if (invalidGoalProgress)
+    return fail(
+      res,
+      "Add valid progress data for every selected goal. Successful attempts cannot exceed total attempts.",
+    );
+  const activeGoals = await db
+    .select()
+    .from(communicationGoalsTable)
+    .where(
+      and(
+        eq(communicationGoalsTable.organizationId, actor.organizationId),
+        eq(communicationGoalsTable.childId, query.data.childId),
+        eq(communicationGoalsTable.status, "active"),
+        inArray(communicationGoalsTable.id, goalIds),
+      ),
+    );
+  if (activeGoals.length !== goalIds.length)
+    return fail(
+      res,
+      "One selected IEP goal is no longer active for this child.",
+    );
+  const startedAt = body.data.startedAt ?? null;
+  const endedAt = body.data.endedAt ?? null;
+  if (startedAt && endedAt && endedAt.getTime() < startedAt.getTime())
+    return fail(res, "Session end time cannot be before its start time.");
+  const sessionDate = dateString(body.data.sessionDate);
+  const goalById = new Map(activeGoals.map((goal) => [goal.id, goal]));
+  const saved = await db.transaction(async (transaction) => {
+    const [session] = await transaction
+      .insert(therapySessionsTable)
+      .values({
+        organizationId: actor.organizationId!,
+        childId: query.data.childId,
+        sessionMode: "manual",
+        sessionDate,
+        startedAt,
+        endedAt,
+        durationSeconds: body.data.durationSeconds,
+        durationSource: body.data.durationSource,
+        durationEdited: body.data.durationEdited,
+        clinicalObservations: "",
+        nextSteps: "",
+        note: body.data.note.trim(),
+        createdByUserId: actor.userId,
+      })
+      .returning();
+    if (!session) throw new Error("Session insert did not return a row.");
+    const progress = await transaction
+      .insert(therapySessionGoalProgressTable)
+      .values(
+        body.data.goals.map((entry) => {
+          const goal = goalById.get(entry.goalId)!;
+          return {
+            organizationId: actor.organizationId!,
+            childId: query.data.childId,
+            sessionId: session.id,
+            goalId: goal.id,
+            goalVersion: goal.version,
+            goalTitleSnapshot: goal.title,
+            goalAreaSnapshot: goal.goalArea,
+            accuracyPercent:
+              entry.accuracyPercent == null
+                ? null
+                : Math.round(entry.accuracyPercent),
+            successfulAttempts: entry.successfulAttempts ?? null,
+            totalAttempts: entry.totalAttempts ?? null,
+            promptingLevel: entry.promptingLevel ?? null,
+            progressNote: entry.progressNote.trim(),
+          };
+        }),
+      )
+      .returning();
+    return { session, progress };
+  });
+  await writeSecurityAudit({
+    actor,
+    action: "MANUAL_THERAPY_SESSION_CREATED",
+    targetType: "therapy_session",
+    targetId: saved.session.id,
+    childId: query.data.childId,
+    metadata: { goalCount: saved.progress.length },
+  });
+  return res.status(201).json(
+    CreateManualSessionResponse.parse({
+      id: saved.session.id,
+      childId: saved.session.childId,
+      durationSeconds: saved.session.durationSeconds,
+      gestalts: [],
+      clinicalObservations: saved.session.clinicalObservations,
+      nextSteps: saved.session.nextSteps,
+      note: saved.session.note,
+      audioUrl: null,
+      createdAt: saved.session.createdAt.toISOString(),
+      createdBy: actor.userId,
+      role: "SLP",
+      consent: null,
+      sessionMode: "manual",
+      sessionDate: saved.session.sessionDate,
+      startedAt: saved.session.startedAt?.toISOString() ?? null,
+      endedAt: saved.session.endedAt?.toISOString() ?? null,
+      durationSource: saved.session.durationSource,
+      durationEdited: saved.session.durationEdited,
+      slpName: actor.author,
+      goalProgress: saved.progress.map((progress) => ({
+        id: progress.id,
+        goalId: progress.goalId,
+        goalVersion: progress.goalVersion,
+        goalTitle: progress.goalTitleSnapshot,
+        goalArea: progress.goalAreaSnapshot,
+        accuracyPercent: progress.accuracyPercent,
+        successfulAttempts: progress.successfulAttempts,
+        totalAttempts: progress.totalAttempts,
+        promptingLevel: progress.promptingLevel,
+        progressNote: progress.progressNote,
+      })),
+    }),
+  );
+});
+
 router.get("/sessions", async (req, res) => {
   await ensureSessionStore();
   const parsed = ListSessionsQueryParams.safeParse(req.query);
@@ -15317,6 +16394,28 @@ router.get("/sessions", async (req, res) => {
         .filter((item) => item.sessionId !== null)
         .map((item) => [item.sessionId!, item]),
     );
+    const goalProgress = sessionIds.length
+      ? await db
+          .select()
+          .from(therapySessionGoalProgressTable)
+          .where(inArray(therapySessionGoalProgressTable.sessionId, sessionIds))
+      : [];
+    const progressBySession = new Map<number, typeof goalProgress>();
+    for (const progress of goalProgress)
+      progressBySession.set(progress.sessionId, [
+        ...(progressBySession.get(progress.sessionId) ?? []),
+        progress,
+      ]);
+    const authorIds = [...new Set(rows.map((row) => row.createdByUserId))];
+    const sessionAuthors = authorIds.length
+      ? await db
+          .select({ id: usersTable.id, displayName: usersTable.displayName })
+          .from(usersTable)
+          .where(inArray(usersTable.id, authorIds))
+      : [];
+    const authorNameById = new Map(
+      sessionAuthors.map((author) => [author.id, author.displayName]),
+    );
     return res.json(
       rows.map((row) => ({
         id: row.id,
@@ -15342,6 +16441,25 @@ router.get("/sessions", async (req, res) => {
         createdBy: row.createdByUserId,
         role: "SLP",
         consent: null,
+        sessionMode: row.sessionMode,
+        sessionDate: row.sessionDate,
+        startedAt: row.startedAt?.toISOString() ?? null,
+        endedAt: row.endedAt?.toISOString() ?? null,
+        durationSource: row.durationSource,
+        durationEdited: row.durationEdited,
+        slpName: authorNameById.get(row.createdByUserId) ?? "SLP",
+        goalProgress: (progressBySession.get(row.id) ?? []).map((progress) => ({
+          id: progress.id,
+          goalId: progress.goalId,
+          goalVersion: progress.goalVersion,
+          goalTitle: progress.goalTitleSnapshot,
+          goalArea: progress.goalAreaSnapshot,
+          accuracyPercent: progress.accuracyPercent,
+          successfulAttempts: progress.successfulAttempts,
+          totalAttempts: progress.totalAttempts,
+          promptingLevel: progress.promptingLevel,
+          progressNote: progress.progressNote,
+        })),
       })),
     );
   }
@@ -15503,7 +16621,12 @@ router.get("/sessions/dashboard", async (req, res) => {
             transcriptId: transcriptPhrasesTable.transcriptId,
           })
           .from(transcriptPhrasesTable)
-          .where(inArray(transcriptPhrasesTable.transcriptId, transcriptIds)),
+          .where(
+            and(
+              inArray(transcriptPhrasesTable.transcriptId, transcriptIds),
+              eq(transcriptPhrasesTable.accepted, true),
+            ),
+          ),
       ])
     : [[], [], [], []];
   const childNameById = new Map(
@@ -15556,7 +16679,8 @@ router.get("/sessions/dashboard", async (req, res) => {
         sessionId: session.id,
         childId: session.childId,
         childName: childNameById.get(session.childId) ?? "Assigned child",
-        sessionDate: session.createdAt.toISOString(),
+        sessionDate: session.sessionDate,
+        sessionMode: session.sessionMode,
       })),
       draftDocumentation: [
         ...documentationDrafts
@@ -15631,6 +16755,55 @@ router.get("/sessions/unclear-vocalizations", async (req, res) => {
     ),
   );
 });
+
+router.get(
+  "/sessions/unclear-vocalizations/:segmentId/audio",
+  async (req, res) => {
+    const parsed = GetUnclearVocalizationAudioParams.safeParse(req.params);
+    if (!parsed.success)
+      return res.status(404).json({ error: "Audio clip not found." });
+    const actor = viewerFrom(req);
+    if (!canUseClinicalTools(actor) || !actor?.organizationId) {
+      return res
+        .status(403)
+        .json({ error: "Only an SLP can access private audio clips." });
+    }
+    const [clip] = await db
+      .select()
+      .from(sessionAudioObjectsTable)
+      .where(
+        and(
+          eq(
+            sessionAudioObjectsTable.sourceTranscriptSegmentId,
+            parsed.data.segmentId,
+          ),
+          eq(sessionAudioObjectsTable.organizationId, actor.organizationId),
+          eq(sessionAudioObjectsTable.purpose, "unintelligible_clip"),
+          eq(sessionAudioObjectsTable.status, "attached"),
+          isNull(sessionAudioObjectsTable.deletedAt),
+        ),
+      )
+      .limit(1);
+    if (!clip || !requireChildAccess(req, res, clip.childId)) {
+      return res.status(404).json({ error: "Audio clip not found." });
+    }
+    try {
+      const data = await persistedAudioObjectStore(clip).get(clip.objectKey);
+      await writeSecurityAudit({
+        actor,
+        action: "UNCLEAR_AUDIO_CLIP_ACCESSED",
+        targetType: "recording_clip",
+        targetId: clip.id,
+        childId: clip.childId,
+      });
+      res.setHeader("Content-Type", clip.contentType);
+      res.setHeader("Cache-Control", "private, no-store");
+      return res.send(data);
+    } catch {
+      return res.status(404).json({ error: "Audio clip not found." });
+    }
+  },
+);
 
 router.patch("/sessions/unclear-vocalizations/labels", async (req, res) => {
   const query = UpdateUnclearVocalizationLabelQueryParams.safeParse(req.query);
@@ -16100,14 +17273,12 @@ router.post("/sessions/preparation", async (req, res) => {
     targetId: preparation!.id,
     childId: parsed.data.childId,
   });
-  return res
-    .status(201)
-    .json({
-      id: preparation!.id,
-      childId: preparation!.childId,
-      expiresAt: preparation!.expiresAt,
-      status: preparation!.status,
-    });
+  return res.status(201).json({
+    id: preparation!.id,
+    childId: preparation!.childId,
+    expiresAt: preparation!.expiresAt,
+    status: preparation!.status,
+  });
 });
 
 router.post("/sessions/audio/upload-url", async (req, res) => {
@@ -16354,17 +17525,13 @@ router.post("/sessions/calibration/complete", async (req, res) => {
   if (!requireChildAccess(req, res, parsed.data.childId)) return;
   const actor = viewerFrom(req);
   if (!actor?.organizationId)
-    return res
-      .status(401)
-      .json({
-        error: "Please sign in to save a private calibration recording.",
-      });
+    return res.status(401).json({
+      error: "Please sign in to save a private calibration recording.",
+    });
   if (!canUseClinicalTools(actor))
-    return res
-      .status(403)
-      .json({
-        error: "Only an SLP can prepare a therapy-session calibration.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP can prepare a therapy-session calibration.",
+    });
   const [audio] = await db
     .select()
     .from(sessionAudioObjectsTable)
@@ -16386,12 +17553,10 @@ router.post("/sessions/calibration/complete", async (req, res) => {
     (audio.calibrationRole !== "clinician" &&
       audio.calibrationRole !== "caregiver")
   ) {
-    return res
-      .status(404)
-      .json({
-        error:
-          "The calibration recording is unavailable. Please record it again.",
-      });
+    return res.status(404).json({
+      error:
+        "The calibration recording is unavailable. Please record it again.",
+    });
   }
   if (audio.durationMilliseconds !== parsed.data.durationMilliseconds) {
     return fail(
@@ -16792,13 +17957,11 @@ router.post("/sessions/audio", async (req, res) => {
     childId: audio.childId,
     metadata: { contentType: audio.contentType, sizeBytes: audio.sizeBytes },
   });
-  res
-    .status(201)
-    .json({
-      audioId: audio.id,
-      contentType: audio.contentType,
-      sizeBytes: audio.sizeBytes,
-    });
+  res.status(201).json({
+    audioId: audio.id,
+    contentType: audio.contentType,
+    sizeBytes: audio.sizeBytes,
+  });
 });
 
 router.get("/sessions/transcription/draft", async (req, res) => {
@@ -16885,10 +18048,7 @@ router.delete("/sessions/transcription/draft", async (req, res) => {
           .where(
             and(
               eq(sessionAudioObjectsTable.id, audioId),
-              eq(
-                sessionAudioObjectsTable.organizationId,
-                actor.organizationId,
-              ),
+              eq(sessionAudioObjectsTable.organizationId, actor.organizationId),
               eq(sessionAudioObjectsTable.childId, query.data.childId),
               eq(sessionAudioObjectsTable.uploadedByUserId, actor.userId),
               eq(sessionAudioObjectsTable.purpose, "session_recording"),
@@ -17002,10 +18162,115 @@ router.get("/sessions/transcription/:transcriptId/audio", async (req, res) => {
     });
     res.setHeader("Content-Type", audio.contentType);
     res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Accept-Ranges", "bytes");
+    const range = req.headers.range?.match(/^bytes=(\d*)-(\d*)$/u);
+    if (req.headers.range && !range) {
+      res.setHeader("Content-Range", `bytes */${data.length}`);
+      return res.status(416).end();
+    }
+    if (range) {
+      const [, startValue, endValue] = range;
+      const suffixLength = startValue ? null : Number(endValue);
+      const start = startValue
+        ? Number(startValue)
+        : Math.max(0, data.length - (suffixLength ?? 0));
+      const end = endValue && startValue ? Number(endValue) : data.length - 1;
+      if (
+        !Number.isSafeInteger(start) ||
+        !Number.isSafeInteger(end) ||
+        start < 0 ||
+        start >= data.length ||
+        end < start
+      ) {
+        res.setHeader("Content-Range", `bytes */${data.length}`);
+        return res.status(416).end();
+      }
+      const boundedEnd = Math.min(end, data.length - 1);
+      const chunk = data.subarray(start, boundedEnd + 1);
+      res.status(206);
+      res.setHeader(
+        "Content-Range",
+        `bytes ${start}-${boundedEnd}/${data.length}`,
+      );
+      res.setHeader("Content-Length", chunk.length);
+      return res.end(chunk);
+    }
+    res.setHeader("Content-Length", data.length);
     return res.send(data);
   } catch {
     return res.status(404).json({ error: "Recording not found." });
   }
+});
+
+router.delete("/sessions/transcription/phrases/:phraseId", async (req, res) => {
+  const parsed = DeleteSessionTranscriptPhraseParams.safeParse(req.params);
+  if (!parsed.success)
+    return res.status(404).json({ error: "Transcript phrase not found." });
+  const actor = viewerFrom(req);
+  if (!canUseClinicalTools(actor) || !actor?.organizationId) {
+    return res
+      .status(403)
+      .json({ error: "Only an SLP can delete a transcript phrase." });
+  }
+  const [phrase] = await db
+    .select()
+    .from(transcriptPhrasesTable)
+    .where(
+      and(
+        eq(transcriptPhrasesTable.id, parsed.data.phraseId),
+        eq(transcriptPhrasesTable.accepted, true),
+      ),
+    )
+    .limit(1);
+  const [transcript] = phrase
+    ? await db
+        .select()
+        .from(sessionTranscriptsTable)
+        .where(
+          and(
+            eq(sessionTranscriptsTable.id, phrase.transcriptId),
+            eq(sessionTranscriptsTable.createdByUserId, actor.userId),
+            isNull(sessionTranscriptsTable.sessionId),
+          ),
+        )
+        .limit(1)
+    : [];
+  if (
+    !phrase ||
+    !transcript ||
+    !requireChildAccess(req, res, transcript.childId)
+  ) {
+    return res.status(404).json({ error: "Transcript phrase not found." });
+  }
+  await db.transaction(async (transaction) => {
+    await transaction
+      .update(transcriptPhrasesTable)
+      .set({ accepted: false })
+      .where(eq(transcriptPhrasesTable.id, phrase.id));
+    await transaction
+      .update(childPhraseInboxItemsTable)
+      .set({
+        status: "excluded",
+        transcriptPhraseId: null,
+        reviewedByUserId: actor.userId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(childPhraseInboxItemsTable.transcriptPhraseId, phrase.id),
+          inArray(childPhraseInboxItemsTable.status, ["pending", "deferred"]),
+        ),
+      );
+  });
+  await writeSecurityAudit({
+    actor,
+    action: "TRANSCRIPT_PHRASE_DELETED",
+    targetType: "transcript_phrase",
+    targetId: phrase.id,
+    childId: transcript.childId,
+    metadata: { transcriptId: transcript.id },
+  });
+  return res.json(await transcriptResponse(transcript, actor.organizationId));
 });
 
 router.post("/sessions/transcription", async (req, res) => {
@@ -17070,11 +18335,9 @@ router.post("/sessions/transcription", async (req, res) => {
           entry.id === body.data.audioId && entry.owner === actor.author,
       );
   if (!audio) {
-    return res
-      .status(404)
-      .json({
-        error: "The selected recording is unavailable. Please upload it again.",
-      });
+    return res.status(404).json({
+      error: "The selected recording is unavailable. Please upload it again.",
+    });
   }
   if (isManagedObjectStorageDriver(productionAudio?.storageDriver)) {
     const finalizedObjectPath =
@@ -17126,6 +18389,23 @@ router.post("/sessions/transcription", async (req, res) => {
   }
   if (existing?.status === "complete") {
     let transcriptToReturn = existing;
+    if (
+      existing.speakerSeparationStatus === "pending" ||
+      existing.speakerSeparationStatus === "processing"
+    ) {
+      const [manualTranscript] = await db
+        .update(sessionTranscriptsTable)
+        .set({
+          speakerSeparationStatus: "manual",
+          speakerSeparationCompletedAt: new Date(),
+          speakerSeparationFailureCode: null,
+          speakerSeparationFailureMessage: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(sessionTranscriptsTable.id, existing.id))
+        .returning();
+      if (manualTranscript) transcriptToReturn = manualTranscript;
+    }
     const [existingProvisionalPhrase] = await db
       .select({ id: transcriptProvisionalPhrasesTable.id })
       .from(transcriptProvisionalPhrasesTable)
@@ -17152,80 +18432,9 @@ router.post("/sessions/transcription", async (req, res) => {
         }
       });
     }
-    const staleProcessing =
-      existing.speakerSeparationStatus === "processing" &&
-      existing.speakerSeparationStartedAt &&
-      Date.now() - existing.speakerSeparationStartedAt.getTime() >
-        2 * 60 * 1000;
-    if (staleProcessing) {
-      const [timedOutTranscript] = await db
-        .update(sessionTranscriptsTable)
-        .set({
-          speakerSeparationStatus: "failed",
-          speakerSeparationCompletedAt: new Date(),
-          speakerSeparationFailureCode: "SPEAKER_GROUPING_TIMEOUT",
-          speakerSeparationFailureMessage:
-            "Speaker grouping did not finish in time. The transcript and provisional phrase review remain available.",
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(sessionTranscriptsTable.id, existing.id),
-            eq(sessionTranscriptsTable.speakerSeparationStatus, "processing"),
-          ),
-        )
-        .returning();
-      if (timedOutTranscript) transcriptToReturn = timedOutTranscript;
-    }
-    if (
-      body.data.retrySpeakerSeparation &&
-      ["manual", "unavailable", "failed"].includes(
-        transcriptToReturn.speakerSeparationStatus,
-      )
-    ) {
-      if (await hasStartedManualTranscriptReview(transcriptToReturn.id)) {
-        return res.status(409).json({
-          error:
-            "Manual Child-language review has started. Speaker grouping cannot be retried without discarding clinician decisions.",
-        });
-      }
-      const [retryingTranscript] = await db
-        .update(sessionTranscriptsTable)
-        .set({
-          speakerSeparationStatus: "pending",
-          speakerSeparationCompletedAt: null,
-          speakerSeparationFailureCode: null,
-          speakerSeparationFailureMessage: null,
-          updatedAt: new Date(),
-        })
-        .where(
-          and(
-            eq(sessionTranscriptsTable.id, transcriptToReturn.id),
-            inArray(sessionTranscriptsTable.speakerSeparationStatus, [
-              "manual",
-              "unavailable",
-              "failed",
-            ]),
-          ),
-        )
-        .returning();
-      if (retryingTranscript) transcriptToReturn = retryingTranscript;
-    }
     res.json(
       await transcriptResponse(transcriptToReturn, actor.organizationId),
     );
-    if (transcriptToReturn.speakerSeparationStatus === "pending") {
-      void (
-        productionAudio
-          ? persistedAudioObjectStore(productionAudio)
-          : audioObjectStore
-      )
-        .get(audio.fileName)
-        .then((audioData) =>
-          queueSpeakerSeparation(transcriptToReturn, audioData, req),
-        )
-        .catch(() => markSpeakerSeparationUnavailable(transcriptToReturn, req));
-    }
     return;
   }
 
@@ -17255,7 +18464,7 @@ router.post("/sessions/transcription", async (req, res) => {
       .update(sessionTranscriptsTable)
       .set({
         status: "processing",
-        speakerSeparationStatus: "pending",
+        speakerSeparationStatus: "manual",
         errorMessage: null,
         updatedAt: new Date(),
       })
@@ -17308,7 +18517,7 @@ router.post("/sessions/transcription", async (req, res) => {
       phrasePrompt,
       runtimeConfig.recording.maxProviderBytes,
     );
-    let childUtterancesDetected = 0;
+    const childUtterancesDetected = result.segments.length;
     const completedTranscript = await db.transaction(async (transaction) => {
       await transaction
         .delete(transcriptPhrasesTable)
@@ -17319,6 +18528,24 @@ router.post("/sessions/transcription", async (req, res) => {
       await transaction
         .delete(transcriptSpeakerRolesTable)
         .where(eq(transcriptSpeakerRolesTable.transcriptId, transcript.id));
+      if (result.segments.length) {
+        await transaction.insert(transcriptSpeakerSegmentsTable).values(
+          result.segments.map((segment) => ({
+            transcriptId: transcript.id,
+            speakerLabel: segment.speakerLabel,
+            text: segment.text,
+            position: segment.position,
+            speakerConfidence: segment.confidence,
+            speakerConfidenceScore: segment.confidenceScore ?? null,
+            intelligibility: segment.intelligibility ?? "intelligible",
+            transcriptionConfidenceScore:
+              segment.transcriptionConfidenceScore ?? null,
+            startTimeMilliseconds: segment.startTimeMilliseconds ?? null,
+            durationMilliseconds: segment.durationMilliseconds ?? null,
+            profileSignatureHash: null,
+          })),
+        );
+      }
       await rebuildChildTranscriptPhrases(transaction, transcript, []);
       await rebuildProvisionalTranscriptPhrases(
         transaction,
@@ -17331,10 +18558,10 @@ router.post("/sessions/transcription", async (req, res) => {
           .set({
             status: "complete",
             rawTranscript: result.rawTranscript,
-            speakerSeparationStatus: "pending",
+            speakerSeparationStatus: "manual",
             speakerSeparationAttempt: 0,
             speakerSeparationStartedAt: null,
-            speakerSeparationCompletedAt: null,
+            speakerSeparationCompletedAt: new Date(),
             speakerSeparationFailureCode: null,
             speakerSeparationFailureMessage: null,
             errorMessage: null,
@@ -17360,7 +18587,7 @@ router.post("/sessions/transcription", async (req, res) => {
         speakersDetected: 0,
         childUtterancesDetected,
       },
-      "Raw session transcript completed before optional speaker separation",
+      "Session transcript completed with neutral review turns",
     );
     await writeSecurityAudit({
       actor,
@@ -17375,7 +18602,6 @@ router.post("/sessions/transcription", async (req, res) => {
       actor.organizationId,
     );
     res.status(existing ? 200 : 201).json(response);
-    void queueSpeakerSeparation(completedTranscript, audioData, req);
     return;
   } catch (error) {
     const failure = safeTranscriptionFailure(error);
@@ -17414,11 +18640,9 @@ router.post("/sessions/transcription/speakers", async (req, res) => {
   if (!requireChildAccess(req, res, query.data.childId)) return;
   const actor = viewerFrom(req);
   if (!actor || !canUseClinicalTools(actor)) {
-    return res
-      .status(403)
-      .json({
-        error: "Only an SLP can confirm speaker roles for therapy analysis.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP can confirm speaker roles for therapy analysis.",
+    });
   }
   const transcript = (
     await db
@@ -17433,11 +18657,9 @@ router.post("/sessions/transcription/speakers", async (req, res) => {
       .limit(1)
   )[0];
   if (!transcript || transcript.status !== "complete") {
-    return res
-      .status(404)
-      .json({
-        error: "The completed transcript is unavailable for speaker review.",
-      });
+    return res.status(404).json({
+      error: "The completed transcript is unavailable for speaker review.",
+    });
   }
   const attachedAudio = (
     await db
@@ -17833,11 +19055,9 @@ router.post("/sessions/transcription/provisional-phrases", async (req, res) => {
   if (!requireChildAccess(req, res, query.data.childId)) return;
   const actor = viewerFrom(req);
   if (!actor || !canUseClinicalTools(actor) || !actor.organizationId) {
-    return res
-      .status(403)
-      .json({
-        error: "Only an SLP can review provisional transcript phrases.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP can review provisional transcript phrases.",
+    });
   }
   const transcript = (
     await db
@@ -17853,12 +19073,10 @@ router.post("/sessions/transcription/provisional-phrases", async (req, res) => {
       .limit(1)
   )[0];
   if (!transcript || transcript.status !== "complete") {
-    return res
-      .status(404)
-      .json({
-        error:
-          "The completed transcript is unavailable for provisional phrase review.",
-      });
+    return res.status(404).json({
+      error:
+        "The completed transcript is unavailable for provisional phrase review.",
+    });
   }
   const reviews = body.data.reviews;
   if (new Set(reviews.map((review) => review.id)).size !== reviews.length) {
@@ -18118,12 +19336,10 @@ router.patch(
       };
     });
     if (writeResult.conflict) {
-      return res
-        .status(409)
-        .json({
-          error:
-            "This phrase changed or the session was saved. Reopen the review and try again.",
-        });
+      return res.status(409).json({
+        error:
+          "This phrase changed or the session was saved. Reopen the review and try again.",
+      });
     }
     const { updated, updatedTranscript } = writeResult;
     await writeSecurityAudit({
@@ -18163,11 +19379,9 @@ router.post("/sessions/transcription/child-utterances", async (req, res) => {
   if (!requireChildAccess(req, res, query.data.childId)) return;
   const actor = viewerFrom(req);
   if (!actor?.organizationId || !canUseClinicalTools(actor)) {
-    return res
-      .status(403)
-      .json({
-        error: "Only an SLP can review Child utterances for therapy analysis.",
-      });
+    return res.status(403).json({
+      error: "Only an SLP can review Child utterances for therapy analysis.",
+    });
   }
   const transcript = (
     await db
@@ -18187,12 +19401,10 @@ router.post("/sessions/transcription/child-utterances", async (req, res) => {
       .limit(1)
   )[0]?.transcript;
   if (!transcript || transcript.status !== "complete") {
-    return res
-      .status(404)
-      .json({
-        error:
-          "The completed transcript is unavailable for Child utterance review.",
-      });
+    return res.status(404).json({
+      error:
+        "The completed transcript is unavailable for Child utterance review.",
+    });
   }
   if (transcript.sessionId !== null) {
     return fail(
@@ -18585,12 +19797,9 @@ router.post("/sessions", async (req, res) => {
         )[0]
       : undefined;
     if (body.data.audioId && (!audio || audio.sessionId !== null)) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "The selected recording is unavailable. Please upload it again.",
-        });
+      return res.status(400).json({
+        error: "The selected recording is unavailable. Please upload it again.",
+      });
     }
     const calibrationAudioIds = body.data.calibrationAudioIds ?? [];
     const calibrationAudio = calibrationAudioIds.length
@@ -18611,12 +19820,10 @@ router.post("/sessions", async (req, res) => {
           )
       : [];
     if (calibrationAudio.length !== calibrationAudioIds.length) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "One of the calibration references is unavailable. Please record it again.",
-        });
+      return res.status(400).json({
+        error:
+          "One of the calibration references is unavailable. Please record it again.",
+      });
     }
     if (
       body.data.audioId &&
@@ -18626,12 +19833,10 @@ router.post("/sessions", async (req, res) => {
           (item) => item.preparationId !== audio.preparationId,
         ))
     ) {
-      return res
-        .status(400)
-        .json({
-          error:
-            "Calibration references must belong to the same prepared recording as the therapy audio.",
-        });
+      return res.status(400).json({
+        error:
+          "Calibration references must belong to the same prepared recording as the therapy audio.",
+      });
     }
     const completedTranscriptForAudio = body.data.audioId
       ? (
@@ -18773,6 +19978,7 @@ router.post("/sessions", async (req, res) => {
           and(
             eq(transcriptPhrasesTable.transcriptId, transcript.id),
             inArray(transcriptPhrasesTable.id, transcriptPhraseIds),
+            eq(transcriptPhrasesTable.accepted, true),
           ),
         );
       for (const phrase of phraseRows) {
@@ -18791,427 +19997,484 @@ router.post("/sessions", async (req, res) => {
         );
       }
     }
-    const saved = await db.transaction(async (transaction) => {
-      if (transcript) {
-        const [liveTranscript] = await transaction
-          .select()
-          .from(sessionTranscriptsTable)
-          .where(eq(sessionTranscriptsTable.id, transcript.id))
-          .limit(1)
-          .for("update");
-        if (!liveTranscript || liveTranscript.sessionId !== null) {
-          throw new Error(
-            "This transcript was changed or attached while the session was being saved.",
-          );
-        }
-        const [segments, utteranceReviews] = await Promise.all([
-          transaction
+    let preparedUnclearClips: PreparedUnclearAudioClip[] = [];
+    if (audio && transcript) {
+      try {
+        preparedUnclearClips = await prepareUnclearAudioClips(
+          audio,
+          transcript,
+        );
+      } catch (error) {
+        req.log.error(
+          { err: error, audioId: audio.id, transcriptId: transcript.id },
+          "Could not prepare retained unclear-moment clips",
+        );
+        return res.status(422).json({
+          error:
+            "The short unclear-moment clips could not be prepared. Your recording and review were preserved; please retry finalization.",
+        });
+      }
+    }
+    const saved = await db
+      .transaction(async (transaction) => {
+        if (transcript) {
+          const [liveTranscript] = await transaction
             .select()
-            .from(transcriptSpeakerSegmentsTable)
-            .where(
-              eq(transcriptSpeakerSegmentsTable.transcriptId, transcript.id),
-            ),
-          transaction
-            .select()
-            .from(transcriptChildUtteranceReviewsTable)
-            .where(
-              eq(
-                transcriptChildUtteranceReviewsTable.transcriptId,
-                transcript.id,
-              ),
-            ),
-        ]);
-        const childSegments = segments.map((segment) => ({
-          id: segment.id,
-          intelligibility: segment.intelligibility,
-        }));
-        if (
-          hasUnresolvedChildUtteranceReviews(childSegments, utteranceReviews)
-        ) {
-          throw new Error(
-            "Classify every transcript utterance before saving this session. Only explicit Child decisions can become evidence.",
-          );
-        }
-        if (transcriptPhraseIds.length) {
-          if (!hasMeaningBackedConfirmedUtterance(utteranceReviews)) {
+            .from(sessionTranscriptsTable)
+            .where(eq(sessionTranscriptsTable.id, transcript.id))
+            .limit(1)
+            .for("update");
+          if (!liveTranscript || liveTranscript.sessionId !== null) {
             throw new Error(
-              "Transcript evidence must come from a meaning-backed confirmed Child utterance review.",
+              "This transcript was changed or attached while the session was being saved.",
+            );
+          }
+          const [segments, utteranceReviews] = await Promise.all([
+            transaction
+              .select()
+              .from(transcriptSpeakerSegmentsTable)
+              .where(
+                eq(transcriptSpeakerSegmentsTable.transcriptId, transcript.id),
+              ),
+            transaction
+              .select()
+              .from(transcriptChildUtteranceReviewsTable)
+              .where(
+                eq(
+                  transcriptChildUtteranceReviewsTable.transcriptId,
+                  transcript.id,
+                ),
+              ),
+          ]);
+          const childSegments = segments.map((segment) => ({
+            id: segment.id,
+            intelligibility: segment.intelligibility,
+          }));
+          if (
+            hasUnresolvedChildUtteranceReviews(childSegments, utteranceReviews)
+          ) {
+            throw new Error(
+              "Classify every transcript utterance before saving this session. Only explicit Child decisions can become evidence.",
+            );
+          }
+          if (transcriptPhraseIds.length) {
+            if (!hasMeaningBackedConfirmedUtterance(utteranceReviews)) {
+              throw new Error(
+                "Transcript evidence must come from a meaning-backed confirmed Child utterance review.",
+              );
+            }
+          }
+          const inboxRows = await transaction
+            .select()
+            .from(childPhraseInboxItemsTable)
+            .where(
+              and(
+                eq(
+                  childPhraseInboxItemsTable.organizationId,
+                  actor.organizationId!,
+                ),
+                eq(childPhraseInboxItemsTable.childId, query.data.childId),
+                eq(childPhraseInboxItemsTable.transcriptId, transcript.id),
+                inArray(childPhraseInboxItemsTable.status, [
+                  "pending",
+                  "deferred",
+                ]),
+              ),
+            )
+            .for("update");
+          const inboxById = new Map(inboxRows.map((row) => [row.id, row]));
+          const reviewBySegmentId = new Map(
+            utteranceReviews.map((review) => [review.segmentId, review]),
+          );
+          const segmentById = new Map(
+            segments.map((segment) => [segment.id, segment]),
+          );
+          for (const phrase of body.data.gestalts.filter(
+            (item) => typeof item.transcriptPhraseId === "number",
+          )) {
+            const matchingInboxRows = inboxRows.filter(
+              (row) =>
+                normalizePhrase(row.phrase) === normalizePhrase(phrase.phrase),
+            );
+            if (
+              matchingInboxRows.length &&
+              typeof phrase.phraseInboxItemId !== "number"
+            ) {
+              throw new Error(
+                "Choose the exact Child Phrase Inbox item before adding transcript language to the dictionary.",
+              );
+            }
+            if (typeof phrase.phraseInboxItemId === "number") {
+              const inboxItem = inboxById.get(phrase.phraseInboxItemId);
+              const sourceSegment = inboxItem
+                ? segmentById.get(inboxItem.segmentId)
+                : undefined;
+              const sourceReview = inboxItem
+                ? reviewBySegmentId.get(inboxItem.segmentId)
+                : undefined;
+              if (
+                !inboxItem ||
+                inboxItem.status !== "pending" ||
+                inboxItem.transcriptPhraseId !== phrase.transcriptPhraseId ||
+                normalizePhrase(inboxItem.phrase) !==
+                  normalizePhrase(phrase.phrase) ||
+                !sourceSegment ||
+                !sourceReview ||
+                !canCreatePhraseEvidenceFrom(sourceSegment, sourceReview)
+              ) {
+                throw new Error(
+                  "The selected Child Phrase Inbox item is no longer eligible for dictionary review.",
+                );
+              }
+            }
+          }
+          if (phraseInboxItemIds.some((id) => !inboxById.has(id))) {
+            throw new Error(
+              "A selected Child Phrase Inbox item changed while the session was being saved.",
             );
           }
         }
-        const inboxRows = await transaction
-          .select()
-          .from(childPhraseInboxItemsTable)
+        const [session] = await transaction
+          .insert(therapySessionsTable)
+          .values({
+            organizationId: actor.organizationId!,
+            childId: query.data.childId,
+            durationSeconds: body.data.durationSeconds,
+            clinicalObservations: body.data.clinicalObservations,
+            nextSteps: body.data.nextSteps,
+            note: body.data.note,
+            createdByUserId: actor.userId,
+          })
+          .returning();
+        if (!session) throw new Error("Session insert did not return a row.");
+        // Insert the durable queue record in this same transaction. A committed
+        // reviewed session can therefore never exist without a recoverable
+        // engine trigger, even if the process stops immediately after responding.
+        const runTrigger: ClinicalInsightRunTrigger = {
+          organizationId: actor.organizationId!,
+          childId: query.data.childId,
+          triggerSessionId: session.id,
+        };
+        const runIdentity = clinicalInsightRunIdentity(runTrigger);
+        await transaction
+          .insert(clinicalKnowledgeInsightRunsTable)
+          .values({
+            ...runTrigger,
+            triggeredByUserId: actor.userId,
+            ...runIdentity,
+            engineVersion: CLINICAL_INSIGHTS_ENGINE_VERSION,
+          })
+          .onConflictDoNothing();
+        const [insightRun] = await transaction
+          .select({ id: clinicalKnowledgeInsightRunsTable.id })
+          .from(clinicalKnowledgeInsightRunsTable)
           .where(
             and(
               eq(
-                childPhraseInboxItemsTable.organizationId,
-                actor.organizationId!,
+                clinicalKnowledgeInsightRunsTable.organizationId,
+                runTrigger.organizationId,
               ),
-              eq(childPhraseInboxItemsTable.childId, query.data.childId),
-              eq(childPhraseInboxItemsTable.transcriptId, transcript.id),
-              inArray(childPhraseInboxItemsTable.status, [
-                "pending",
-                "deferred",
-              ]),
+              eq(clinicalKnowledgeInsightRunsTable.childId, runTrigger.childId),
+              eq(
+                clinicalKnowledgeInsightRunsTable.evidenceFingerprint,
+                runIdentity.evidenceFingerprint,
+              ),
+              eq(
+                clinicalKnowledgeInsightRunsTable.knowledgeFingerprint,
+                runIdentity.knowledgeFingerprint,
+              ),
+              eq(
+                clinicalKnowledgeInsightRunsTable.engineVersion,
+                CLINICAL_INSIGHTS_ENGINE_VERSION,
+              ),
             ),
           )
-          .for("update");
-        const inboxById = new Map(inboxRows.map((row) => [row.id, row]));
-        const reviewBySegmentId = new Map(
-          utteranceReviews.map((review) => [review.segmentId, review]),
-        );
-        const segmentById = new Map(
-          segments.map((segment) => [segment.id, segment]),
-        );
-        for (const phrase of body.data.gestalts.filter(
-          (item) => typeof item.transcriptPhraseId === "number",
-        )) {
-          const matchingInboxRows = inboxRows.filter(
-            (row) =>
-              normalizePhrase(row.phrase) === normalizePhrase(phrase.phrase),
+          .limit(1);
+        if (!insightRun)
+          throw new Error(
+            "Clinical insight run could not be queued with the reviewed session.",
           );
-          if (
-            matchingInboxRows.length &&
-            typeof phrase.phraseInboxItemId !== "number"
-          ) {
+        const lockedChildAttributedPhraseIds = new Set<number>();
+        if (transcript) {
+          const [claimedTranscript] = await transaction
+            .update(sessionTranscriptsTable)
+            .set({ sessionId: session.id, updatedAt: new Date() })
+            .where(
+              and(
+                eq(sessionTranscriptsTable.id, transcript.id),
+                isNull(sessionTranscriptsTable.sessionId),
+              ),
+            )
+            .returning({ id: sessionTranscriptsTable.id });
+          if (!claimedTranscript) {
             throw new Error(
-              "Choose the exact Child Phrase Inbox item before adding transcript language to the dictionary.",
+              "This transcript was changed or attached while the session was being saved.",
             );
           }
-          if (typeof phrase.phraseInboxItemId === "number") {
-            const inboxItem = inboxById.get(phrase.phraseInboxItemId);
-            const sourceSegment = inboxItem
-              ? segmentById.get(inboxItem.segmentId)
-              : undefined;
-            const sourceReview = inboxItem
-              ? reviewBySegmentId.get(inboxItem.segmentId)
-              : undefined;
+          if (transcriptPhraseIds.length) {
+            const lockedPhraseRows = await transaction
+              .select()
+              .from(transcriptPhrasesTable)
+              .where(
+                and(
+                  eq(transcriptPhrasesTable.transcriptId, transcript.id),
+                  inArray(transcriptPhrasesTable.id, transcriptPhraseIds),
+                  eq(transcriptPhrasesTable.accepted, true),
+                ),
+              );
+            for (const phrase of lockedPhraseRows) {
+              if (phrase.attributedRole === "child")
+                lockedChildAttributedPhraseIds.add(phrase.id);
+            }
             if (
-              !inboxItem ||
-              inboxItem.status !== "pending" ||
-              inboxItem.transcriptPhraseId !== phrase.transcriptPhraseId ||
-              normalizePhrase(inboxItem.phrase) !==
-                normalizePhrase(phrase.phrase) ||
-              !sourceSegment ||
-              !sourceReview ||
-              !canCreatePhraseEvidenceFrom(sourceSegment, sourceReview)
+              lockedPhraseRows.length !== transcriptPhraseIds.length ||
+              transcriptPhraseIds.some(
+                (phraseId) => !lockedChildAttributedPhraseIds.has(phraseId),
+              )
             ) {
               throw new Error(
-                "The selected Child Phrase Inbox item is no longer eligible for dictionary review.",
+                "The confirmed Child speaker evidence changed while the session was being saved.",
               );
             }
           }
         }
-        if (phraseInboxItemIds.some((id) => !inboxById.has(id))) {
-          throw new Error(
-            "A selected Child Phrase Inbox item changed while the session was being saved.",
-          );
+        // The reviewed session is the dictionary workflow: each reviewed phrase
+        // becomes (or updates) the child-scoped canonical entry before it is
+        // attached to this session's evidence.
+        const dictionaryGestalts: Array<
+          typeof clinicalGestaltsTable.$inferSelect
+        > = [];
+        let phraseInboxDictionaryAddedCount = 0;
+        for (const phrase of body.data.gestalts) {
+          const normalizedPhrase = normalizePhrase(phrase.phrase);
+          const [existingDictionaryGestalt] = phrase.preserveDictionary
+            ? await transaction
+                .select()
+                .from(clinicalGestaltsTable)
+                .where(
+                  and(
+                    eq(
+                      clinicalGestaltsTable.organizationId,
+                      actor.organizationId!,
+                    ),
+                    eq(clinicalGestaltsTable.childId, query.data.childId),
+                    eq(
+                      clinicalGestaltsTable.normalizedPhrase,
+                      normalizedPhrase,
+                    ),
+                    isNull(clinicalGestaltsTable.archivedAt),
+                  ),
+                )
+                .limit(1)
+                .for("update")
+            : [];
+          if (phrase.preserveDictionary && !existingDictionaryGestalt) {
+            throw new Error(
+              "An automatic dictionary reuse must match an active exact phrase at save time.",
+            );
+          }
+          const dictionaryValues = {
+            organizationId: actor.organizationId!,
+            childId: query.data.childId,
+            phrase: phrase.phrase,
+            normalizedPhrase,
+            meaning: phrase.meaning,
+            communicationFunction: phrase.function,
+            contexts: phrase.context ? [phrase.context] : [],
+            emotionalState: phrase.emotionalState,
+            source: "Reviewed session",
+            createdByUserId: actor.userId,
+          };
+          let dictionaryGestalt = existingDictionaryGestalt;
+          if (!dictionaryGestalt) {
+            [dictionaryGestalt] = await transaction
+              .insert(clinicalGestaltsTable)
+              .values(dictionaryValues)
+              .onConflictDoUpdate({
+                target: [
+                  clinicalGestaltsTable.childId,
+                  clinicalGestaltsTable.normalizedPhrase,
+                ],
+                targetWhere: isNull(clinicalGestaltsTable.archivedAt),
+                set: {
+                  phrase: phrase.phrase,
+                  meaning: phrase.meaning,
+                  communicationFunction: phrase.function,
+                  contexts: phrase.context ? [phrase.context] : [],
+                  emotionalState: phrase.emotionalState,
+                  source: "Reviewed session",
+                  archivedAt: null,
+                  updatedAt: new Date(),
+                },
+              })
+              .returning();
+          }
+          if (!dictionaryGestalt)
+            throw new Error("Dictionary phrase insert did not return a row.");
+          dictionaryGestalts.push(dictionaryGestalt);
         }
-      }
-      const [session] = await transaction
-        .insert(therapySessionsTable)
-        .values({
-          organizationId: actor.organizationId!,
-          childId: query.data.childId,
-          durationSeconds: body.data.durationSeconds,
-          clinicalObservations: body.data.clinicalObservations,
-          nextSteps: body.data.nextSteps,
-          note: body.data.note,
-          createdByUserId: actor.userId,
-        })
-        .returning();
-      if (!session) throw new Error("Session insert did not return a row.");
-      // Insert the durable queue record in this same transaction. A committed
-      // reviewed session can therefore never exist without a recoverable
-      // engine trigger, even if the process stops immediately after responding.
-      const runTrigger: ClinicalInsightRunTrigger = {
-        organizationId: actor.organizationId!,
-        childId: query.data.childId,
-        triggerSessionId: session.id,
-      };
-      const runIdentity = clinicalInsightRunIdentity(runTrigger);
-      await transaction
-        .insert(clinicalKnowledgeInsightRunsTable)
-        .values({
-          ...runTrigger,
-          triggeredByUserId: actor.userId,
-          ...runIdentity,
-          engineVersion: CLINICAL_INSIGHTS_ENGINE_VERSION,
-        })
-        .onConflictDoNothing();
-      const [insightRun] = await transaction
-        .select({ id: clinicalKnowledgeInsightRunsTable.id })
-        .from(clinicalKnowledgeInsightRunsTable)
-        .where(
-          and(
-            eq(
-              clinicalKnowledgeInsightRunsTable.organizationId,
-              runTrigger.organizationId,
-            ),
-            eq(clinicalKnowledgeInsightRunsTable.childId, runTrigger.childId),
-            eq(
-              clinicalKnowledgeInsightRunsTable.evidenceFingerprint,
-              runIdentity.evidenceFingerprint,
-            ),
-            eq(
-              clinicalKnowledgeInsightRunsTable.knowledgeFingerprint,
-              runIdentity.knowledgeFingerprint,
-            ),
-            eq(
-              clinicalKnowledgeInsightRunsTable.engineVersion,
-              CLINICAL_INSIGHTS_ENGINE_VERSION,
-            ),
-          ),
-        )
-        .limit(1);
-      if (!insightRun)
-        throw new Error(
-          "Clinical insight run could not be queued with the reviewed session.",
-        );
-      const lockedChildAttributedPhraseIds = new Set<number>();
-      if (transcript) {
-        const [claimedTranscript] = await transaction
-          .update(sessionTranscriptsTable)
-          .set({ sessionId: session.id, updatedAt: new Date() })
-          .where(
-            and(
-              eq(sessionTranscriptsTable.id, transcript.id),
-              isNull(sessionTranscriptsTable.sessionId),
-            ),
-          )
-          .returning({ id: sessionTranscriptsTable.id });
-        if (!claimedTranscript) {
-          throw new Error(
-            "This transcript was changed or attached while the session was being saved.",
-          );
-        }
-        if (transcriptPhraseIds.length) {
-          const lockedPhraseRows = await transaction
-            .select()
-            .from(transcriptPhrasesTable)
+        if (transcript && phraseInboxItemIds.length) {
+          const transitionedInboxRows = await transaction
+            .update(childPhraseInboxItemsTable)
+            .set({
+              status: "dictionary_added",
+              reviewedByUserId: actor.userId,
+              updatedAt: new Date(),
+            })
             .where(
               and(
-                eq(transcriptPhrasesTable.transcriptId, transcript.id),
-                inArray(transcriptPhrasesTable.id, transcriptPhraseIds),
-              ),
-            );
-          for (const phrase of lockedPhraseRows) {
-            if (phrase.attributedRole === "child")
-              lockedChildAttributedPhraseIds.add(phrase.id);
-          }
-          if (
-            lockedPhraseRows.length !== transcriptPhraseIds.length ||
-            transcriptPhraseIds.some(
-              (phraseId) => !lockedChildAttributedPhraseIds.has(phraseId),
-            )
-          ) {
-            throw new Error(
-              "The confirmed Child speaker evidence changed while the session was being saved.",
-            );
-          }
-        }
-      }
-      // The reviewed session is the dictionary workflow: each reviewed phrase
-      // becomes (or updates) the child-scoped canonical entry before it is
-      // attached to this session's evidence.
-      const dictionaryGestalts: Array<
-        typeof clinicalGestaltsTable.$inferSelect
-      > = [];
-      let phraseInboxDictionaryAddedCount = 0;
-      for (const phrase of body.data.gestalts) {
-        const normalizedPhrase = normalizePhrase(phrase.phrase);
-        const [existingDictionaryGestalt] = phrase.preserveDictionary
-          ? await transaction
-              .select()
-              .from(clinicalGestaltsTable)
-              .where(
-                and(
-                  eq(
-                    clinicalGestaltsTable.organizationId,
-                    actor.organizationId!,
-                  ),
-                  eq(clinicalGestaltsTable.childId, query.data.childId),
-                  eq(clinicalGestaltsTable.normalizedPhrase, normalizedPhrase),
-                  isNull(clinicalGestaltsTable.archivedAt),
+                eq(
+                  childPhraseInboxItemsTable.organizationId,
+                  actor.organizationId!,
                 ),
-              )
-              .limit(1)
-              .for("update")
-          : [];
-        if (phrase.preserveDictionary && !existingDictionaryGestalt) {
-          throw new Error(
-            "An automatic dictionary reuse must match an active exact phrase at save time.",
-          );
-        }
-        const dictionaryValues = {
-          organizationId: actor.organizationId!,
-          childId: query.data.childId,
-          phrase: phrase.phrase,
-          normalizedPhrase,
-          meaning: phrase.meaning,
-          communicationFunction: phrase.function,
-          contexts: phrase.context ? [phrase.context] : [],
-          emotionalState: phrase.emotionalState,
-          source: "Reviewed session",
-          createdByUserId: actor.userId,
-        };
-        let dictionaryGestalt = existingDictionaryGestalt;
-        if (!dictionaryGestalt) {
-          [dictionaryGestalt] = await transaction
-            .insert(clinicalGestaltsTable)
-            .values(dictionaryValues)
-            .onConflictDoUpdate({
-              target: [
-                clinicalGestaltsTable.childId,
-                clinicalGestaltsTable.normalizedPhrase,
-              ],
-              targetWhere: isNull(clinicalGestaltsTable.archivedAt),
-              set: {
-                phrase: phrase.phrase,
-                meaning: phrase.meaning,
-                communicationFunction: phrase.function,
-                contexts: phrase.context ? [phrase.context] : [],
-                emotionalState: phrase.emotionalState,
-                source: "Reviewed session",
-                archivedAt: null,
-                updatedAt: new Date(),
-              },
-            })
-            .returning();
-        }
-        if (!dictionaryGestalt)
-          throw new Error("Dictionary phrase insert did not return a row.");
-        dictionaryGestalts.push(dictionaryGestalt);
-      }
-      if (transcript && phraseInboxItemIds.length) {
-        const transitionedInboxRows = await transaction
-          .update(childPhraseInboxItemsTable)
-          .set({
-            status: "dictionary_added",
-            reviewedByUserId: actor.userId,
-            updatedAt: new Date(),
-          })
-          .where(
-            and(
-              eq(
-                childPhraseInboxItemsTable.organizationId,
-                actor.organizationId!,
+                eq(childPhraseInboxItemsTable.childId, query.data.childId),
+                eq(childPhraseInboxItemsTable.transcriptId, transcript.id),
+                eq(childPhraseInboxItemsTable.status, "pending"),
+                inArray(childPhraseInboxItemsTable.id, phraseInboxItemIds),
               ),
-              eq(childPhraseInboxItemsTable.childId, query.data.childId),
-              eq(childPhraseInboxItemsTable.transcriptId, transcript.id),
-              eq(childPhraseInboxItemsTable.status, "pending"),
-              inArray(childPhraseInboxItemsTable.id, phraseInboxItemIds),
-            ),
-          )
-          .returning({ id: childPhraseInboxItemsTable.id });
-        if (transitionedInboxRows.length !== phraseInboxItemIds.length) {
-          throw new Error(
-            "A Child Phrase Inbox item changed while the session was being saved.",
-          );
-        }
-        phraseInboxDictionaryAddedCount = transitionedInboxRows.length;
-      }
-      const savedPhrases = body.data.gestalts.length
-        ? await transaction
-            .insert(therapySessionGestaltsTable)
-            .values(
-              body.data.gestalts.map((phrase, index) => {
-                const dictionaryGestalt = dictionaryGestalts[index];
-                const preserved =
-                  phrase.preserveDictionary && dictionaryGestalt;
-                return {
-                  sessionId: session.id,
-                  gestaltId: dictionaryGestalt?.id ?? null,
-                  transcriptPhraseId: phrase.transcriptPhraseId ?? null,
-                  phraseInboxItemId: phrase.phraseInboxItemId ?? null,
-                  // A free-text entry is an explicit clinician-reviewed Child capture;
-                  // transcript-backed evidence is accepted only after the server gate above.
-                  childAttributed: phrase.transcriptPhraseId
-                    ? lockedChildAttributedPhraseIds.has(
-                        phrase.transcriptPhraseId,
-                      )
-                    : true,
-                  phrase: preserved ? dictionaryGestalt.phrase : phrase.phrase,
-                  meaning: preserved
-                    ? dictionaryGestalt.meaning
-                    : phrase.meaning,
-                  communicationFunction: preserved
-                    ? dictionaryGestalt.communicationFunction
-                    : phrase.function,
-                  context: preserved
-                    ? (dictionaryGestalt.contexts[0] ?? "")
-                    : phrase.context,
-                  emotionalState: preserved
-                    ? dictionaryGestalt.emotionalState
-                    : phrase.emotionalState,
-                  note: phrase.note,
-                };
-              }),
             )
-            .returning()
-        : [];
-      if (audio) {
-        const [attachedAudio] = await transaction
-          .update(sessionAudioObjectsTable)
-          .set({ sessionId: session.id, status: "attached" })
-          .where(
-            and(
-              eq(sessionAudioObjectsTable.id, audio.id),
-              isNull(sessionAudioObjectsTable.sessionId),
-            ),
-          )
-          .returning({ id: sessionAudioObjectsTable.id });
-        if (!attachedAudio) {
-          throw new Error(
-            "This recording was attached while the session was being saved.",
-          );
+            .returning({ id: childPhraseInboxItemsTable.id });
+          if (transitionedInboxRows.length !== phraseInboxItemIds.length) {
+            throw new Error(
+              "A Child Phrase Inbox item changed while the session was being saved.",
+            );
+          }
+          phraseInboxDictionaryAddedCount = transitionedInboxRows.length;
         }
-      }
-      if (calibrationAudio.length) {
-        const attachedCalibrations = await transaction
-          .update(sessionAudioObjectsTable)
-          .set({ sessionId: session.id, status: "attached" })
-          .where(
-            and(
-              inArray(
-                sessionAudioObjectsTable.id,
-                calibrationAudio.map((item) => item.id),
+        const savedPhrases = body.data.gestalts.length
+          ? await transaction
+              .insert(therapySessionGestaltsTable)
+              .values(
+                body.data.gestalts.map((phrase, index) => {
+                  const dictionaryGestalt = dictionaryGestalts[index];
+                  const preserved =
+                    phrase.preserveDictionary && dictionaryGestalt;
+                  return {
+                    sessionId: session.id,
+                    gestaltId: dictionaryGestalt?.id ?? null,
+                    transcriptPhraseId: phrase.transcriptPhraseId ?? null,
+                    phraseInboxItemId: phrase.phraseInboxItemId ?? null,
+                    // A free-text entry is an explicit clinician-reviewed Child capture;
+                    // transcript-backed evidence is accepted only after the server gate above.
+                    childAttributed: phrase.transcriptPhraseId
+                      ? lockedChildAttributedPhraseIds.has(
+                          phrase.transcriptPhraseId,
+                        )
+                      : true,
+                    phrase: preserved
+                      ? dictionaryGestalt.phrase
+                      : phrase.phrase,
+                    meaning: preserved
+                      ? dictionaryGestalt.meaning
+                      : phrase.meaning,
+                    communicationFunction: preserved
+                      ? dictionaryGestalt.communicationFunction
+                      : phrase.function,
+                    context: preserved
+                      ? (dictionaryGestalt.contexts[0] ?? "")
+                      : phrase.context,
+                    emotionalState: preserved
+                      ? dictionaryGestalt.emotionalState
+                      : phrase.emotionalState,
+                    note: phrase.note,
+                  };
+                }),
+              )
+              .returning()
+          : [];
+        if (audio) {
+          const [attachedAudio] = await transaction
+            .update(sessionAudioObjectsTable)
+            .set({ sessionId: session.id, status: "attached" })
+            .where(
+              and(
+                eq(sessionAudioObjectsTable.id, audio.id),
+                isNull(sessionAudioObjectsTable.sessionId),
               ),
-              eq(sessionAudioObjectsTable.purpose, "speaker_calibration"),
-              eq(sessionAudioObjectsTable.status, "ready"),
-              isNull(sessionAudioObjectsTable.sessionId),
-            ),
-          )
-          .returning({ id: sessionAudioObjectsTable.id });
-        if (attachedCalibrations.length !== calibrationAudio.length) {
-          throw new Error(
-            "A calibration reference was attached while the session was being saved.",
+            )
+            .returning({ id: sessionAudioObjectsTable.id });
+          if (!attachedAudio) {
+            throw new Error(
+              "This recording was attached while the session was being saved.",
+            );
+          }
+        }
+        if (preparedUnclearClips.length) {
+          await transaction.insert(sessionAudioObjectsTable).values(
+            preparedUnclearClips.map((clip) => ({
+              id: clip.id,
+              organizationId: actor.organizationId!,
+              childId: query.data.childId,
+              sessionId: session.id,
+              preparationId: audio?.preparationId ?? null,
+              purpose: "unintelligible_clip",
+              sourceTranscriptSegmentId: clip.segmentId,
+              durationMilliseconds: clip.durationMilliseconds,
+              storageDriver: clip.storageDriver,
+              objectKey: clip.objectKey,
+              contentType: clip.contentType,
+              sizeBytes: clip.sizeBytes,
+              status: "attached",
+              uploadedByUserId: actor.userId,
+              consentConfirmedAt,
+              consentConfirmedByUserId: actor.userId,
+            })),
           );
         }
-      }
-      if (audio?.preparationId) {
-        await transaction
-          .update(sessionRecordingPreparationsTable)
-          .set({ status: "completed", completedAt: new Date() })
-          .where(
-            and(
-              eq(sessionRecordingPreparationsTable.id, audio.preparationId),
-              inArray(sessionRecordingPreparationsTable.status, [
-                "active",
-                "ready",
-              ]),
+        if (calibrationAudio.length) {
+          const attachedCalibrations = await transaction
+            .update(sessionAudioObjectsTable)
+            .set({ sessionId: session.id, status: "attached" })
+            .where(
+              and(
+                inArray(
+                  sessionAudioObjectsTable.id,
+                  calibrationAudio.map((item) => item.id),
+                ),
+                eq(sessionAudioObjectsTable.purpose, "speaker_calibration"),
+                eq(sessionAudioObjectsTable.status, "ready"),
+                isNull(sessionAudioObjectsTable.sessionId),
+              ),
+            )
+            .returning({ id: sessionAudioObjectsTable.id });
+          if (attachedCalibrations.length !== calibrationAudio.length) {
+            throw new Error(
+              "A calibration reference was attached while the session was being saved.",
+            );
+          }
+        }
+        if (audio?.preparationId) {
+          await transaction
+            .update(sessionRecordingPreparationsTable)
+            .set({ status: "completed", completedAt: new Date() })
+            .where(
+              and(
+                eq(sessionRecordingPreparationsTable.id, audio.preparationId),
+                inArray(sessionRecordingPreparationsTable.status, [
+                  "active",
+                  "ready",
+                ]),
+              ),
+            );
+        }
+        return {
+          session,
+          savedPhrases,
+          dictionaryGestalts,
+          insightRunId: insightRun.id,
+          phraseInboxDictionaryAddedCount,
+        };
+      })
+      .catch(async (error) => {
+        await Promise.allSettled(
+          preparedUnclearClips.map((clip) =>
+            objectStoreForStorageDriver(clip.storageDriver).delete(
+              clip.objectKey,
             ),
-          );
-      }
-      return {
-        session,
-        savedPhrases,
-        dictionaryGestalts,
-        insightRunId: insightRun.id,
-        phraseInboxDictionaryAddedCount,
-      };
-    });
+          ),
+        );
+        throw error;
+      });
     const response: SavedSession = {
       id: saved.session.id,
       childId: saved.session.childId,
@@ -19221,8 +20484,8 @@ router.post("/sessions", async (req, res) => {
       clinicalObservations: saved.session.clinicalObservations,
       nextSteps: saved.session.nextSteps,
       note: saved.session.note,
-      audioId: audio?.id ?? null,
-      audioUrl: audio ? `/api/sessions/${saved.session.id}/audio` : null,
+      audioId: null,
+      audioUrl: null,
       transcriptionId: transcript?.id ?? null,
       createdAt: saved.session.createdAt.toISOString(),
       createdBy: author,
@@ -19266,6 +20529,12 @@ router.post("/sessions", async (req, res) => {
         })
         .onConflictDoNothing();
     }
+    await deleteFinalizedFullAudio(
+      [audio, ...calibrationAudio].filter(
+        (item): item is typeof sessionAudioObjectsTable.$inferSelect =>
+          Boolean(item),
+      ),
+    );
     // Persist the durable run immediately and let the worker complete after
     // this request. The UI never needs a clinician to click a generation
     // control, and an interruption leaves a queued/failed run for retry.
@@ -19283,7 +20552,9 @@ router.post("/sessions", async (req, res) => {
       targetId: response.id,
       childId: response.childId,
       metadata: {
-        hasRecording: Boolean(response.audioId),
+        hadRecording: Boolean(audio),
+        fullRecordingDeleted: Boolean(audio),
+        retainedUnclearClipCount: preparedUnclearClips.length,
         hasTranscript: Boolean(response.transcriptionId),
         phraseInboxDictionaryAddedCount: saved.phraseInboxDictionaryAddedCount,
       },
@@ -19320,11 +20591,9 @@ router.post("/sessions", async (req, res) => {
     return res.status(200).json(sessionResponse(savedForTranscript));
   }
   if (body.data.audioId && !audio)
-    return res
-      .status(400)
-      .json({
-        error: "The selected recording is unavailable. Please upload it again.",
-      });
+    return res.status(400).json({
+      error: "The selected recording is unavailable. Please upload it again.",
+    });
   const transcript = body.data.transcriptionId
     ? (
         await db
@@ -19383,6 +20652,15 @@ router.post("/sessions", async (req, res) => {
       session.gestaltIds,
     );
   }
+  if (audio) {
+    await audioObjectStore.delete(audio.fileName);
+    session.audioId = null;
+    session.audioUrl = null;
+    sessionStore.audio = sessionStore.audio.filter(
+      (item) => item.id !== audio.id,
+    );
+    await saveSessionStore();
+  }
   await writeSecurityAudit({
     actor,
     action: "SESSION_NOTE_SAVED",
@@ -19390,7 +20668,8 @@ router.post("/sessions", async (req, res) => {
     targetId: session.id,
     childId: session.childId,
     metadata: {
-      hasRecording: Boolean(session.audioId),
+      hadRecording: Boolean(audio),
+      fullRecordingDeleted: Boolean(audio),
       hasTranscript: Boolean(session.transcriptionId),
     },
   });
@@ -19513,15 +20792,13 @@ router.post("/beta-access-requests", async (req, res): Promise<void> => {
     displayName.length > 200 ||
     !organizationName ||
     organizationName.length > 240 ||
-    !["Clinician", "Parent", "Teacher"].includes(requestedRole) ||
+    requestedRole !== "Clinician" ||
     !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)
   ) {
-    res
-      .status(400)
-      .json({
-        error:
-          "A name, valid email address, role, and organization are required.",
-      });
+    res.status(400).json({
+      error:
+        "A name, valid email address, role, and organization are required.",
+    });
     return;
   }
   const [request] = await db
@@ -19572,16 +20849,10 @@ for (const action of ["approve", "reject", "archive"] as const) {
       }
       if (action === "approve") {
         const organizationId = Number(req.body?.organizationId);
-        const childId = Number(req.body?.childId);
-        if (
-          !Number.isSafeInteger(organizationId) ||
-          !Number.isSafeInteger(childId)
-        ) {
-          res
-            .status(400)
-            .json({
-              error: "Approval requires a valid organization and child.",
-            });
+        if (!Number.isSafeInteger(organizationId)) {
+          res.status(400).json({
+            error: "SLP approval requires a valid organization.",
+          });
           return;
         }
         const token = invitationToken();
@@ -19595,10 +20866,8 @@ for (const action of ["approve", "reject", "archive"] as const) {
             .for("update");
           if (!request || request.status !== "pending" || request.archivedAt)
             return null;
-          const roleMap: Record<string, "clinician" | "parent" | "teacher"> = {
+          const roleMap: Record<string, "clinician"> = {
             Clinician: "clinician",
-            Parent: "parent",
-            Teacher: "teacher",
           };
           const role = roleMap[request.requestedRole];
           if (!role) return null;
@@ -19613,17 +20882,6 @@ for (const action of ["approve", "reject", "archive"] as const) {
             )
             .limit(1)
             .for("update");
-          const [child] = await tx
-            .select({ id: childProfilesTable.id })
-            .from(childProfilesTable)
-            .where(
-              and(
-                eq(childProfilesTable.id, childId),
-                eq(childProfilesTable.organizationId, organizationId),
-                isNull(childProfilesTable.archivedAt),
-              ),
-            )
-            .limit(1);
           const [controls] = await tx
             .select()
             .from(betaControlsTable)
@@ -19633,7 +20891,6 @@ for (const action of ["approve", "reject", "archive"] as const) {
             !organization ||
             organization.disabledAt ||
             !organization.betaApprovedAt ||
-            !child ||
             !controls?.enabled
           )
             return null;
@@ -19667,14 +20924,14 @@ for (const action of ["approve", "reject", "archive"] as const) {
             .insert(careTeamInvitationsTable)
             .values({
               organizationId,
-              childId,
+              childId: null,
               invitedEmail: request.email,
               invitedRole: role,
               invitedByUserId: actor.userId,
               tokenHash: invitationTokenHash(token),
               expiresAt,
-              accessScope: "child",
-              childScope: [childId],
+              accessScope: "organization",
+              childScope: [],
             })
             .returning();
           if (!invite) return null;
@@ -19692,12 +20949,64 @@ for (const action of ["approve", "reject", "archive"] as const) {
           return updated ? { request: updated, invite } : null;
         });
         if (!approved) {
-          res
-            .status(409)
-            .json({
-              error:
-                "This request cannot be approved for that organization and child.",
-            });
+          res.status(409).json({
+            error:
+              "This request cannot be approved for that organization and child.",
+          });
+          return;
+        }
+        let invitationPath: string;
+        let clerkInvitationId: string | null = null;
+        try {
+          const issued = await issueApplicationInvitation({
+            emailAddress: approved.invite.invitedEmail,
+            token,
+            childledInvitationId: approved.invite.id,
+          });
+          clerkInvitationId = issued.clerkInvitationId;
+          invitationPath = issued.invitationPath;
+          if (clerkInvitationId) {
+            await db
+              .update(careTeamInvitationsTable)
+              .set({ clerkInvitationId })
+              .where(eq(careTeamInvitationsTable.id, approved.invite.id));
+          }
+        } catch (error) {
+          await revokeApplicationInvitation(clerkInvitationId).catch(
+            (revokeError) =>
+              logger.warn(
+                { err: revokeError, clerkInvitationId },
+                "Could not roll back Clerk onboarding invitation",
+              ),
+          );
+          await db.transaction(async (tx) => {
+            await tx
+              .update(careTeamInvitationsTable)
+              .set({
+                status: "revoked",
+                revokedAt: new Date(),
+                revokedByUserId: actor.userId,
+              })
+              .where(eq(careTeamInvitationsTable.id, approved.invite.id));
+            await tx
+              .update(betaAccessRequestsTable)
+              .set({
+                status: "pending",
+                reviewedAt: null,
+                reviewedByUserId: null,
+                approvedOrganizationId: null,
+                invitationId: null,
+              })
+              .where(eq(betaAccessRequestsTable.id, approved.request.id));
+          });
+          logger.error(
+            { err: error, invitationId: approved.invite.id },
+            "Could not issue Clerk SLP onboarding invitation",
+          );
+          res.status(502).json({
+            error:
+              "The Clerk invitation could not be delivered. The onboarding request remains pending.",
+          });
           return;
         }
         await writeSecurityAudit({
@@ -19709,7 +21018,7 @@ for (const action of ["approve", "reject", "archive"] as const) {
         res.json({
           id: approved.request.id,
           status: approved.request.status,
-          invitationPath: `/sign-up?token=${encodeURIComponent(token)}`,
+          invitationPath,
           expiresAt: approved.invite.expiresAt?.toISOString(),
         });
         return;
@@ -19848,12 +21157,9 @@ router.post("/invitations/accept", async (req, res): Promise<void> => {
     (entry) => entry.verification?.status === "verified" && entry.emailAddress,
   );
   if (!verified) {
-    res
-      .status(403)
-      .json({
-        error:
-          "Verify your Clerk email address before accepting an invitation.",
-      });
+    res.status(403).json({
+      error: "Verify your Clerk email address before accepting an invitation.",
+    });
     return;
   }
   const email = verified.emailAddress.toLowerCase();
@@ -19917,17 +21223,15 @@ router.post("/invitations/accept", async (req, res): Promise<void> => {
     const membershipRole = roleMap[invite.invitedRole.toLowerCase()];
     if (!membershipRole || membershipRole === "admin") return null;
     if (!existing)
-      await tx
-        .insert(usersTable)
-        .values({
-          id: userId,
-          identityProvider: "clerk",
-          providerSubject: auth.userId,
-          displayName: clerkUser.fullName || clerkUser.username || email,
-          email,
-          betaApprovedAt: new Date(),
-          betaCohort: org.betaCohort,
-        });
+      await tx.insert(usersTable).values({
+        id: userId,
+        identityProvider: "clerk",
+        providerSubject: auth.userId,
+        displayName: clerkUser.fullName || clerkUser.username || email,
+        email,
+        betaApprovedAt: new Date(),
+        betaCohort: org.betaCohort,
+      });
     else
       await tx
         .update(usersTable)
@@ -19981,20 +21285,26 @@ router.post("/invitations/accept", async (req, res): Promise<void> => {
         ],
         set: { role: membershipRole, active: true },
       });
-    const scopedChildren = invite.childScope.length
-      ? invite.childScope
-      : [invite.childId];
-    const validChildren = await tx
-      .select({ id: childProfilesTable.id })
-      .from(childProfilesTable)
-      .where(
-        and(
-          eq(childProfilesTable.organizationId, org.id),
-          inArray(childProfilesTable.id, scopedChildren),
-          isNull(childProfilesTable.archivedAt),
-        ),
-      );
-    if (validChildren.length !== new Set(scopedChildren).size) return null;
+    const scopedChildren = acceptedInvitationChildScope({
+      membershipRole,
+      accessScope: invite.accessScope,
+      childScope: invite.childScope,
+      childId: invite.childId,
+    });
+    if (!scopedChildren) return null;
+    if (scopedChildren.length) {
+      const validChildren = await tx
+        .select({ id: childProfilesTable.id })
+        .from(childProfilesTable)
+        .where(
+          and(
+            eq(childProfilesTable.organizationId, org.id),
+            inArray(childProfilesTable.id, scopedChildren),
+            isNull(childProfilesTable.archivedAt),
+          ),
+        );
+      if (validChildren.length !== new Set(scopedChildren).size) return null;
+    }
     for (const childId of scopedChildren)
       await tx
         .insert(childCareTeamMembershipsTable)
@@ -20087,6 +21397,21 @@ router.post(
   async (req, res): Promise<void> => {
     const actor = requireSuperAdmin(req, res);
     if (!actor) return;
+    const pendingInvitations = await db
+      .select({
+        id: careTeamInvitationsTable.id,
+        clerkInvitationId: careTeamInvitationsTable.clerkInvitationId,
+      })
+      .from(careTeamInvitationsTable)
+      .where(eq(careTeamInvitationsTable.status, "pending"));
+    const revocations = await Promise.allSettled(
+      pendingInvitations.map((invitation) =>
+        revokeApplicationInvitation(invitation.clerkInvitationId),
+      ),
+    );
+    const clerkRevocationFailures = revocations.filter(
+      (result) => result.status === "rejected",
+    ).length;
     await db
       .update(careTeamInvitationsTable)
       .set({
@@ -20099,8 +21424,18 @@ router.post(
       actor,
       action: "BETA_INVITATIONS_REVOKED",
       targetType: "care_team_invitation",
+      metadata: { clerkRevocationFailures },
     });
-    res.json({ revoked: true });
+    if (clerkRevocationFailures) {
+      req.log.warn(
+        { clerkRevocationFailures },
+        "Some Clerk invitations could not be revoked",
+      );
+    }
+    res.status(clerkRevocationFailures ? 502 : 200).json({
+      revoked: true,
+      clerkRevocationFailures,
+    });
   },
 );
 router.post(

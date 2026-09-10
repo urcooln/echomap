@@ -54,9 +54,15 @@ as product branding. New production resources should use `childled` IDs.
 | `SECRET_OPENAI_BASE_URL`            | `echomap-staging-openai-base-url`                                                    |
 | `SECRET_OPENAI_API_KEY`             | `echomap-staging-openai-api-key`                                                     |
 
-For early public testing, use fake/synthetic data and keep
-`CHILDLED_ENABLE_DEMO_LOGIN=true` only in staging. Do not enable it for a real
-production environment with live children or clinical data.
+For early pilot testing, use fake/synthetic data and keep
+`CHILDLED_ENABLE_DEMO_LOGIN=false` in every deployed environment. The demo login
+is local-development-only; authenticated Super Admin role preview remains
+available for controlled testing.
+
+In the Clerk Dashboard for the staging instance, open **Configure > Restrictions**
+and set **Access mode** to **Invite-only**. ChildLed then creates Clerk application
+invitations when an approved SLP invites a teacher or parent. Do not enable open
+sign-up or Clerk Organization automatic enrollment for the pilot.
 
 ## Google Cloud Resources
 

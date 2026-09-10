@@ -6,7 +6,9 @@ import { join } from "node:path";
 import {
   convertToWav,
   ensureCompatibleFormat,
-  speechToText,
+  speechToTextWithTimestamps,
+  type TimedTranscriptionSegment,
+  type TimedTranscriptionWord,
 } from "@workspace/integrations-openai-ai-server/audio";
 import { batchProcess } from "@workspace/integrations-openai-ai-server/batch";
 import { getSpeakerDiarizationProvider } from "./speaker-diarization";
@@ -65,14 +67,24 @@ export type SpeakerRole =
   | "unknown";
 export type SpeakerConfidence = "high" | "medium" | "low";
 export type SpeechIntelligibility =
-  | "intelligible"
-  | "partially_intelligible"
-  | "unintelligible";
+  "intelligible" | "partially_intelligible" | "unintelligible";
 
-const speakerConfidenceValues = new Set<SpeakerConfidence>(["high", "medium", "low"]);
+export type TimedTranscriptChunk = {
+  text: string;
+  offsetSeconds: number;
+  segments: TimedTranscriptionSegment[];
+  words?: TimedTranscriptionWord[];
+};
+
+const speakerConfidenceValues = new Set<SpeakerConfidence>([
+  "high",
+  "medium",
+  "low",
+]);
 const toSpeakerConfidence = (value: unknown): SpeakerConfidence =>
-  typeof value === "string" && speakerConfidenceValues.has(value as SpeakerConfidence)
-    ? value as SpeakerConfidence
+  typeof value === "string" &&
+  speakerConfidenceValues.has(value as SpeakerConfidence)
+    ? (value as SpeakerConfidence)
     : "low";
 
 const opaqueProfileSignature = (value: unknown) =>
@@ -81,7 +93,10 @@ const opaqueProfileSignature = (value: unknown) =>
     : undefined;
 
 const confidenceScore = (value: unknown) =>
-  typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 100
+  typeof value === "number" &&
+  Number.isInteger(value) &&
+  value >= 0 &&
+  value <= 100
     ? value
     : undefined;
 
@@ -112,8 +127,8 @@ export const intelligibilityFrom = (
     return "partially_intelligible";
   }
   if (
-    typeof value === "string"
-    && intelligibilityValues.has(value as SpeechIntelligibility)
+    typeof value === "string" &&
+    intelligibilityValues.has(value as SpeechIntelligibility)
   ) {
     return value as SpeechIntelligibility;
   }
@@ -133,7 +148,9 @@ export const sessionReviewProgressFor = (
   dispositions: string[],
   activePhraseInboxCount: number,
 ) => {
-  const child = dispositions.filter((value) => value === "child" || value === "confirmed_gestalt").length;
+  const child = dispositions.filter(
+    (value) => value === "child" || value === "confirmed_gestalt",
+  ).length;
   const reviewed = dispositions.filter((value) => value !== "pending").length;
   const reviewComplete = total > 0 && reviewed === total;
   return {
@@ -141,39 +158,22 @@ export const sessionReviewProgressFor = (
     reviewed,
     unresolved: Math.max(0, total - reviewed),
     child,
-    notChild: dispositions.filter((value) => value === "not_child" || value === "not_gestalt").length,
-    unsure: dispositions.filter((value) => value === "unsure" || value === "context").length,
-    unintelligible: dispositions.filter((value) => value === "unintelligible" || value === "unlabeled").length,
+    notChild: dispositions.filter(
+      (value) => value === "not_child" || value === "not_gestalt",
+    ).length,
+    unsure: dispositions.filter(
+      (value) => value === "unsure" || value === "context",
+    ).length,
+    unintelligible: dispositions.filter(
+      (value) => value === "unintelligible" || value === "unlabeled",
+    ).length,
     nextStep: reviewComplete
-      ? "Review Complete. Continue to Child Phrase Inbox → Session Summary."
-      : activePhraseInboxCount > 0
-        ? "Session Summary available."
-        : child > 0
-          ? "Child Phrase Inbox available."
-          : "Continue reviewing Child language.",
+      ? activePhraseInboxCount > 0
+        ? "Review the confirmed Child phrases, then continue to the session summary."
+        : "Review complete. Continue to the session summary."
+      : "Continue reviewing Child language.",
   };
 };
-
-/**
- * Builds neutral review turns from the primary transcript when optional speaker
- * grouping is unavailable. These turns deliberately contain no identity, role,
- * timing, or confidence inference; they become evidence only through the
- * existing explicit clinician review gate.
- */
-export const manualTranscriptReviewSegments = (
-  rawTranscript: string,
-): SpeakerSegment[] =>
-  rawTranscript
-    .split(/(?<=[.!?;])\s+|\r?\n+/u)
-    .map((text) => text.trim())
-    .filter(Boolean)
-    .map((text, position) => ({
-      speakerLabel: MANUAL_TRANSCRIPT_REVIEW_LABEL,
-      text,
-      position,
-      confidence: "low",
-      intelligibility: intelligibilityFrom(undefined, text),
-    }));
 
 const parseWav = (buffer: Buffer): WavInfo => {
   if (
@@ -293,9 +293,8 @@ export const splitAtPauses = async (
   const durationSeconds = info.dataSize / (info.sampleRate * info.blockAlign);
   if (wav.length <= providerMaxBytes) return [wav];
   const bytesPerSecond = info.sampleRate * info.blockAlign;
-  const maximumDataBytes = Math.floor(
-    (providerMaxBytes - 44) / info.blockAlign,
-  ) * info.blockAlign;
+  const maximumDataBytes =
+    Math.floor((providerMaxBytes - 44) / info.blockAlign) * info.blockAlign;
   if (maximumDataBytes < info.blockAlign) {
     throw new RecordingPipelineError(
       "TRANSCRIPTION_PROVIDER_LIMIT",
@@ -323,10 +322,11 @@ export const splitAtPauses = async (
   while (durationSeconds - lastBoundary > maximumChunkSeconds) {
     const targetBoundary = lastBoundary + targetLength;
     const maximumBoundary = lastBoundary + maximumChunkSeconds;
-    const pause = pauseMidpoints.find((midpoint) =>
-      midpoint >= targetBoundary &&
-      midpoint <= maximumBoundary &&
-      durationSeconds - midpoint >= MIN_CHUNK_SECONDS,
+    const pause = pauseMidpoints.find(
+      (midpoint) =>
+        midpoint >= targetBoundary &&
+        midpoint <= maximumBoundary &&
+        durationSeconds - midpoint >= MIN_CHUNK_SECONDS,
     );
     const nextBoundary = pause ?? maximumBoundary;
     boundaries.push(nextBoundary);
@@ -346,14 +346,14 @@ export const splitAtPauses = async (
   for (let index = 0; index < boundaries.length - 1; index++) {
     const endSeconds = boundaries[index + 1] ?? durationSeconds;
     const startByte = previousEndByte;
-    const endByte =
-      Math.min(
-        pcm.length,
-        startByte + maximumDataBytes,
-        index === boundaries.length - 2
-          ? pcm.length
-          : Math.floor(endSeconds * bytesPerSecond / info.blockAlign) * info.blockAlign,
-      );
+    const endByte = Math.min(
+      pcm.length,
+      startByte + maximumDataBytes,
+      index === boundaries.length - 2
+        ? pcm.length
+        : Math.floor((endSeconds * bytesPerSecond) / info.blockAlign) *
+            info.blockAlign,
+    );
     if (endByte <= startByte) continue;
     chunks.push(
       createWav(
@@ -405,7 +405,11 @@ const repeatedParts = (value: string) => {
       }
       if (count < 2) continue;
       const covered = count * length;
-      if (!best || covered > best.covered || (covered === best.covered && length < best.length)) {
+      if (
+        !best ||
+        covered > best.covered ||
+        (covered === best.covered && length < best.length)
+      ) {
         best = { length, count, covered };
       }
     }
@@ -426,6 +430,117 @@ const repeatedParts = (value: string) => {
   flushUnrepeated();
   return output;
 };
+
+/**
+ * Builds neutral review items from transcript phrase boundaries. Exact
+ * repetitions are expanded so each occurrence can be reviewed independently.
+ */
+export const manualTranscriptReviewSegments = (
+  rawTranscript: string,
+): SpeakerSegment[] =>
+  rawTranscript
+    .split(/(?<=[.!?;])\s+|\r?\n+/u)
+    .map((text) => text.trim())
+    .filter(Boolean)
+    .flatMap((text) => {
+      const parts = repeatedParts(text);
+      if (parts.length === 1 && parts[0]?.frequency === 1) return [text];
+      return parts.flatMap(({ phrase, frequency }) =>
+        Array.from({ length: frequency }, () => phrase),
+      );
+    })
+    .map((text, position) => ({
+      speakerLabel: MANUAL_TRANSCRIPT_REVIEW_LABEL,
+      text,
+      position,
+      confidence: "low",
+      intelligibility: intelligibilityFrom(undefined, text),
+    }));
+
+/** Converts provider-relative timestamps into ordered recording timestamps. */
+export const timedTranscriptReviewSegments = (
+  chunks: TimedTranscriptChunk[],
+): SpeakerSegment[] =>
+  chunks
+    .flatMap((chunk) =>
+      chunk.segments.flatMap((segment) => {
+        const phrases = manualTranscriptReviewSegments(segment.text).map(
+          (item) => item.text,
+        );
+        if (phrases.length <= 1) {
+          return [
+            {
+              text: phrases[0] ?? segment.text.trim(),
+              startSeconds: chunk.offsetSeconds + segment.startSeconds,
+              endSeconds: chunk.offsetSeconds + segment.endSeconds,
+            },
+          ];
+        }
+
+        const segmentWords = (chunk.words ?? []).filter(
+          (word) =>
+            word.endSeconds > segment.startSeconds &&
+            word.startSeconds < segment.endSeconds,
+        );
+        const phraseWordCounts = phrases.map((phrase) =>
+          Math.max(1, wordsFrom(phrase).length),
+        );
+        const totalWords = phraseWordCounts.reduce(
+          (total, count) => total + count,
+          0,
+        );
+        let wordOffset = 0;
+        let proportionalWordOffset = 0;
+        return phrases.map((text, index) => {
+          const wordCount = phraseWordCounts[index] ?? 1;
+          const phraseWords = segmentWords.slice(
+            wordOffset,
+            wordOffset + wordCount,
+          );
+          wordOffset += wordCount;
+          const proportionalStart =
+            segment.startSeconds +
+            ((segment.endSeconds - segment.startSeconds) *
+              proportionalWordOffset) /
+              totalWords;
+          proportionalWordOffset += wordCount;
+          const proportionalEnd =
+            segment.startSeconds +
+            ((segment.endSeconds - segment.startSeconds) *
+              proportionalWordOffset) /
+              totalWords;
+          return {
+            text,
+            startSeconds:
+              chunk.offsetSeconds +
+              (phraseWords[0]?.startSeconds ?? proportionalStart),
+            endSeconds:
+              chunk.offsetSeconds +
+              (phraseWords.at(-1)?.endSeconds ?? proportionalEnd),
+          };
+        });
+      }),
+    )
+    .filter(
+      (segment) =>
+        segment.text.length > 0 &&
+        Number.isFinite(segment.startSeconds) &&
+        Number.isFinite(segment.endSeconds) &&
+        segment.startSeconds >= 0 &&
+        segment.endSeconds > segment.startSeconds,
+    )
+    .map((segment, position) => ({
+      speakerLabel: MANUAL_TRANSCRIPT_REVIEW_LABEL,
+      text: segment.text,
+      position,
+      confidence: "low",
+      intelligibility: intelligibilityFrom(undefined, segment.text),
+      startTimeMilliseconds: Math.round(segment.startSeconds * 1_000),
+      durationMilliseconds: Math.max(
+        1,
+        Math.round((segment.endSeconds - segment.startSeconds) * 1_000),
+      ),
+    }));
 
 export const segmentTranscript = (transcriptChunks: string[]) => {
   const aggregated = new Map<string, SegmentedPhrase>();
@@ -456,7 +571,8 @@ export const segmentTranscript = (transcriptChunks: string[]) => {
     // repeatedParts also returns each full, non-repeated child turn as a
     // reviewable candidate. Keeping it as the single source of base counts
     // prevents an utterance from being counted twice.
-    for (const part of repeatedParts(unit)) addPhrase(part.phrase, part.frequency);
+    for (const part of repeatedParts(unit))
+      addPhrase(part.phrase, part.frequency);
 
     const words = wordsFrom(unit);
     const seenInTurn = new Set<string>();
@@ -513,11 +629,12 @@ export const provisionalPhraseCandidates = (
   return segmentTranscript([safeTranscript])
     .map((phrase) => ({
       ...phrase,
-      candidateKind: phrase.frequency > 1
-        ? (exactUtteranceCounts.get(phrase.normalizedPhrase) ?? 0) > 1
-          ? "recurring_utterance" as const
-          : "repeated_phrase" as const
-        : "potential_phrase" as const,
+      candidateKind:
+        phrase.frequency > 1
+          ? (exactUtteranceCounts.get(phrase.normalizedPhrase) ?? 0) > 1
+            ? ("recurring_utterance" as const)
+            : ("repeated_phrase" as const)
+          : ("potential_phrase" as const),
     }))
     .sort((left, right) => right.frequency - left.frequency)
     .slice(0, 120);
@@ -541,10 +658,15 @@ const normalizeSpeakerTurns = (
   const segments: SpeakerSegment[] = [];
 
   for (const turn of turns) {
-    const sourceLabel = turn.sourceLabel.replace(/\s+/g, " ").trim().toLocaleLowerCase();
+    const sourceLabel = turn.sourceLabel
+      .replace(/\s+/g, " ")
+      .trim()
+      .toLocaleLowerCase();
     const text = turn.text.trim();
-    const intelligibility = turn.intelligibility ?? intelligibilityFrom(undefined, text);
-    if (!sourceLabel || (!text && intelligibility !== "unintelligible")) continue;
+    const intelligibility =
+      turn.intelligibility ?? intelligibilityFrom(undefined, text);
+    if (!sourceLabel || (!text && intelligibility !== "unintelligible"))
+      continue;
     const speakerLabel = labelMap.get(sourceLabel) ?? nextLabel();
     labelMap.set(sourceLabel, speakerLabel);
     segments.push({
@@ -553,7 +675,9 @@ const normalizeSpeakerTurns = (
       position: segments.length,
       confidence: turn.confidence ?? "medium",
       intelligibility,
-      ...(turn.confidenceScore === undefined ? {} : { confidenceScore: turn.confidenceScore }),
+      ...(turn.confidenceScore === undefined
+        ? {}
+        : { confidenceScore: turn.confidenceScore }),
       ...(turn.transcriptionConfidenceScore === undefined
         ? {}
         : { transcriptionConfidenceScore: turn.transcriptionConfidenceScore }),
@@ -563,35 +687,45 @@ const normalizeSpeakerTurns = (
       ...(turn.durationMilliseconds === undefined
         ? {}
         : { durationMilliseconds: turn.durationMilliseconds }),
-      ...(turn.profileSignature ? { profileSignature: turn.profileSignature } : {}),
+      ...(turn.profileSignature
+        ? { profileSignature: turn.profileSignature }
+        : {}),
     });
   }
 
   return segments;
 };
 
-export const segmentSpeakerTranscript = (transcriptChunks: string[]): SpeakerSegment[] => {
+export const segmentSpeakerTranscript = (
+  transcriptChunks: string[],
+): SpeakerSegment[] => {
   const turns = transcriptChunks.flatMap((chunk) =>
     chunk
       .split(/\r?\n/u)
       .map((line) => line.trim())
       .filter(Boolean)
       .flatMap((line) => {
-        const match = line.match(/^(?:\[)?(speaker\s*[a-z0-9]+|[a-z0-9]+)(?:\])?\s*:\s*(.+)$/iu);
+        const match = line.match(
+          /^(?:\[)?(speaker\s*[a-z0-9]+|[a-z0-9]+)(?:\])?\s*:\s*(.+)$/iu,
+        );
         return match
-          ? [{
-              sourceLabel: match[1]?.replace(/\s+/g, " ").trim() ?? "speaker",
-              text: match[2] ?? "",
-              confidence: "medium" as SpeakerConfidence,
-              intelligibility: intelligibilityFrom(undefined, match[2] ?? ""),
-            }]
+          ? [
+              {
+                sourceLabel: match[1]?.replace(/\s+/g, " ").trim() ?? "speaker",
+                text: match[2] ?? "",
+                confidence: "medium" as SpeakerConfidence,
+                intelligibility: intelligibilityFrom(undefined, match[2] ?? ""),
+              },
+            ]
           : [];
       }),
   );
   return normalizeSpeakerTurns(turns);
 };
 
-export const segmentSeparatedSpeakerTranscript = (transcript: string): SpeakerSegment[] => {
+export const segmentSeparatedSpeakerTranscript = (
+  transcript: string,
+): SpeakerSegment[] => {
   const json = transcript
     .trim()
     .replace(/^```(?:json)?\s*/iu, "")
@@ -628,10 +762,19 @@ export const segmentSeparatedSpeakerTranscript = (transcript: string): SpeakerSe
           text: turn.text as string,
           confidence: toSpeakerConfidence(turn.confidence),
           confidenceScore: confidenceScore(turn.confidenceScore),
-          intelligibility: intelligibilityFrom(turn.intelligibility, turn.text as string),
-          transcriptionConfidenceScore: confidenceScore(turn.transcriptionConfidenceScore),
-          startTimeMilliseconds: nonNegativeMilliseconds(turn.startTimeMilliseconds),
-          durationMilliseconds: nonNegativeMilliseconds(turn.durationMilliseconds),
+          intelligibility: intelligibilityFrom(
+            turn.intelligibility,
+            turn.text as string,
+          ),
+          transcriptionConfidenceScore: confidenceScore(
+            turn.transcriptionConfidenceScore,
+          ),
+          startTimeMilliseconds: nonNegativeMilliseconds(
+            turn.startTimeMilliseconds,
+          ),
+          durationMilliseconds: nonNegativeMilliseconds(
+            turn.durationMilliseconds,
+          ),
           profileSignature: opaqueProfileSignature(turn.profileSignature),
         })),
       );
@@ -640,10 +783,15 @@ export const segmentSeparatedSpeakerTranscript = (transcript: string): SpeakerSe
     // Older or partially formatted provider responses fall through to the
     // legacy labelled-turn parser below. Unlabelled text is still rejected.
   }
-  const lines = transcript.split(/\r?\n/u).map((line) => line.trim()).filter(Boolean);
-  const hasOnlyExplicitLabels = lines.length > 0 && lines.every((line) =>
-    /^(?:\[)?speaker\s*[a-z0-9]+(?:\])?\s*:\s*.+$/iu.test(line),
-  );
+  const lines = transcript
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const hasOnlyExplicitLabels =
+    lines.length > 0 &&
+    lines.every((line) =>
+      /^(?:\[)?speaker\s*[a-z0-9]+(?:\])?\s*:\s*.+$/iu.test(line),
+    );
   return hasOnlyExplicitLabels ? segmentSpeakerTranscript([transcript]) : [];
 };
 
@@ -654,8 +802,8 @@ export const childSpeechChunks = (
   segments
     .filter(
       (segment) =>
-        rolesBySpeaker.get(segment.speakerLabel) === "child"
-        && (segment.intelligibility ?? "intelligible") === "intelligible",
+        rolesBySpeaker.get(segment.speakerLabel) === "child" &&
+        (segment.intelligibility ?? "intelligible") === "intelligible",
     )
     .sort((left, right) => left.position - right.position)
     .map((segment) => segment.text);
@@ -681,7 +829,10 @@ export const buildTranscriptResult = (
 ) => {
   // The raw transcript is the primary output. Speaker separation is optional
   // and arrives separately, so it can never hide or block the transcript.
-  const rawTranscript = transcriptChunks.map((chunk) => chunk.trim()).filter(Boolean).join("\n");
+  const rawTranscript = transcriptChunks
+    .map((chunk) => chunk.trim())
+    .filter(Boolean)
+    .join("\n");
   return {
     rawTranscript,
     segments,
@@ -705,27 +856,48 @@ export const transcribeRecording = async (
     (wavInfo.dataSize / (wavInfo.sampleRate * wavInfo.blockAlign)).toFixed(1),
   );
   const audioChunks = await splitAtPauses(wav, providerMaxBytes);
-  const transcriptChunks = (
-    await batchProcess(
-      audioChunks,
-      async (chunk) =>
-        (await speechToText(
-          chunk,
-          "wav",
-          [
-            "Transcribe every clearly audible word in this therapy-session recording.",
-            "Preserve unclear speech with [unintelligible] or [unclear] markers instead of omitting it.",
-            "Never guess missing words or infer speaker identities, roles, meanings, or phrases that are not audible.",
-            phrasePrompt,
-          ]
-            .filter(Boolean)
-            .join(" "),
-        )).trim(),
-      { concurrency: 1, retries: 5 },
-    )
-  ).filter(Boolean);
+  let offsetSeconds = 0;
+  const timedAudioChunks = audioChunks.map((chunk) => {
+    const info = parseWav(chunk);
+    const chunkDurationSeconds =
+      info.dataSize / (info.sampleRate * info.blockAlign);
+    const timedChunk = { audio: chunk, offsetSeconds };
+    offsetSeconds += chunkDurationSeconds;
+    return timedChunk;
+  });
+  const transcriptPrompt = [
+    "Transcribe every clearly audible word in this therapy-session recording.",
+    "Put each distinct spoken phrase or utterance on its own line, using only audible pauses and natural phrase boundaries.",
+    "Keep repeated phrases on separate lines and do not add speaker labels.",
+    "Preserve unclear speech with [unintelligible] or [unclear] markers instead of omitting it.",
+    "Never guess missing words or infer speaker identities, roles, meanings, or phrases that are not audible.",
+    phrasePrompt,
+  ]
+    .filter(Boolean)
+    .join(" ");
+  const timedTranscriptChunks = await batchProcess(
+    timedAudioChunks,
+    async (chunk): Promise<TimedTranscriptChunk> => {
+      const result = await speechToTextWithTimestamps(
+        chunk.audio,
+        "wav",
+        transcriptPrompt,
+      );
+      return {
+        text: result.text.trim(),
+        offsetSeconds: chunk.offsetSeconds,
+        segments: result.segments,
+        words: result.words,
+      };
+    },
+    { concurrency: 1, retries: 5 },
+  );
+  const transcriptChunks = timedTranscriptChunks
+    .map((chunk) => chunk.text)
+    .filter(Boolean);
+  const segments = timedTranscriptReviewSegments(timedTranscriptChunks);
   return {
-    ...buildTranscriptResult(transcriptChunks, audioDurationSeconds),
+    ...buildTranscriptResult(transcriptChunks, audioDurationSeconds, segments),
     chunkCount: audioChunks.length,
     providerMaxBytes,
   };

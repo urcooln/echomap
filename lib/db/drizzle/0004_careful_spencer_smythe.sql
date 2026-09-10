@@ -1,0 +1,1 @@
+ALTER TABLE "care_team_invitations" ALTER COLUMN "child_id" DROP NOT NULL;

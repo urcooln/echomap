@@ -90,5 +90,5 @@ test("only treats a completed empty provider response as no detected speech", ()
 
 test("publishes the provider and model used by the session pipeline", () => {
   assert.equal(TRANSCRIPTION_PROVIDER, "Replit OpenAI integration");
-  assert.equal(TRANSCRIPTION_MODEL, "gpt-4o-mini-transcribe");
+  assert.equal(TRANSCRIPTION_MODEL, "whisper-1");
 });

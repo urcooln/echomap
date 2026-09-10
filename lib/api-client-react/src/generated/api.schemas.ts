@@ -1424,6 +1424,184 @@ export interface CommunicationGoalUpdate {
   status?: CommunicationGoalUpdateStatus;
 }
 
+/**
+ * @nullable
+ */
+export type ManualSessionGoalProgressInputPromptingLevel = typeof ManualSessionGoalProgressInputPromptingLevel[keyof typeof ManualSessionGoalProgressInputPromptingLevel] | null;
+
+
+export const ManualSessionGoalProgressInputPromptingLevel = {
+  independent: 'independent',
+  minimal: 'minimal',
+  moderate: 'moderate',
+  maximal: 'maximal',
+  total: 'total',
+} as const;
+
+export interface ManualSessionGoalProgressInput {
+  goalId: number;
+  /**
+     * @minimum 0
+     * @maximum 100
+     * @nullable
+     */
+  accuracyPercent?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  successfulAttempts?: number | null;
+  /**
+     * @minimum 0
+     * @nullable
+     */
+  totalAttempts?: number | null;
+  /** @nullable */
+  promptingLevel?: ManualSessionGoalProgressInputPromptingLevel;
+  /** @maxLength 4000 */
+  progressNote: string;
+}
+
+export type ManualSessionInputDurationSource = typeof ManualSessionInputDurationSource[keyof typeof ManualSessionInputDurationSource];
+
+
+export const ManualSessionInputDurationSource = {
+  timer: 'timer',
+  manual: 'manual',
+  timer_edited: 'timer_edited',
+} as const;
+
+export interface ManualSessionInput {
+  sessionDate: string;
+  /** @nullable */
+  startedAt?: string | null;
+  /** @nullable */
+  endedAt?: string | null;
+  /**
+     * @minimum 60
+     * @maximum 28800
+     */
+  durationSeconds: number;
+  /**
+     * @minimum 0
+     * @maximum 28800
+     */
+  timerElapsedSeconds: number;
+  durationSource: ManualSessionInputDurationSource;
+  durationEdited: boolean;
+  /**
+     * @minItems 1
+     * @maxItems 50
+     */
+  goals: ManualSessionGoalProgressInput[];
+  /**
+     * @minLength 1
+     * @maxLength 10000
+     */
+  note: string;
+}
+
+export interface ManualSessionGoalProgress {
+  id: number;
+  goalId: number;
+  goalVersion: number;
+  goalTitle: string;
+  goalArea: string;
+  /** @nullable */
+  accuracyPercent: number | null;
+  /** @nullable */
+  successfulAttempts: number | null;
+  /** @nullable */
+  totalAttempts: number | null;
+  /** @nullable */
+  promptingLevel: string | null;
+  progressNote: string;
+}
+
+export type IepServiceRequirementInputPeriod = typeof IepServiceRequirementInputPeriod[keyof typeof IepServiceRequirementInputPeriod];
+
+
+export const IepServiceRequirementInputPeriod = {
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export interface IepServiceRequirementInput {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  serviceName: string;
+  /**
+     * @minimum 1
+     * @maximum 100
+     */
+  requiredSessions: number;
+  /**
+     * @minimum 1
+     * @maximum 10000
+     */
+  requiredMinutes: number;
+  /**
+     * @minimum 1
+     * @maximum 480
+     */
+  sessionDurationMinutes: number;
+  period: IepServiceRequirementInputPeriod;
+  effectiveFrom: string;
+  /** @nullable */
+  effectiveTo?: string | null;
+}
+
+export type IepServiceRequirementPeriod = typeof IepServiceRequirementPeriod[keyof typeof IepServiceRequirementPeriod];
+
+
+export const IepServiceRequirementPeriod = {
+  weekly: 'weekly',
+  monthly: 'monthly',
+} as const;
+
+export type IepServiceRequirementStatus = typeof IepServiceRequirementStatus[keyof typeof IepServiceRequirementStatus];
+
+
+export const IepServiceRequirementStatus = {
+  on_track: 'on_track',
+  behind: 'behind',
+  complete: 'complete',
+} as const;
+
+export interface IepServiceRequirement {
+  id: number;
+  childId: number;
+  serviceName: string;
+  requiredSessions: number;
+  requiredMinutes: number;
+  sessionDurationMinutes: number;
+  period: IepServiceRequirementPeriod;
+  effectiveFrom: string;
+  /** @nullable */
+  effectiveTo: string | null;
+  periodLabel: string;
+  periodStart: string;
+  periodEnd: string;
+  /** @minimum 0 */
+  sessionsCompleted: number;
+  /** @minimum 0 */
+  sessionsRemaining: number;
+  /** @minimum 0 */
+  minutesCompleted: number;
+  /** @minimum 0 */
+  minutesRemaining: number;
+  status: IepServiceRequirementStatus;
+  updatedAt: string;
+}
+
+export interface ManualSessionSetup {
+  childId: number;
+  goals: CommunicationGoal[];
+  serviceRequirements: IepServiceRequirement[];
+}
+
 export type ClinicalDocumentationStatus = typeof ClinicalDocumentationStatus[keyof typeof ClinicalDocumentationStatus];
 
 
@@ -2622,6 +2800,11 @@ export interface UnclearVocalizationOccurrence {
   /** @nullable */
   crossSessionLabel: string | null;
   /**
+     * Authenticated URL for the retained short clip; null when source timing was unavailable.
+     * @nullable
+     */
+  audioClipUrl: string | null;
+  /**
      * Revision token for optimistic concurrency. Null means no clinician review row existed when this occurrence was read.
      * @nullable
      */
@@ -2691,6 +2874,24 @@ export interface TranscriptChildUtteranceReviewsInput {
   reviews: TranscriptChildUtteranceReview[];
 }
 
+export type SessionSessionMode = typeof SessionSessionMode[keyof typeof SessionSessionMode];
+
+
+export const SessionSessionMode = {
+  recorded: 'recorded',
+  manual: 'manual',
+} as const;
+
+export type SessionDurationSource = typeof SessionDurationSource[keyof typeof SessionDurationSource];
+
+
+export const SessionDurationSource = {
+  recording: 'recording',
+  timer: 'timer',
+  manual: 'manual',
+  timer_edited: 'timer_edited',
+} as const;
+
 export interface RecordingConsent {
   confirmed: boolean;
   confirmedAt: string;
@@ -2713,6 +2914,16 @@ export interface Session {
   role: string;
   /** @nullable */
   consent: RecordingConsent | null;
+  sessionMode?: SessionSessionMode;
+  sessionDate?: string;
+  /** @nullable */
+  startedAt?: string | null;
+  /** @nullable */
+  endedAt?: string | null;
+  durationSource?: SessionDurationSource;
+  durationEdited?: boolean;
+  slpName?: string;
+  goalProgress?: ManualSessionGoalProgress[];
 }
 
 export type SessionReviewQueueWorkflowStatus = typeof SessionReviewQueueWorkflowStatus[keyof typeof SessionReviewQueueWorkflowStatus];
@@ -2736,11 +2947,20 @@ export interface SessionReviewQueueItem {
   activePhraseInboxCount: number;
 }
 
+export type SessionsDashboardCompletedSessionSessionMode = typeof SessionsDashboardCompletedSessionSessionMode[keyof typeof SessionsDashboardCompletedSessionSessionMode];
+
+
+export const SessionsDashboardCompletedSessionSessionMode = {
+  recorded: 'recorded',
+  manual: 'manual',
+} as const;
+
 export interface SessionsDashboardCompletedSession {
   sessionId: number;
   childId: number;
   childName: string;
   sessionDate: string;
+  sessionMode: SessionsDashboardCompletedSessionSessionMode;
 }
 
 export type SessionsDashboardDraftDocumentationNoteType = typeof SessionsDashboardDraftDocumentationNoteType[keyof typeof SessionsDashboardDraftDocumentationNoteType];
@@ -2917,6 +3137,7 @@ export interface ClinicianOverviewChild {
   /** @nullable */
   latestActivityAt: string | null;
   latestActivityLabel: string;
+  serviceRequirements: IepServiceRequirement[];
 }
 
 export type ClinicianOverviewChangeCategory = typeof ClinicianOverviewChangeCategory[keyof typeof ClinicianOverviewChangeCategory];
@@ -3080,6 +3301,129 @@ export type RecurringLanguagePatternDetail = RecurringLanguagePattern & {
   phrases: RecurringLanguagePatternPhrase[];
   observations: RecurringLanguagePatternObservation[];
 };
+
+export interface CommunicationPassportPhrase {
+  /** @maxLength 300 */
+  phrase: string;
+  /** @maxLength 600 */
+  meaning: string;
+}
+
+export interface CommunicationPassportContent {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  childName: string;
+  /** @maxLength 160 */
+  preferredName: string;
+  /** @maxLength 1500 */
+  aboutMe: string;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 300
+     */
+  communicationMethods: string[];
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 500
+     */
+  communicationStrengths: string[];
+  /** @maxLength 1500 */
+  wantsAndNeeds: string;
+  /** @maxItems 20 */
+  commonPhrases: CommunicationPassportPhrase[];
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 500
+     */
+  gestures: string[];
+  /** @maxLength 1500 */
+  aacInformation: string;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 500
+     */
+  helpfulStrategies: string[];
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 500
+     */
+  communicationChallenges: string[];
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 500
+     */
+  frustrationSupports: string[];
+  /** @maxItems 20 */
+  importantWords: CommunicationPassportPhrase[];
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 500
+     */
+  interests: string[];
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 700
+     */
+  currentGoals: string[];
+  /** @maxLength 2000 */
+  additionalInformation: string;
+}
+
+export interface CommunicationPassport {
+  exists: boolean;
+  childId: number;
+  canEdit: boolean;
+  templateKey: string;
+  language: string;
+  content: CommunicationPassportContent | null;
+  /** @nullable */
+  version: number | null;
+  /** @nullable */
+  createdAt: string | null;
+  /** @nullable */
+  updatedAt: string | null;
+  /** @nullable */
+  updatedBy: string | null;
+}
+
+export interface CommunicationPassportDraft {
+  childId: number;
+  templateKey: string;
+  language: string;
+  content: CommunicationPassportContent;
+}
+
+export interface CommunicationPassportGenerateInput {
+  childId: number;
+  /** @maxLength 80 */
+  templateKey?: string;
+  /** @maxLength 35 */
+  language?: string;
+}
+
+export interface CommunicationPassportSaveInput {
+  childId: number;
+  /** @maxLength 80 */
+  templateKey: string;
+  /** @maxLength 35 */
+  language: string;
+  content: CommunicationPassportContent;
+  /**
+     * @minimum 1
+     * @nullable
+     */
+  version: number | null;
+}
 
 export type TeamMessageMessageType = typeof TeamMessageMessageType[keyof typeof TeamMessageMessageType];
 
@@ -3757,6 +4101,22 @@ childId: number;
 includeArchived?: boolean;
 };
 
+export type GetManualSessionSetupParams = {
+childId: number;
+};
+
+export type CreateManualSessionParams = {
+childId: number;
+};
+
+export type ListIepServiceRequirementsParams = {
+childId: number;
+};
+
+export type UpsertIepServiceRequirementParams = {
+childId: number;
+};
+
 export type GetDashboardParams = {
 childId: number;
 };
@@ -3936,6 +4296,10 @@ export const GetTeamInboxSenderRole = {
   OT: 'OT',
   Administrator: 'Administrator',
 } as const;
+
+export type GetCommunicationPassportParams = {
+childId: number;
+};
 
 export type GetChildParams = {
 childId: number;

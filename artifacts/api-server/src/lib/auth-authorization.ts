@@ -23,14 +23,16 @@ export const isSuperAdminIdentity = ({
   isAdmin,
   isDevelopmentDemo = false,
   configuredUserIds = process.env.CHILDLED_SUPER_ADMIN_USER_IDS,
+  developmentDemoEnabled = runtimeConfig.demoLogin.enabled,
 }: {
   userId: string;
   isAdmin: boolean;
   isDevelopmentDemo?: boolean;
   configuredUserIds?: string;
+  developmentDemoEnabled?: boolean;
 }) => {
   if (!isAdmin) return false;
-  if (isDevelopmentDemo && runtimeConfig.demoLogin.enabled) return true;
+  if (isDevelopmentDemo && developmentDemoEnabled) return true;
   const allowed = (configuredUserIds ?? "")
     .split(",")
     .map((value) => value.trim())

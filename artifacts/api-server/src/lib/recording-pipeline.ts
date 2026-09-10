@@ -1,5 +1,5 @@
 export const TRANSCRIPTION_PROVIDER = "Replit OpenAI integration";
-export const TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+export const TRANSCRIPTION_MODEL = "whisper-1";
 
 export type RecordingPipelineErrorCode =
   | "EMPTY_RECORDING"

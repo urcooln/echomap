@@ -53,6 +53,7 @@ import {
   Leaf,
   Library,
   Lightbulb,
+  Menu,
   MessageCircle,
   Mail,
   Mic,
@@ -69,6 +70,7 @@ import {
   Shield,
   Sparkles,
   Square,
+  Target,
   Timer,
   TrendingDown,
   TrendingUp,
@@ -112,6 +114,7 @@ import {
   getGetSessionTranscriptionDraftQueryOptions,
   getListChildPhraseInboxQueryKey,
   getListCommunicationGoalsQueryKey,
+  getGetManualSessionSetupQueryKey,
   useAddGestaltComment,
   useCreateChild,
   useCreateChildInterest,
@@ -120,6 +123,7 @@ import {
   useMarkTeamMessagesRead,
   useCreateDeletionRequest,
   useCreateGestalt,
+  useDeleteGestalt,
   useMergeGestalts,
   useCreateObservation,
   useCreateSession,
@@ -148,7 +152,6 @@ import {
   useRemoveAacPlanning,
   useListSessions,
   useRecordReportExport,
-  useRequestObservationVideoUpload,
   useGetDeletionRequest,
   useReviewDeletionRequest,
   useTranscribeSessionAudio,
@@ -162,6 +165,7 @@ import {
   useCompleteSessionCalibration,
   useDeleteSessionCalibration,
   useDeleteSessionTranscriptionDraft,
+  useDeleteSessionTranscriptPhrase,
   usePrepareSessionRecording,
   useListClinicalKnowledgeSources,
   useCreateClinicalKnowledgeSource,
@@ -180,6 +184,7 @@ import {
   useListCommunicationGoals,
   useCreateCommunicationGoal,
   useUpdateCommunicationGoal,
+  useGetManualSessionSetup,
 } from "@workspace/api-client-react";
 import type {
   Activity as ActivityType,
@@ -207,6 +212,7 @@ import type {
   TranscriptPhrase,
   Viewer,
   CommunicationGoal,
+  TeamInbox as ApiTeamInbox,
 } from "@workspace/api-client-react";
 import {
   citationsForTimelineEvidence,
@@ -230,6 +236,8 @@ import { TeacherResourcesPage } from "@/pages/teacher-resources";
 import NotFound from "@/pages/not-found";
 import { ClinicianUnclearSpeechPage } from "@/pages/unclear-speech";
 import { ClinicianLearningPage } from "@/pages/clinician-learning";
+import { ManualSessionTrackingPage } from "@/pages/manual-session";
+import { CommunicationPassportPage } from "@/pages/communication-passport";
 import {
   ClinicianQuickReferencePanel,
   openClinicianQuickReferences,
@@ -240,7 +248,7 @@ import { TeacherStudentsDashboard } from "@/components/teacher-students-dashboar
 import { TeacherClassroomDashboard } from "@/components/teacher-classroom-dashboard";
 import { SharedChildProfile } from "@/components/shared-child-profile";
 import { AacInformationCard } from "@/components/aac-information";
-import { CaseloadTeamInbox, TeamInboxPage } from "@/components/team-inbox";
+import { TeamInboxPage } from "@/components/team-inbox";
 import {
   SpeakerCalibration,
   type CalibrationDiagnostics,
@@ -248,7 +256,7 @@ import {
 } from "@/components/speaker-calibration";
 import { AdminConversationCenter } from "@/components/admin-conversation-center";
 import {
-  SuperAdminPreviewBanner,
+  SuperAdminRoleSwitcher,
   UxTestingCenter,
 } from "@/components/super-admin-tools";
 import {
@@ -278,7 +286,6 @@ const basePath = import.meta.env.BASE_URL.replace(/\/$/, "");
 const CHILDLED_TAGLINE =
   "Turning communication into shared understanding across home, school, and therapy.";
 const developmentDemoEnabled =
-  import.meta.env.DEV ||
   import.meta.env.VITE_ENABLE_DEVELOPMENT_DEMO === "true";
 const developmentDemoStorageKey = "childled-development-demo";
 const developmentDemoSessionStorageKey = "childled-development-demo-session";
@@ -311,7 +318,6 @@ const clinicalNavItems: NavigationItem[] = [
   { href: "/team-communication", label: "Inbox", icon: MessageCircle },
   { href: "/reports", label: "Session Notes", icon: FileText },
   { href: "/clinician-learning", label: "Resources", icon: BookOpen },
-  { href: "/security", label: "Security", icon: Shield },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 
@@ -421,7 +427,7 @@ function Button({
   return (
     <button
       {...props}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 ${styles[variant]} ${className}`}
     >
       {children}
     </button>
@@ -459,7 +465,11 @@ function SectionHeading({
           </p>
         )}
       </div>
-      {action}
+      {action && (
+        <div className="w-full sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">
+          {action}
+        </div>
+      )}
     </div>
   );
 }
@@ -516,13 +526,13 @@ function RoleRestrictedPage({ role }: { role?: string }) {
       <p className="mono mt-5 text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
         Private care-team workspace
       </p>
-      <h1 className="serif mt-2 text-3xl font-semibold">
-        This area is for SLP review
-      </h1>
+      <h1 className="serif mt-2 text-3xl font-semibold">Restricted area</h1>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">
         {role === "Teacher"
           ? "Your classroom portal includes the communication profile, phrase dictionary, and shared observations for your assigned students."
-          : "Your family portal includes the language map, shared phrases, and ways to share what you notice at home."}
+          : role === "Parent"
+            ? "Your family portal includes the language map, shared phrases, and ways to share what you notice at home."
+            : "Your SLP workspace does not include administrator or owner-only tools."}
       </p>
       <Link
         href={homePath}
@@ -602,7 +612,7 @@ function Modal({
   return createPortal(
     <div
       data-testid="dialog-overlay"
-      className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto overscroll-contain bg-primary/45 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[100] grid place-items-center overflow-y-auto overscroll-contain bg-primary/45 p-2 backdrop-blur-sm sm:p-4"
     >
       <div
         ref={dialogRef}
@@ -610,13 +620,15 @@ function Modal({
         aria-modal="true"
         aria-label={title}
         tabIndex={-1}
-        className="brand-card max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-border bg-card p-6 shadow-2xl md:p-8"
+        className="brand-card flex max-h-[calc(100dvh-1rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl sm:max-h-[90dvh] sm:rounded-3xl"
       >
-        <div className="mb-6 flex items-start justify-between gap-4">
-          <h2 className="serif text-2xl font-semibold">{title}</h2>
+        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-border px-4 py-3 sm:px-6 sm:py-4 md:px-8">
+          <h2 className="serif pr-2 text-xl font-semibold sm:text-2xl">
+            {title}
+          </h2>
           <Button
             variant="quiet"
-            className="size-9 rounded-full p-0"
+            className="size-11 shrink-0 rounded-full p-0 sm:size-9"
             onClick={onClose}
             data-testid="button-close-dialog"
             aria-label="Close dialog"
@@ -624,7 +636,9 @@ function Modal({
             <X size={18} />
           </Button>
         </div>
-        {children}
+        <div className="min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6 md:p-8">
+          {children}
+        </div>
       </div>
     </div>,
     document.body,
@@ -776,6 +790,13 @@ function ChildContextNav({
       badge: workspaceStats?.aacCandidatesCount,
     },
     {
+      label: "Passport",
+      href: `/communication-passport${childQuery}`,
+      icon: FileText,
+      description:
+        "An SLP-reviewed, printable guide for approved communication partners.",
+    },
+    {
       label: "Timeline",
       href: `/language-journey${childQuery}`,
       icon: Clock3,
@@ -819,19 +840,19 @@ function ChildContextNav({
     }) ?? childNavItems[0];
 
   return (
-    <div className="sticky top-20 z-10 -mx-5 mb-8 border-b border-primary/10 bg-background/95 px-5 py-3 shadow-[0_12px_30px_-26px_hsl(var(--brand-forest-950)/.8)] backdrop-blur-xl md:-mx-10 md:px-10">
+    <div className="sticky top-14 z-10 -mx-3 mb-5 border-b border-primary/10 bg-background/95 px-3 py-2 shadow-[0_12px_30px_-26px_hsl(var(--brand-forest-950)/.8)] backdrop-blur-xl sm:-mx-5 sm:mb-8 sm:px-5 sm:py-3 md:-mx-10 md:px-10">
       <div className="mx-auto max-w-[1400px]">
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <Avatar
               name={child.name}
-              className="size-11 shrink-0 bg-secondary text-sm ring-4 ring-secondary/60"
+              className="size-9 shrink-0 bg-secondary text-xs ring-2 ring-secondary/60 sm:size-11 sm:text-sm sm:ring-4"
             />
             <div className="min-w-0">
               <p className="mono text-[9px] font-bold uppercase tracking-[0.18em] text-primary/65">
                 Child workspace
               </p>
-              <h1 className="serif truncate text-2xl font-semibold leading-tight text-foreground md:text-3xl">
+              <h1 className="serif truncate text-xl font-semibold leading-tight text-foreground sm:text-2xl md:text-3xl">
                 {child.name}
               </h1>
               <p className="hidden text-xs text-muted-foreground sm:block">
@@ -844,7 +865,7 @@ function ChildContextNav({
               <button
                 data-testid="button-child-context-selector"
                 aria-label={`Switch child from ${child.name}`}
-                className="group inline-flex shrink-0 items-center gap-2 rounded-xl border border-primary/15 bg-card px-3 py-2 text-xs font-semibold text-primary transition hover:border-primary/30 hover:bg-secondary/50 focus-ring"
+                className="group inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-primary/15 bg-card px-3 py-2 text-xs font-semibold text-primary transition hover:border-primary/30 hover:bg-secondary/50 focus-ring sm:min-h-0"
               >
                 <span className="hidden sm:inline">Switch child</span>
                 <ChevronDown
@@ -875,8 +896,12 @@ function ChildContextNav({
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
-        {child.aacSnapshot && <AacSnapshot snapshot={child.aacSnapshot} />}
-        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px] font-medium text-muted-foreground">
+        {child.aacSnapshot && (
+          <div className="hidden sm:block">
+            <AacSnapshot snapshot={child.aacSnapshot} />
+          </div>
+        )}
+        <div className="mt-3 hidden flex-wrap gap-x-4 gap-y-1 text-[11px] font-medium text-muted-foreground sm:flex">
           <span>
             <strong className="text-foreground">
               {workspaceStats?.dictionaryCount ?? 0}
@@ -905,7 +930,7 @@ function ChildContextNav({
           )}
         </div>
         <nav
-          className="mt-4 flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none"
+          className="mt-2 flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none sm:mt-4"
           aria-label="Child context navigation"
         >
           {childNavItems.map((item) => {
@@ -924,7 +949,7 @@ function ChildContextNav({
                 href={item.href}
                 data-testid={`link-child-context-${item.label.toLowerCase().replaceAll(" ", "-")}`}
                 title={item.description}
-                className={`group inline-flex shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all focus-ring sm:px-4 sm:text-sm ${
+                className={`group inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all focus-ring sm:min-h-0 sm:px-4 sm:text-sm ${
                   isActive
                     ? "bg-accent text-accent-foreground shadow-[0_8px_18px_-12px_hsl(var(--accent)/.95)]"
                     : "bg-secondary/55 text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -1058,7 +1083,7 @@ function Shell({
   workspaceStats,
   children,
   navigation,
-  topBanner,
+  navigationControls,
   isClinician,
 }: {
   child?: Child;
@@ -1074,16 +1099,20 @@ function Shell({
   };
   children: ReactNode;
   navigation: NavigationItem[];
-  topBanner?: ReactNode;
+  navigationControls?: ReactNode;
   isClinician?: boolean;
 }) {
   const [location] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const inboxNavigationItem = navigation.find(
+    (item) => item.href.split("?")[0] === "/team-communication",
+  );
+  const inboxUnreadCount = inboxNavigationItem?.badge ?? 0;
 
   return (
     <div className="paper-grain min-h-[100dvh] bg-background">
       <aside
-        className={`fixed inset-y-0 left-0 z-30 flex w-64 max-w-[85vw] flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar px-4 py-4 text-sidebar-foreground transition-transform duration-300 md:py-6 md:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`fixed inset-y-0 left-0 z-30 flex w-72 max-w-[88vw] flex-col overflow-y-auto border-r border-sidebar-border bg-sidebar px-3 py-3 text-sidebar-foreground transition-transform duration-300 md:w-64 md:px-4 md:py-6 md:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
       >
         <button
           aria-label="Close menu"
@@ -1093,7 +1122,7 @@ function Shell({
         >
           <X size={20} />
         </button>
-        <div className="mb-10 flex items-center gap-3 px-3">
+        <div className="mb-5 flex items-center gap-3 px-3 md:mb-10">
           <div className="gold-action grid size-10 place-items-center rounded-2xl text-accent-foreground">
             <Leaf size={21} strokeWidth={2.5} />
           </div>
@@ -1140,7 +1169,7 @@ function Shell({
             );
           })}
         </nav>
-        <div className="mt-auto rounded-2xl border border-sidebar-border bg-sidebar-accent/50 p-4">
+        <div className="mt-auto hidden rounded-2xl border border-sidebar-border bg-sidebar-accent/50 p-4 md:block">
           <div className="mb-3 flex items-center gap-2 text-accent">
             <Sparkles size={15} />
             <span className="mono text-[9px] font-bold uppercase tracking-widest">
@@ -1163,64 +1192,75 @@ function Shell({
         />
       )}
       <main className="md:pl-64">
-        <div className="sticky top-0 z-20">
-          {topBanner}
-          <header className="flex h-20 items-center justify-between border-b border-primary/10 bg-background/90 px-5 shadow-[0_8px_24px_-24px_hsl(var(--brand-forest-950)/.7)] backdrop-blur-xl md:px-10">
-            <div className="flex items-center gap-3">
-              <button
-                data-testid="button-open-mobile-nav"
-                className="rounded-lg p-2 text-muted-foreground hover:bg-muted focus-ring md:hidden"
-                onClick={() => setMobileOpen(true)}
-              >
-                <BookOpen size={20} />
-              </button>
-              <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
-                <span>Workspace</span>
-                {child && !isClinician && (
-                  <>
-                    <span>/</span>
-                    <span className="font-semibold text-foreground">
-                      {child.name}
-                    </span>
-                  </>
-                )}
-              </div>
-              <span className="text-sm font-semibold sm:hidden">
-                {child?.name && !isClinician ? child.name : "Getting started"}
-              </span>
-              {child && (!showChildWorkspace || !isClinician) && (
-                <AacSnapshot snapshot={child.aacSnapshot} compact />
+        <header className="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-primary/10 bg-background/95 px-2 shadow-[0_8px_24px_-24px_hsl(var(--brand-forest-950)/.7)] backdrop-blur-xl sm:px-5 md:px-8">
+          <div className="flex items-center gap-3">
+            <button
+              data-testid="button-open-mobile-nav"
+              aria-label="Open main navigation"
+              className="rounded-lg p-2 text-muted-foreground hover:bg-muted focus-ring md:hidden"
+              onClick={() => setMobileOpen(true)}
+            >
+              <Menu size={20} />
+            </button>
+            <div className="hidden items-center gap-2 text-sm text-muted-foreground sm:flex">
+              <span>Workspace</span>
+              {child && !isClinician && (
+                <>
+                  <span>/</span>
+                  <span className="font-semibold text-foreground">
+                    {child.name}
+                  </span>
+                </>
               )}
             </div>
-            <div className="flex items-center gap-2">
-              {isClinician && (
-                <button
-                  onClick={() => openClinicianQuickReferences()}
-                  data-testid="button-open-quick-references"
-                  aria-label="Open Quick References"
-                  className="rounded-lg p-2.5 text-muted-foreground hover:bg-muted focus-ring"
-                  title="Quick References Library"
+            <span
+              className={`${navigationControls ? "hidden" : "text-sm font-semibold"} sm:hidden`}
+            >
+              {child?.name && !isClinician ? child.name : "Getting started"}
+            </span>
+            {child && (!showChildWorkspace || !isClinician) && (
+              <AacSnapshot snapshot={child.aacSnapshot} compact />
+            )}
+          </div>
+          <div className="flex min-w-0 items-center gap-1 sm:gap-2">
+            {navigationControls}
+            {isClinician && (
+              <button
+                onClick={() => openClinicianQuickReferences()}
+                data-testid="button-open-quick-references"
+                aria-label="Open Quick References"
+                className="hidden rounded-lg p-2 text-muted-foreground hover:bg-muted focus-ring sm:block"
+                title="Quick References Library"
+              >
+                <Library size={18} />
+              </button>
+            )}
+            <button
+              data-testid="button-help"
+              className="hidden rounded-lg p-2 text-muted-foreground hover:bg-muted focus-ring lg:block"
+            >
+              <CircleHelp size={18} />
+            </button>
+            <Link
+              href={inboxNavigationItem?.href ?? "/team-communication"}
+              data-testid="button-notifications"
+              aria-label={`Open Inbox${inboxUnreadCount ? `, ${inboxUnreadCount} unread` : ""}`}
+              title="Open Inbox"
+              className="relative grid size-11 shrink-0 place-items-center rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground focus-ring sm:size-9"
+            >
+              <Bell size={18} />
+              {inboxUnreadCount > 0 && (
+                <span
+                  data-testid="badge-header-inbox-unread"
+                  className="absolute -right-1 -top-1 inline-flex min-w-5 items-center justify-center rounded-full bg-accent px-1 py-0.5 text-[9px] font-bold leading-none text-accent-foreground ring-2 ring-background"
                 >
-                  <Library size={18} />
-                </button>
+                  {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
+                </span>
               )}
-              <button
-                data-testid="button-help"
-                className="hidden rounded-lg p-2.5 text-muted-foreground hover:bg-muted focus-ring sm:block"
-              >
-                <CircleHelp size={18} />
-              </button>
-              <button
-                data-testid="button-notifications"
-                className="relative rounded-lg p-2.5 text-muted-foreground hover:bg-muted focus-ring focus-ring"
-              >
-                <Bell size={18} />
-                <span className="absolute right-2 top-2 size-1.5 rounded-full bg-accent" />
-              </button>
-            </div>
-          </header>
-        </div>
-        <div className="mx-auto max-w-[1400px] px-5 py-8 md:px-10 md:py-10">
+            </Link>
+          </div>
+        </header>
+        <div className="mx-auto max-w-[1400px] px-3 py-4 sm:px-5 sm:py-6 md:px-10 md:py-8">
           {isClinician && <WorkflowCoaching />}
           {isClinician &&
             showChildWorkspace &&
@@ -1239,24 +1279,6 @@ function Shell({
           {children}
         </div>
       </main>
-      <nav className="fixed inset-x-3 bottom-3 z-20 flex items-center justify-around rounded-2xl border border-primary/15 bg-card/95 p-2 soft-shadow backdrop-blur md:hidden">
-        {navigation.map(({ href, label, icon: Icon, badge, emphasized }) => (
-          <Link
-            key={href}
-            href={href}
-            data-testid={`link-mobile-${label.toLowerCase().replaceAll(" ", "-")}`}
-            className={`relative grid size-11 place-items-center rounded-xl transition-colors focus-ring ${location.split("?")[0] === href ? "bg-accent text-accent-foreground" : emphasized ? "bg-secondary/70 text-primary hover:bg-secondary" : "text-muted-foreground hover:bg-secondary"}`}
-          >
-            <Icon size={18} />
-            {badge ? (
-              <span
-                className="absolute right-0.5 top-0.5 size-2 rounded-full bg-accent"
-                aria-label={`${badge} unread messages`}
-              />
-            ) : null}
-          </Link>
-        ))}
-      </nav>
       {isClinician && <ClinicianQuickReferencePanel />}
     </div>
   );
@@ -3313,318 +3335,43 @@ function SuggestedFocusAreas({
   );
 }
 
-function ClinicianOverviewPage({
-  overview,
-  loading,
-  onOpenChild,
-}: {
-  overview?: ClinicianOverview;
-  loading: boolean;
-  onOpenChild: (childId: number) => void;
-}) {
-  if (loading) return <LoadingBlocks />;
-  if (!overview)
-    return (
-      <EmptyState
-        icon={AlertCircle}
-        title="Overview unavailable"
-        body="We couldn’t load your caseload summary. Please try again."
-      />
-    );
-  const metrics = [
-    {
-      label: "Caseload",
-      value: overview.caseloadCount,
-      detail: "children assigned to you",
-      icon: Users,
-    },
-    {
-      label: "New phrases",
-      value: overview.newPhrasesSinceLastSignIn,
-      detail: "since your last sign-in",
-      icon: BookOpen,
-    },
-    {
-      label: "New team messages",
-      value: overview.newTeamMessages,
-      detail: "shared with assigned teams",
-      icon: MessageCircle,
-    },
-    {
-      label: "Require review",
-      value: overview.studentsRequiringReview,
-      detail: "with newly reviewed phrases",
-      icon: AlertCircle,
-    },
-  ];
-  const reviewChildren = overview.children.filter(
-    (child) => child.requiresReview,
-  );
-  return (
-    <div className="space-y-7 animate-rise">
-      <SectionHeading
-        eyebrow="Clinician overview"
-        title="Start with your caseload"
-        description="A calm, caseload-level view of what changed since your last sign-in. Select a child when you’re ready to do focused work."
-        action={
-          <Link href="/caseload">
-            <Button data-testid="button-overview-open-caseload">
-              Open my caseload <ArrowRight size={16} />
-            </Button>
-          </Link>
-        }
-      />
-      <section
-        data-testid="clinician-overview-metrics"
-        className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4"
-      >
-        {metrics.map(({ label, value, detail, icon: Icon }) => (
-          <article
-            key={label}
-            className="rounded-2xl border border-border bg-card p-5 soft-shadow"
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="mono text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">
-                  {label}
-                </p>
-                <p className="serif mt-3 text-4xl font-semibold text-primary">
-                  {value}
-                </p>
-                <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                  {detail}
-                </p>
-              </div>
-              <span className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
-                <Icon size={18} />
-              </span>
-            </div>
-          </article>
-        ))}
-      </section>
-      <section
-        data-testid="clinician-overview-review"
-        className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
-      >
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-              Review queue
-            </p>
-            <h2 className="serif mt-2 text-2xl font-semibold">
-              Students requiring review
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Newly reviewed phrase evidence is ready for focused clinical
-              context inside each child’s workspace.
-            </p>
-          </div>
-          <Link
-            href="/caseload"
-            className="text-sm font-semibold text-primary underline underline-offset-4"
-          >
-            View all students
-          </Link>
-        </div>
-        {reviewChildren.length ? (
-          <div className="mt-6 grid gap-3 lg:grid-cols-2">
-            {reviewChildren.slice(0, 6).map((child) => (
-              <button
-                key={child.childId}
-                type="button"
-                onClick={() => onOpenChild(child.childId)}
-                data-testid={`button-overview-open-child-${child.childId}`}
-                className="group rounded-2xl border border-accent/35 bg-accent/5 p-4 text-left transition hover:border-primary/35 focus-ring"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Avatar
-                      name={child.childName}
-                      className="size-10 bg-secondary text-xs"
-                    />
-                    <div>
-                      <h3 className="font-semibold text-primary">
-                        {child.childName}
-                      </h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {child.newActivityCount} new activity item
-                        {child.newActivityCount === 1 ? "" : "s"} ·{" "}
-                        {child.school || "School not added"}
-                      </p>
-                    </div>
-                  </div>
-                  <ArrowRight
-                    size={17}
-                    className="mt-1 shrink-0 text-primary transition group-hover:translate-x-0.5"
-                  />
-                </div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-6 rounded-2xl border border-dashed border-border bg-muted/30 p-5 text-sm leading-6 text-muted-foreground">
-            No children have newly reviewed phrase evidence since your last
-            sign-in.
-          </p>
-        )}
-      </section>
-      <section
-        data-testid="clinician-overview-activity"
-        className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
-      >
-        <div>
-          <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-            Recent activity
-          </p>
-          <h2 className="serif mt-2 text-2xl font-semibold">
-            Across your assigned teams
-          </h2>
-        </div>
-        {overview.recentActivity.length ? (
-          <div className="mt-6 space-y-4">
-            {overview.recentActivity.map((item) => (
-              <ActivityRow key={item.id} item={item} />
-            ))}
-          </div>
-        ) : (
-          <p className="mt-6 rounded-2xl border border-dashed border-border bg-muted/30 p-5 text-sm leading-6 text-muted-foreground">
-            Recent phrase, message, and observation activity will appear here
-            after your next team update.
-          </p>
-        )}
-      </section>
-    </div>
-  );
-}
+type CaseloadServiceStatus =
+  "on_track" | "behind" | "complete" | "not_configured";
 
-function ClinicianOverviewSectionNotice({
-  message,
-  tone = "neutral",
-}: {
-  message: string;
-  tone?: "neutral" | "error";
-}) {
-  return (
-    <p
-      className={`mt-6 rounded-2xl border border-dashed p-5 text-sm leading-6 ${
-        tone === "error"
-          ? "border-destructive/30 bg-destructive/5 text-muted-foreground"
-          : "border-border bg-muted/30 text-muted-foreground"
-      }`}
-    >
-      {message}
-    </p>
-  );
-}
+const caseloadServiceStatus = (
+  requirements:
+    ClinicianOverview["children"][number]["serviceRequirements"] | undefined,
+): CaseloadServiceStatus => {
+  if (!requirements?.length) return "not_configured";
+  if (requirements.every((requirement) => requirement.status === "complete"))
+    return "complete";
+  if (requirements.some((requirement) => requirement.status === "behind"))
+    return "behind";
+  return "on_track";
+};
 
-function ClinicianQuickActions({
-  onRecordSession,
-  onAddPhrase,
-  onReviewAlerts,
-  onOpenMessages,
-  unreadMessageCount = 0,
-}: {
-  onRecordSession: () => void;
-  onAddPhrase: () => void;
-  onReviewAlerts: () => void;
-  onOpenMessages: () => void;
-  unreadMessageCount?: number;
-}) {
-  return (
-    <section
-      data-testid="clinician-overview-quick-actions"
-      className="rounded-3xl border border-primary/20 bg-secondary/35 p-6 shadow-lg shadow-primary/5 md:p-8"
-    >
-      <div>
-        <p className="mono text-[10px] font-bold uppercase tracking-[.2em] text-primary">
-          Quick actions
-        </p>
-        <h2 className="serif mt-2 text-2xl font-semibold">
-          Start where care needs you.
-        </h2>
-      </div>
-      <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <button
-          type="button"
-          data-testid="button-overview-record-session"
-          onClick={onRecordSession}
-          className="focus-ring rounded-2xl border border-primary/15 bg-card p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-        >
-          <span className="grid size-9 place-items-center rounded-xl bg-secondary text-primary">
-            <Mic size={18} />
-          </span>
-          <span className="mt-4 block text-sm font-bold">Record Session</span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            Capture reviewed evidence
-          </span>
-        </button>
-        <button
-          type="button"
-          data-testid="button-overview-add-phrase"
-          onClick={onAddPhrase}
-          className="focus-ring rounded-2xl border border-primary/15 bg-card p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-        >
-          <span className="grid size-9 place-items-center rounded-xl bg-secondary text-primary">
-            <Plus size={18} />
-          </span>
-          <span className="mt-4 block text-sm font-bold">Add Phrase</span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            Log a phrase from your caseload
-          </span>
-        </button>
-        <button
-          type="button"
-          data-testid="button-overview-review-alerts"
-          onClick={onReviewAlerts}
-          className="focus-ring rounded-2xl border border-primary/15 bg-card p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-        >
-          <span className="grid size-9 place-items-center rounded-xl bg-accent text-accent-foreground">
-            <AlertCircle size={18} />
-          </span>
-          <span className="mt-4 block text-sm font-bold">Review Alerts</span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            See pending clinical signals
-          </span>
-        </button>
-        <Link
-          href="/caseload"
-          data-testid="button-overview-open-caseload-tile"
-          className="focus-ring rounded-2xl border border-primary/15 bg-card p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-        >
-          <span className="grid size-9 place-items-center rounded-xl bg-secondary text-primary">
-            <Users size={18} />
-          </span>
-          <span className="mt-4 block text-sm font-bold">Open Caseload</span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            Choose a child workspace
-          </span>
-        </Link>
-        <button
-          type="button"
-          data-testid="button-overview-messages"
-          onClick={onOpenMessages}
-          className="focus-ring rounded-2xl border border-primary/15 bg-card p-4 text-left transition hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-md"
-        >
-          <span className="flex w-full items-center justify-between gap-2">
-            <span className="grid size-9 place-items-center rounded-xl bg-secondary text-primary">
-              <MessageCircle size={18} />
-            </span>
-            <span
-              className="rounded-full bg-accent px-2 py-1 text-[10px] font-bold text-accent-foreground"
-              data-testid="badge-overview-unread-messages"
-            >
-              {unreadMessageCount}
-            </span>
-          </span>
-          <span className="mt-4 block text-sm font-bold">Messages</span>
-          <span className="mt-1 block text-xs text-muted-foreground">
-            Open caseload inbox
-          </span>
-        </button>
-      </div>
-    </section>
-  );
-}
+const caseloadStatusPresentation = {
+  on_track: {
+    label: "On Track",
+    className: "bg-emerald-100 text-emerald-800",
+    icon: TrendingUp,
+  },
+  behind: {
+    label: "Needs Attention",
+    className: "bg-amber-100 text-amber-900",
+    icon: AlertCircle,
+  },
+  complete: {
+    label: "Requirement Met",
+    className: "bg-primary/10 text-primary",
+    icon: Check,
+  },
+  not_configured: {
+    label: "Setup Needed",
+    className: "bg-muted text-muted-foreground",
+    icon: Settings,
+  },
+} as const;
 
 function CaseloadOverviewPage({
   overview,
@@ -3633,24 +3380,11 @@ function CaseloadOverviewPage({
   overviewError,
   caseloadChildren,
   onOpenChild,
-  onRecordSession,
-  onAddPhrase,
-  onReviewAlerts,
-  onOpenMessages,
+  onAddStudent,
+  onStartRecordedSession,
+  onStartManualSession,
+  onViewGoals,
   onRetryOverview,
-  teamInbox,
-  teamInboxLoading,
-  teamInboxError,
-  teamInboxSearch,
-  teamInboxChildId,
-  teamInboxRole,
-  sendingTeamMessage,
-  markingTeamMessagesRead,
-  onSelectInboxChild,
-  onSelectInboxRole,
-  onSearchInbox,
-  onReplyToInboxMessage,
-  onMarkInboxMessagesRead,
 }: {
   overview?: ClinicianOverview;
   loading: boolean;
@@ -3658,68 +3392,13 @@ function CaseloadOverviewPage({
   overviewError?: string;
   caseloadChildren: Child[];
   onOpenChild: (childId: number) => void;
-  onRecordSession: () => void;
-  onAddPhrase: () => void;
-  onReviewAlerts: () => void;
-  onOpenMessages: () => void;
+  onAddStudent: () => void;
+  onStartRecordedSession: (childId: number) => void;
+  onStartManualSession: (childId: number) => void;
+  onViewGoals: (childId: number) => void;
   onRetryOverview: () => void;
-  teamInbox?: import("@workspace/api-client-react").TeamInbox;
-  teamInboxLoading: boolean;
-  teamInboxError?: string;
-  teamInboxSearch: string;
-  teamInboxChildId?: number;
-  teamInboxRole?: import("@workspace/api-client-react").GetTeamInboxSenderRole;
-  sendingTeamMessage: boolean;
-  markingTeamMessagesRead: boolean;
-  onSelectInboxChild: (childId?: number) => void;
-  onSelectInboxRole: (
-    role?: import("@workspace/api-client-react").GetTeamInboxSenderRole,
-  ) => void;
-  onSearchInbox: (search: string) => void;
-  onReplyToInboxMessage: (input: { childId: number; body: string }) => void;
-  onMarkInboxMessagesRead: (messageIds: number[]) => void;
 }) {
-  const metrics = [
-    {
-      label: "Active children",
-      value: overview?.activeChildren ?? caseloadChildren.length,
-      detail: "currently assigned to your care",
-      icon: Users,
-    },
-    {
-      label: "New phrases this week",
-      value: overview?.newPhrasesThisWeek ?? "—",
-      detail: "confirmed Child language evidence",
-      icon: BookOpen,
-    },
-    {
-      label: "Pending reviews",
-      value: overview?.pendingReviews ?? "—",
-      detail: "children with signals to review",
-      icon: ClipboardList,
-    },
-    {
-      label: "Team messages",
-      value: overview?.newTeamMessages ?? "—",
-      detail: "since your last sign-in",
-      icon: MessageCircle,
-    },
-    {
-      label: "AI insights awaiting review",
-      value: overview?.aiInsightsAwaitingReview ?? "—",
-      detail: "exception insights only",
-      icon: Lightbulb,
-    },
-  ];
-  const reviewChildren = (overview?.children ?? []).filter(
-    (child) => child.requiresReview,
-  );
-  const changesByChild = overview?.changesByChild ?? [];
-  const changeCount = changesByChild.reduce(
-    (total, group) => total + group.changes.length,
-    0,
-  );
-  const snapshotChildren =
+  const students = (
     overview?.children ??
     caseloadChildren.map((child) => ({
       childId: child.id,
@@ -3730,922 +3409,317 @@ function CaseloadOverviewPage({
       newActivityCount: 0,
       requiresReview: false,
       latestActivityAt: null,
-      latestActivityLabel: "Caseload summary is preparing",
-    }));
-  const changeMeta = {
-    new_phrase: { icon: BookOpen, tone: "bg-accent/15 text-primary" },
-    new_function: {
-      icon: Sparkles,
-      tone: "bg-primary-foreground/10 text-primary-foreground",
-    },
-    possible_mitigation: {
-      icon: AlertCircle,
-      tone: "bg-accent text-accent-foreground",
-    },
-    team_contribution: {
-      icon: Users,
-      tone: "bg-primary-foreground/10 text-primary-foreground",
-    },
-    new_message: {
-      icon: MessageCircle,
-      tone: "bg-primary-foreground/10 text-primary-foreground",
-    },
-    ai_insight: { icon: Lightbulb, tone: "bg-accent text-accent-foreground" },
-  } as const;
-  const overviewNotice = overviewError
-    ? "Recent clinical changes could not be refreshed. Your caseload and team inbox remain available."
-    : preparing || loading
-      ? "Your authorized caseload summary is preparing."
-      : "No reviewed clinical changes are waiting.";
-
-  return (
-    <div className="space-y-7 animate-rise">
-      <header className="flex flex-wrap items-end justify-between gap-5">
-        <div className="max-w-3xl">
-          <p className="mono text-[10px] font-bold uppercase tracking-[.2em] text-muted-foreground">
-            Clinician overview
-          </p>
-          <h1 className="serif mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
-            Turning communication into shared understanding
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            See what changed across home, school, and therapy since your last
-            sign-in.
-          </p>
-        </div>
-        <Link href="/caseload">
-          <Button data-testid="button-overview-open-caseload">
-            Open my caseload <ArrowRight size={16} />
-          </Button>
-        </Link>
-      </header>
-
-      <ClinicianQuickActions
-        onRecordSession={onRecordSession}
-        onAddPhrase={onAddPhrase}
-        onReviewAlerts={onReviewAlerts}
-        onOpenMessages={onOpenMessages}
-        unreadMessageCount={teamInbox?.totalUnread}
-      />
-
-      <section
-        data-testid="clinician-overview-whats-new"
-        className="relative overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-xl shadow-primary/15 md:p-8"
-      >
-        <div className="absolute -right-20 -top-24 size-72 rounded-full border-[30px] border-accent/15" />
-        <div className="relative">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-primary-foreground/15 pb-6">
-            <div>
-              <div className="flex items-center gap-2 text-accent">
-                <Sparkles size={16} />
-                <p className="mono text-[10px] font-bold uppercase tracking-[.2em]">
-                  Most important first
-                </p>
-              </div>
-              <h2 className="serif mt-3 text-3xl font-semibold md:text-4xl">
-                What’s New Since Your Last Sign-In
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-primary-foreground/70">
-                {overview
-                  ? changeCount
-                    ? `${changeCount} new signal${changeCount === 1 ? "" : "s"} across ${changesByChild.length} child${changesByChild.length === 1 ? "" : "ren"}, grouped for a fast clinical scan.`
-                    : "No new reviewed clinical signals or care-team updates are waiting."
-                  : overviewNotice}
-              </p>
-            </div>
-            {overviewError ? (
-              <Button
-                variant="outline"
-                onClick={onRetryOverview}
-                className="border-primary-foreground/25 bg-primary-foreground/10 text-primary-foreground hover:bg-primary-foreground/20"
-              >
-                Retry summary
-              </Button>
-            ) : (
-              <span className="rounded-full border border-primary-foreground/20 bg-primary-foreground/5 px-3 py-1.5 text-xs font-semibold">
-                {overview?.pendingReviews ?? "—"} review
-                {overview?.pendingReviews === 1 ? "" : "s"} pending
-              </span>
-            )}
-          </div>
-          {overview ? (
-            changesByChild.length ? (
-              <div className="mt-6 grid gap-4 xl:grid-cols-2">
-                {changesByChild.slice(0, 6).map((group) => (
-                  <article
-                    key={group.childId}
-                    data-testid={`clinician-change-group-${group.childId}`}
-                    className="rounded-2xl border border-primary-foreground/15 bg-primary-foreground/5 p-4"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <button
-                        type="button"
-                        onClick={() => onOpenChild(group.childId)}
-                        className="flex min-w-0 items-center gap-3 rounded-xl text-left focus-ring"
-                      >
-                        <Avatar
-                          name={group.childName}
-                          className="size-9 bg-accent text-xs text-accent-foreground ring-primary"
-                        />
-                        <div className="min-w-0">
-                          <h3 className="truncate text-sm font-bold">
-                            {group.childName}
-                          </h3>
-                          <p className="text-xs text-primary-foreground/60">
-                            {group.changes.length} new update
-                            {group.changes.length === 1 ? "" : "s"}
-                          </p>
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => onOpenChild(group.childId)}
-                        className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-accent hover:bg-primary-foreground/10 focus-ring"
-                      >
-                        Open <ArrowRight size={14} />
-                      </button>
-                    </div>
-                    <div className="mt-4 space-y-2 border-t border-primary-foreground/10 pt-3">
-                      {group.changes.slice(0, 5).map((change) => {
-                        const meta = changeMeta[change.category];
-                        const Icon = meta.icon;
-                        return (
-                          <Link
-                            key={change.id}
-                            href={change.href}
-                            data-testid={`clinician-change-${change.id}`}
-                            className="flex items-start gap-3 rounded-xl p-2 transition hover:bg-primary-foreground/10 focus-ring"
-                          >
-                            <span
-                              className={`grid size-7 shrink-0 place-items-center rounded-lg ${meta.tone}`}
-                            >
-                              <Icon size={14} />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block text-xs font-bold">
-                                {change.label}
-                              </span>
-                              <span className="mt-0.5 block line-clamp-1 text-xs leading-5 text-primary-foreground/65">
-                                {change.detail}
-                              </span>
-                            </span>
-                            <span className="shrink-0 pt-0.5 text-[10px] text-primary-foreground/45">
-                              {timeAgo(change.time)}
-                            </span>
-                          </Link>
-                        );
-                      })}
-                    </div>
-                  </article>
-                ))}
-              </div>
-            ) : (
-              <ClinicianOverviewSectionNotice message="New reviewed phrases, session changes, care-team updates, and clinician-review insights will appear here after they are safely recorded." />
-            )
-          ) : (
-            <ClinicianOverviewSectionNotice
-              message={overviewNotice}
-              tone={overviewError ? "error" : "neutral"}
-            />
-          )}
-        </div>
-      </section>
-
-      <CaseloadTeamInbox
-        title="New Messages"
-        inbox={teamInbox}
-        loading={teamInboxLoading}
-        error={teamInboxError}
-        sending={sendingTeamMessage}
-        markingRead={markingTeamMessagesRead}
-        searchTerm={teamInboxSearch}
-        selectedChildId={teamInboxChildId}
-        selectedRole={teamInboxRole}
-        onSelectChild={onSelectInboxChild}
-        onSelectRole={onSelectInboxRole}
-        onSearch={onSearchInbox}
-        onMarkRead={onMarkInboxMessagesRead}
-        onReply={onReplyToInboxMessage}
-        onOpenProfile={onOpenChild}
-      />
-
-      <section
-        data-testid="clinician-overview-caseload-snapshot"
-        className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
-      >
-        <div>
-          <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-            Caseload snapshot
-          </p>
-          <h2 className="serif mt-2 text-2xl font-semibold">
-            Your workload at a glance
-          </h2>
-        </div>
-        <div
-          data-testid="clinician-overview-metrics"
-          className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
-        >
-          {metrics.map(({ label, value, detail, icon: Icon }) => (
-            <article
-              key={label}
-              className="rounded-2xl border border-border bg-card p-5 soft-shadow"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="mono text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">
-                    {label}
-                  </p>
-                  <p className="serif mt-3 text-4xl font-semibold text-primary">
-                    {value}
-                  </p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    {detail}
-                  </p>
-                </div>
-                <span className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
-                  <Icon size={18} />
-                </span>
-              </div>
-            </article>
-          ))}
-        </div>
-        {snapshotChildren.length ? (
-          <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {snapshotChildren.map((child) => (
-              <button
-                key={child.childId}
-                type="button"
-                onClick={() => onOpenChild(child.childId)}
-                data-testid={`button-overview-open-child-${child.childId}`}
-                className="group rounded-2xl border border-border bg-muted/20 p-4 text-left transition hover:border-primary/35 hover:bg-secondary/30 focus-ring"
-              >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Avatar
-                      name={child.childName}
-                      className="size-10 bg-secondary text-xs"
-                    />
-                    <div>
-                      <h3 className="font-semibold text-primary">
-                        {child.childName}
-                      </h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {child.newActivityCount} new activity item
-                        {child.newActivityCount === 1 ? "" : "s"} ·{" "}
-                        {child.school || "School not added"}
-                      </p>
-                    </div>
-                  </div>
-                  <ArrowRight
-                    size={17}
-                    className="mt-1 shrink-0 text-primary transition group-hover:translate-x-0.5"
-                  />
-                </div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <ClinicianOverviewSectionNotice
-            message={
-              overviewError
-                ? "Your authorized child list is still available from My Caseload while the summary retries."
-                : "No children are currently assigned to your caseload."
-            }
-            tone={overviewError ? "error" : "neutral"}
-          />
-        )}
-      </section>
-
-      <section
-        data-testid="clinician-overview-review"
-        className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
-      >
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-              Review queue
-            </p>
-            <h2 className="serif mt-2 text-2xl font-semibold">
-              Children requiring attention
-            </h2>
-          </div>
-          <button
-            type="button"
-            onClick={onReviewAlerts}
-            className="focus-ring rounded-xl bg-secondary px-4 py-2 text-sm font-semibold text-primary hover:bg-secondary/75"
-          >
-            Review alerts
-          </button>
-        </div>
-        {overview ? (
-          reviewChildren.length ? (
-            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-              {reviewChildren.map((child) => (
-                <button
-                  key={child.childId}
-                  type="button"
-                  onClick={() => onOpenChild(child.childId)}
-                  className="focus-ring rounded-2xl border border-accent/35 bg-accent/5 p-4 text-left hover:border-primary/35"
-                >
-                  <p className="font-semibold text-primary">
-                    {child.childName}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {child.latestActivityLabel}
-                  </p>
-                </button>
-              ))}
-            </div>
-          ) : (
-            <ClinicianOverviewSectionNotice message="No children have newly confirmed clinical signals that need your attention." />
-          )
-        ) : (
-          <ClinicianOverviewSectionNotice
-            message={overviewNotice}
-            tone={overviewError ? "error" : "neutral"}
-          />
-        )}
-      </section>
-
-      <section
-        data-testid="clinician-overview-activity"
-        className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-              Across your assigned teams
-            </p>
-            <h2 className="serif mt-2 text-2xl font-semibold">
-              Team Activity Feed
-            </h2>
-          </div>
-          <Link
-            href="/team-communication"
-            className="grid size-9 place-items-center rounded-xl bg-secondary text-primary transition hover:bg-accent focus-ring"
-            aria-label="Open Team Inbox"
-          >
-            <ArrowRight size={16} />
-          </Link>
-        </div>
-        {overview ? (
-          overview.recentActivity.length ? (
-            <div className="mt-6 space-y-4">
-              {overview.recentActivity.map((item) => (
-                <ActivityRow key={item.id} item={item} />
-              ))}
-            </div>
-          ) : (
-            <ClinicianOverviewSectionNotice message="Recent phrase, message, and observation activity will appear here after your next team update." />
-          )
-        ) : (
-          <ClinicianOverviewSectionNotice
-            message={overviewNotice}
-            tone={overviewError ? "error" : "neutral"}
-          />
-        )}
-      </section>
-    </div>
-  );
-}
-
-function LegacyCaseloadOverviewPage({
-  overview,
-  loading,
-  onOpenChild,
-  onRecordSession,
-  onAddPhrase,
-  onReviewAlerts,
-  onOpenMessages,
-  teamInbox,
-  teamInboxLoading,
-  teamInboxError,
-  teamInboxSearch,
-  teamInboxChildId,
-  teamInboxRole,
-  sendingTeamMessage,
-  markingTeamMessagesRead,
-  onSelectInboxChild,
-  onSelectInboxRole,
-  onSearchInbox,
-  onReplyToInboxMessage,
-  onMarkInboxMessagesRead,
-}: {
-  overview?: ClinicianOverview;
-  loading: boolean;
-  onOpenChild: (childId: number) => void;
-  onRecordSession: () => void;
-  onAddPhrase: () => void;
-  onReviewAlerts: () => void;
-  onOpenMessages: () => void;
-  teamInbox?: import("@workspace/api-client-react").TeamInbox;
-  teamInboxLoading: boolean;
-  teamInboxError?: string;
-  teamInboxSearch: string;
-  teamInboxChildId?: number;
-  teamInboxRole?: import("@workspace/api-client-react").GetTeamInboxSenderRole;
-  sendingTeamMessage: boolean;
-  markingTeamMessagesRead: boolean;
-  onSelectInboxChild: (childId?: number) => void;
-  onSelectInboxRole: (
-    role?: import("@workspace/api-client-react").GetTeamInboxSenderRole,
-  ) => void;
-  onSearchInbox: (search: string) => void;
-  onReplyToInboxMessage: (input: { childId: number; body: string }) => void;
-  onMarkInboxMessagesRead: (messageIds: number[]) => void;
-}) {
-  if (loading) return <LoadingBlocks />;
-  if (!overview)
-    return (
-      <EmptyState
-        icon={AlertCircle}
-        title="Overview unavailable"
-        body="We couldn’t load your caseload summary. Please try again."
-      />
-    );
-
-  const metrics = [
+      latestActivityLabel: "Service summary is preparing",
+      serviceRequirements: [],
+    }))
+  )
+    .map((student) => {
+      const serviceRequirements = student.serviceRequirements ?? [];
+      return {
+        ...student,
+        serviceRequirements,
+        serviceStatus: caseloadServiceStatus(serviceRequirements),
+      };
+    })
+    .sort((left, right) => {
+      const priority: Record<CaseloadServiceStatus, number> = {
+        behind: 0,
+        on_track: 1,
+        not_configured: 2,
+        complete: 3,
+      };
+      return (
+        priority[left.serviceStatus] - priority[right.serviceStatus] ||
+        left.childName.localeCompare(right.childName)
+      );
+    });
+  const requirementsMet = students.filter(
+    (student) => student.serviceStatus === "complete",
+  ).length;
+  const stillNeedServices = students.filter(
+    (student) =>
+      student.serviceStatus === "behind" ||
+      student.serviceStatus === "on_track",
+  ).length;
+  const needSetup = students.filter(
+    (student) => student.serviceStatus === "not_configured",
+  ).length;
+  const summary = [
+    { label: "Caseload", value: students.length, detail: "active students" },
     {
-      label: "Active children",
-      value: overview.activeChildren,
-      detail: "currently assigned to your care",
-      icon: Users,
+      label: "Requirements met",
+      value: requirementsMet,
+      detail: "for the current period",
     },
     {
-      label: "New phrases this week",
-      value: overview.newPhrasesThisWeek,
-      detail: "confirmed Child language evidence",
-      icon: BookOpen,
+      label: "Still need services",
+      value: stillNeedServices,
+      detail: "sessions or minutes remain",
     },
     {
-      label: "Pending reviews",
-      value: overview.pendingReviews,
-      detail: "children with signals to review",
-      icon: ClipboardList,
-    },
-    {
-      label: "Team messages",
-      value: overview.newTeamMessages,
-      detail: "since your last sign-in",
-      icon: MessageCircle,
-    },
-    {
-      label: "AI insights awaiting review",
-      value: overview.aiInsightsAwaitingReview,
-      detail: "exception insights only",
-      icon: Lightbulb,
+      label: "Need setup",
+      value: needSetup,
+      detail: "without an active requirement",
     },
   ];
-  const reviewChildren = overview.children.filter(
-    (child) => child.requiresReview,
-  );
-  const changeCount = overview.changesByChild.reduce(
-    (total, group) => total + group.changes.length,
-    0,
-  );
-  const changeMeta = {
-    new_phrase: { icon: BookOpen, tone: "bg-accent/15 text-primary" },
-    new_function: {
-      icon: Sparkles,
-      tone: "bg-primary-foreground/10 text-primary-foreground",
-    },
-    possible_mitigation: {
-      icon: AlertCircle,
-      tone: "bg-accent text-accent-foreground",
-    },
-    team_contribution: {
-      icon: Users,
-      tone: "bg-primary-foreground/10 text-primary-foreground",
-    },
-    new_message: {
-      icon: MessageCircle,
-      tone: "bg-primary-foreground/10 text-primary-foreground",
-    },
-    ai_insight: { icon: Lightbulb, tone: "bg-accent text-accent-foreground" },
-  } as const;
 
   return (
-    <div className="space-y-7 animate-rise">
-      <header className="flex flex-wrap items-end justify-between gap-5">
-        <div className="max-w-3xl">
-          <p className="mono text-[10px] font-bold uppercase tracking-[.2em] text-muted-foreground">
-            Clinician overview
-          </p>
-          <h1 className="serif mt-2 text-4xl font-semibold tracking-tight md:text-5xl">
-            Start with what changed.
-          </h1>
-          <p className="mt-3 text-sm leading-6 text-muted-foreground">
-            A five-second scan of confirmed, child-attributed changes across
-            your caseload.
-          </p>
-        </div>
-        <Link href="/caseload">
-          <Button data-testid="button-overview-open-caseload">
-            Open my caseload <ArrowRight size={16} />
+    <div className="space-y-6 animate-rise">
+      <SectionHeading
+        eyebrow="SLP overview"
+        title="Caseload overview"
+        description="See each student's current IEP service requirement and what remains in the active tracking period."
+        action={
+          <Button
+            onClick={onAddStudent}
+            data-testid="button-overview-add-student"
+            className="w-full sm:w-auto"
+          >
+            <UserPlus size={17} /> Add Student
           </Button>
-        </Link>
-      </header>
-
-      <section
-        data-testid="clinician-overview-quick-actions"
-        className="rounded-3xl border border-primary/20 bg-secondary/35 p-6 shadow-lg shadow-primary/5 md:p-8"
-      >
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.2em] text-primary">
-              Start here
-            </p>
-            <h2 className="serif mt-2 text-3xl font-semibold">Quick Actions</h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Take the next step in one tap. Choose a child before starting
-              child-specific clinical work.
-            </p>
-          </div>
-          <span className="hidden rounded-full border border-primary/15 bg-card px-3 py-1.5 text-xs font-semibold text-primary sm:inline-flex">
-            Built for a fast start
-          </span>
-        </div>
-        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          <button
-            type="button"
-            onClick={onRecordSession}
-            data-testid="button-overview-record-session"
-            className="focus-ring group flex min-h-24 flex-col items-start justify-between gap-4 rounded-2xl bg-primary p-4 text-left text-primary-foreground shadow-md transition hover:-translate-y-0.5 hover:bg-primary/90"
-          >
-            <span className="grid size-9 place-items-center rounded-xl bg-primary-foreground/15">
-              <Mic size={18} />
-            </span>
-            <span>
-              <span className="block text-sm font-bold">Record Session</span>
-              <span className="mt-1 block text-xs text-primary-foreground/70">
-                Choose a child first
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={onAddPhrase}
-            data-testid="button-overview-add-phrase"
-            className="focus-ring group flex min-h-24 flex-col items-start justify-between gap-4 rounded-2xl border border-primary/15 bg-card p-4 text-left text-primary shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-background"
-          >
-            <span className="grid size-9 place-items-center rounded-xl bg-secondary">
-              <Plus size={18} />
-            </span>
-            <span>
-              <span className="block text-sm font-bold">Add Phrase</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                Choose a child first
-              </span>
-            </span>
-          </button>
-          <button
-            type="button"
-            onClick={onReviewAlerts}
-            data-testid="button-overview-review-alerts"
-            className="focus-ring group flex min-h-24 flex-col items-start justify-between gap-4 rounded-2xl border border-accent/35 bg-accent/15 p-4 text-left text-primary shadow-sm transition hover:-translate-y-0.5 hover:border-accent"
-          >
-            <span className="grid size-9 place-items-center rounded-xl bg-accent">
-              <AlertCircle size={18} />
-            </span>
-            <span>
-              <span className="block text-sm font-bold">Review Alerts</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                {overview.pendingReviews} pending review
-                {overview.pendingReviews === 1 ? "" : "s"}
-              </span>
-            </span>
-          </button>
-          <Link
-            href="/caseload"
-            data-testid="button-overview-open-caseload-action"
-            className="focus-ring group flex min-h-24 flex-col items-start justify-between gap-4 rounded-2xl border border-primary/15 bg-card p-4 text-left text-primary shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-background"
-          >
-            <span className="grid size-9 place-items-center rounded-xl bg-secondary">
-              <Users size={18} />
-            </span>
-            <span>
-              <span className="block text-sm font-bold">Open Caseload</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                {overview.activeChildren} active child
-                {overview.activeChildren === 1 ? "" : "ren"}
-              </span>
-            </span>
-          </Link>
-          <button
-            type="button"
-            onClick={onOpenMessages}
-            data-testid="button-overview-messages"
-            className="focus-ring group flex min-h-24 flex-col items-start justify-between gap-4 rounded-2xl border border-primary/15 bg-card p-4 text-left text-primary shadow-sm transition hover:-translate-y-0.5 hover:border-primary/35 hover:bg-background"
-          >
-            <span className="flex w-full items-center justify-between gap-2">
-              <span className="grid size-9 place-items-center rounded-xl bg-secondary">
-                <MessageCircle size={18} />
-              </span>
-              <span
-                className="rounded-full bg-accent px-2 py-1 text-[10px] font-bold text-accent-foreground"
-                data-testid="badge-overview-unread-messages"
-              >
-                {teamInbox?.totalUnread ?? 0}
-              </span>
-            </span>
-            <span>
-              <span className="block text-sm font-bold">Messages</span>
-              <span className="mt-1 block text-xs text-muted-foreground">
-                Open caseload inbox
-              </span>
-            </span>
-          </button>
-        </div>
-      </section>
-
-      <section
-        data-testid="clinician-overview-whats-new"
-        className="relative overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground shadow-xl shadow-primary/15 md:p-8"
-      >
-        <div className="absolute -right-20 -top-24 size-72 rounded-full border-[30px] border-accent/15" />
-        <div className="relative">
-          <div className="flex flex-wrap items-start justify-between gap-4 border-b border-primary-foreground/15 pb-6">
-            <div>
-              <div className="flex items-center gap-2 text-accent">
-                <Sparkles size={16} />
-                <p className="mono text-[10px] font-bold uppercase tracking-[.2em]">
-                  Most important first
-                </p>
-              </div>
-              <h2 className="serif mt-3 text-3xl font-semibold md:text-4xl">
-                What’s New Since Your Last Sign-In
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-primary-foreground/70">
-                {changeCount
-                  ? `${changeCount} new signal${changeCount === 1 ? "" : "s"} across ${overview.changesByChild.length} child${overview.changesByChild.length === 1 ? "" : "ren"}, grouped for a fast clinical scan.`
-                  : "No new reviewed clinical signals or care-team updates are waiting."}
-              </p>
-            </div>
-            <span className="rounded-full border border-primary-foreground/20 bg-primary-foreground/5 px-3 py-1.5 text-xs font-semibold">
-              {overview.pendingReviews} review
-              {overview.pendingReviews === 1 ? "" : "s"} pending
-            </span>
-          </div>
-          {overview.changesByChild.length ? (
-            <div className="mt-6 grid gap-4 xl:grid-cols-2">
-              {overview.changesByChild.slice(0, 6).map((group) => (
-                <article
-                  key={group.childId}
-                  data-testid={`clinician-change-group-${group.childId}`}
-                  className="rounded-2xl border border-primary-foreground/15 bg-primary-foreground/5 p-4"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => onOpenChild(group.childId)}
-                      className="flex min-w-0 items-center gap-3 rounded-xl text-left focus-ring"
-                    >
-                      <Avatar
-                        name={group.childName}
-                        className="size-9 bg-accent text-xs text-accent-foreground ring-primary"
-                      />
-                      <div className="min-w-0">
-                        <h3 className="truncate text-sm font-bold">
-                          {group.childName}
-                        </h3>
-                        <p className="text-xs text-primary-foreground/60">
-                          {group.changes.length} new update
-                          {group.changes.length === 1 ? "" : "s"}
-                        </p>
-                      </div>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onOpenChild(group.childId)}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-1 text-xs font-bold text-accent hover:bg-primary-foreground/10 focus-ring"
-                    >
-                      Open <ArrowRight size={14} />
-                    </button>
-                  </div>
-                  <div className="mt-4 space-y-2 border-t border-primary-foreground/10 pt-3">
-                    {group.changes.slice(0, 5).map((change) => {
-                      const meta = changeMeta[change.category];
-                      const Icon = meta.icon;
-                      return (
-                        <Link
-                          key={change.id}
-                          href={change.href}
-                          data-testid={`clinician-change-${change.id}`}
-                          className="flex items-start gap-3 rounded-xl p-2 transition hover:bg-primary-foreground/10 focus-ring"
-                        >
-                          <span
-                            className={`grid size-7 shrink-0 place-items-center rounded-lg ${meta.tone}`}
-                          >
-                            <Icon size={14} />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="block text-xs font-bold">
-                              {change.label}
-                            </span>
-                            <span className="mt-0.5 block line-clamp-1 text-xs leading-5 text-primary-foreground/65">
-                              {change.detail}
-                            </span>
-                          </span>
-                          <span className="shrink-0 pt-0.5 text-[10px] text-primary-foreground/45">
-                            {timeAgo(change.time)}
-                          </span>
-                        </Link>
-                      );
-                    })}
-                    {group.changes.length > 5 && (
-                      <button
-                        type="button"
-                        onClick={() => onOpenChild(group.childId)}
-                        className="ml-2 text-xs font-semibold text-accent hover:underline focus-ring"
-                      >
-                        See {group.changes.length - 5} more update
-                        {group.changes.length === 6 ? "" : "s"}
-                      </button>
-                    )}
-                  </div>
-                </article>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-6 rounded-2xl border border-dashed border-primary-foreground/20 px-5 py-6 text-sm leading-6 text-primary-foreground/70">
-              New reviewed phrases, session changes, care-team updates, and
-              clinician-review insights will appear here after they are safely
-              recorded.
-            </div>
-          )}
-        </div>
-      </section>
-
-      <CaseloadTeamInbox
-        title="New Messages"
-        inbox={teamInbox}
-        loading={teamInboxLoading}
-        error={teamInboxError}
-        sending={sendingTeamMessage}
-        markingRead={markingTeamMessagesRead}
-        searchTerm={teamInboxSearch}
-        selectedChildId={teamInboxChildId}
-        selectedRole={teamInboxRole}
-        onSelectChild={onSelectInboxChild}
-        onSelectRole={(role) =>
-          onSelectInboxRole(
-            role as
-              | import("@workspace/api-client-react").GetTeamInboxSenderRole
-              | undefined,
-          )
         }
-        onSearch={onSearchInbox}
-        onMarkRead={onMarkInboxMessagesRead}
-        onReply={onReplyToInboxMessage}
-        onOpenProfile={onOpenChild}
       />
 
       <section
-        data-testid="clinician-overview-caseload-snapshot"
-        className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
+        aria-label="Caseload summary"
+        data-testid="clinician-overview-metrics"
+        className="grid grid-cols-2 gap-3 lg:grid-cols-4"
       >
-        <div className="mb-6">
-          <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-            High-level view
+        {summary.map((item) => (
+          <article
+            key={item.label}
+            className="min-w-0 rounded-lg border border-border bg-card p-4 soft-shadow sm:p-5"
+          >
+            <p className="text-xs font-semibold text-muted-foreground">
+              {item.label}
+            </p>
+            <p className="serif mt-2 text-3xl font-semibold text-primary">
+              {item.value}
+            </p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {item.detail}
+            </p>
+          </article>
+        ))}
+      </section>
+
+      {overviewError && (
+        <div className="flex flex-col gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p>
+            Service totals could not be refreshed. The assigned student list is
+            still available.
           </p>
-          <h2 className="serif mt-2 text-2xl font-semibold">
-            Caseload Snapshot
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            The current shape of your assigned caseload, after the change feed.
-          </p>
+          <Button variant="outline" onClick={onRetryOverview}>
+            Retry
+          </Button>
         </div>
-        <div
-          data-testid="clinician-overview-metrics"
-          className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5"
+      )}
+
+      {(loading || preparing) && !students.length ? (
+        <LoadingBlocks />
+      ) : students.length ? (
+        <section
+          aria-label="Assigned students"
+          data-testid="clinician-overview-caseload"
+          className="grid gap-4 xl:grid-cols-2"
         >
-          {metrics.map(({ label, value, detail, icon: Icon }) => (
-            <article
-              key={label}
-              className="rounded-2xl border border-border bg-card p-5 soft-shadow"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="mono text-[10px] font-bold uppercase tracking-[.16em] text-muted-foreground">
-                    {label}
-                  </p>
-                  <p className="serif mt-3 text-4xl font-semibold text-primary">
-                    {value}
-                  </p>
-                  <p className="mt-2 text-xs leading-5 text-muted-foreground">
-                    {detail}
-                  </p>
-                </div>
-                <span className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
-                  <Icon size={18} />
-                </span>
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section
-        data-testid="clinician-overview-review"
-        className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
-      >
-        <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-              Review queue
-            </p>
-            <h2 className="serif mt-2 text-2xl font-semibold">
-              Children Requiring Attention
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Children with newly confirmed changes, possible mitigations, or AI
-              exception insights ready for focused clinical context.
-            </p>
-          </div>
-          <Link
-            href="/caseload"
-            className="text-sm font-semibold text-primary underline underline-offset-4"
-          >
-            View all children
-          </Link>
-        </div>
-        {reviewChildren.length ? (
-          <div className="mt-6 grid gap-3 lg:grid-cols-2">
-            {reviewChildren.map((child) => (
-              <button
-                key={child.childId}
-                type="button"
-                onClick={() => onOpenChild(child.childId)}
-                data-testid={`button-overview-open-child-${child.childId}`}
-                className="group rounded-2xl border border-accent/35 bg-accent/5 p-4 text-left transition hover:border-primary/35 focus-ring"
+          {students.map((student) => {
+            const status = caseloadStatusPresentation[student.serviceStatus];
+            const StatusIcon = status.icon;
+            return (
+              <article
+                key={student.childId}
+                data-testid={`overview-student-${student.childId}`}
+                className="flex min-w-0 flex-col rounded-lg border border-border bg-card p-4 soft-shadow sm:p-5"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
+                <div className="flex min-w-0 items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => onOpenChild(student.childId)}
+                    className="flex min-w-0 items-center gap-3 rounded-md text-left focus-ring"
+                  >
                     <Avatar
-                      name={child.childName}
-                      className="size-10 bg-secondary text-xs"
+                      name={student.childName}
+                      className="size-11 shrink-0 bg-secondary text-xs"
                     />
-                    <div>
-                      <h3 className="font-semibold text-primary">
-                        {child.childName}
-                      </h3>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {child.newActivityCount} new activity item
-                        {child.newActivityCount === 1 ? "" : "s"} ·{" "}
-                        {child.school || "School not added"}
-                      </p>
-                    </div>
-                  </div>
-                  <ArrowRight
-                    size={17}
-                    className="mt-1 shrink-0 text-primary transition group-hover:translate-x-0.5"
-                  />
+                    <span className="min-w-0">
+                      <span className="block truncate font-semibold text-primary">
+                        {student.childName}
+                      </span>
+                      <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                        {[student.grade, student.school]
+                          .filter(Boolean)
+                          .join(" · ") || "Student profile"}
+                      </span>
+                    </span>
+                  </button>
+                  <span
+                    className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold ${status.className}`}
+                  >
+                    <StatusIcon size={13} /> {status.label}
+                  </span>
                 </div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <p className="mt-6 rounded-2xl border border-dashed border-border bg-muted/30 p-5 text-sm leading-6 text-muted-foreground">
-            No children have newly confirmed clinical signals that need your
-            attention.
-          </p>
-        )}
-      </section>
 
-      <section
-        data-testid="clinician-overview-activity"
-        className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
-      >
-        <div className="flex items-center justify-between gap-4">
-          <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-              Across your assigned teams
-            </p>
-            <h2 className="serif mt-2 text-2xl font-semibold">
-              Team Activity Feed
-            </h2>
-          </div>
-          <Link
-            href="/team-communication"
-            className="grid size-9 place-items-center rounded-xl bg-secondary text-primary transition hover:bg-accent focus-ring"
-            aria-label="Open Team Inbox"
-          >
-            <ArrowRight size={16} />
-          </Link>
-        </div>
-        {overview.recentActivity.length ? (
-          <div className="mt-6 space-y-4">
-            {overview.recentActivity.map((item) => (
-              <ActivityRow key={item.id} item={item} />
-            ))}
-          </div>
-        ) : (
-          <p className="mt-6 rounded-2xl border border-dashed border-border bg-muted/30 p-5 text-sm leading-6 text-muted-foreground">
-            Recent phrase, message, and observation activity will appear here
-            after your next team update.
-          </p>
-        )}
-      </section>
+                {student.serviceRequirements.length ? (
+                  <div className="mt-5 divide-y divide-border border-y border-border">
+                    {student.serviceRequirements.map((requirement) => {
+                      const sessionProgress =
+                        requirement.sessionsCompleted /
+                        requirement.requiredSessions;
+                      const minuteProgress =
+                        requirement.minutesCompleted /
+                        requirement.requiredMinutes;
+                      const progress = Math.round(
+                        Math.min(1, sessionProgress, minuteProgress) * 100,
+                      );
+                      return (
+                        <div key={requirement.id} className="py-4">
+                          <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+                            <div>
+                              <h3 className="text-sm font-semibold">
+                                {requirement.serviceName}
+                              </h3>
+                              <p className="mt-1 text-xs text-muted-foreground">
+                                {requirement.requiredSessions} session
+                                {requirement.requiredSessions === 1
+                                  ? ""
+                                  : "s"}{" "}
+                                /{" "}
+                                {requirement.period === "weekly"
+                                  ? "week"
+                                  : "month"}{" "}
+                                · {requirement.sessionDurationMinutes} minutes
+                                each
+                              </p>
+                            </div>
+                            <span className="text-xs font-semibold text-muted-foreground">
+                              {requirement.periodLabel}
+                            </span>
+                          </div>
+                          <div className="mt-4 grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-4">
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">
+                                Sessions
+                              </p>
+                              <p className="mt-0.5 text-sm font-semibold">
+                                {requirement.sessionsCompleted} /{" "}
+                                {requirement.requiredSessions}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">
+                                Remaining
+                              </p>
+                              <p className="mt-0.5 text-sm font-bold text-primary">
+                                {requirement.sessionsRemaining} session
+                                {requirement.sessionsRemaining === 1 ? "" : "s"}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">
+                                Minutes
+                              </p>
+                              <p className="mt-0.5 text-sm font-semibold">
+                                {requirement.minutesCompleted} /{" "}
+                                {requirement.requiredMinutes}
+                              </p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-muted-foreground">
+                                Remaining
+                              </p>
+                              <p className="mt-0.5 text-sm font-bold text-primary">
+                                {requirement.minutesRemaining} min
+                              </p>
+                            </div>
+                          </div>
+                          <div
+                            className="mt-3 h-2 overflow-hidden rounded-full bg-muted"
+                            role="progressbar"
+                            aria-label={`${requirement.serviceName} completion`}
+                            aria-valuenow={progress}
+                            aria-valuemin={0}
+                            aria-valuemax={100}
+                          >
+                            <div
+                              className={`h-full rounded-full ${requirement.status === "behind" ? "bg-amber-500" : requirement.status === "complete" ? "bg-primary" : "bg-emerald-600"}`}
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="mt-5 border-y border-border py-5">
+                    <p className="text-sm font-semibold">
+                      No active IEP service requirement
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                      Add the required sessions, minutes, and tracking period to
+                      begin service monitoring.
+                    </p>
+                  </div>
+                )}
+
+                <div className="mt-auto flex flex-col gap-2 pt-4 sm:flex-row sm:items-center">
+                  <Button
+                    onClick={() => onOpenChild(student.childId)}
+                    className="w-full sm:w-auto"
+                    data-testid={`button-overview-view-student-${student.childId}`}
+                  >
+                    View Student <ArrowRight size={16} />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => onStartManualSession(student.childId)}
+                    className="w-full sm:w-auto"
+                  >
+                    <ClipboardList size={16} /> Track Manually
+                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="quiet"
+                        className="w-full sm:ml-auto sm:w-10 sm:px-0"
+                        aria-label={`More actions for ${student.childName}`}
+                      >
+                        <MoreHorizontal size={18} />
+                        <span className="sm:sr-only">More actions</span>
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-52">
+                      <DropdownMenuLabel>{student.childName}</DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem
+                        onSelect={() => onStartRecordedSession(student.childId)}
+                      >
+                        <Mic /> Record Session
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        onSelect={() => onViewGoals(student.childId)}
+                      >
+                        <Target /> View IEP Goals
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </article>
+            );
+          })}
+        </section>
+      ) : (
+        <EmptyState
+          icon={Users}
+          title="Your caseload is ready for its first student"
+          body="Add a student to create their profile and begin tracking IEP service requirements."
+          action={
+            <Button onClick={onAddStudent}>
+              <UserPlus size={16} /> Add Student
+            </Button>
+          }
+        />
+      )}
     </div>
   );
 }
@@ -5333,6 +4407,11 @@ function ClinicianChildProfilePage({
         >
           <Settings size={16} /> Edit Profile
         </Button>
+        <Link href={childHref("/communication-passport")}>
+          <Button variant="outline">
+            <BookOpen size={16} /> Communication Passport
+          </Button>
+        </Link>
       </div>
 
       <section
@@ -6119,39 +5198,6 @@ function ObservationCard({ observation }: { observation: Observation }) {
   );
 }
 
-function ParentObservationVideoLinks({
-  observations,
-}: {
-  observations: Observation[];
-}) {
-  const videoObservations = observations.filter(
-    (observation) => observation.video,
-  );
-  if (!videoObservations.length) return null;
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5">
-      <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-        Private videos
-      </p>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Videos shared with this child’s assigned care team.
-      </p>
-      <div className="mt-4 space-y-3">
-        {videoObservations.map((observation) => (
-          <a
-            key={observation.id}
-            href={`${basePath}${observation.video!.url}`}
-            className="flex items-center justify-between gap-3 rounded-xl border border-border p-3 text-sm font-semibold text-primary transition-colors hover:bg-muted/50"
-            data-testid={`link-observation-video-${observation.id}`}
-          >
-            <span>Watch private video · {observation.context}</span>
-            <Video size={16} />
-          </a>
-        ))}
-      </div>
-    </section>
-  );
-}
 function PhraseTrendChart({
   points,
 }: {
@@ -6205,6 +5251,7 @@ function DictionaryPage({
   const [mergeTargetId, setMergeTargetId] = useState("");
   const [showDuplicateQueue, setShowDuplicateQueue] = useState(false);
   const [showRecoveryQueue, setShowRecoveryQueue] = useState(false);
+  const [phraseToDelete, setPhraseToDelete] = useState<Gestalt | null>(null);
   const [recoveryItem, setRecoveryItem] =
     useState<LegacyPhraseObservation | null>(null);
   const [recoveryDraft, setRecoveryDraft] = useState({
@@ -6237,6 +5284,30 @@ function DictionaryPage({
   };
   const createAacPlanning = useCreateAacPlanning({
     mutation: { onSuccess: refreshAacPlanning },
+  });
+  const deleteGestalt = useDeleteGestalt({
+    mutation: {
+      onSuccess: () => {
+        setPhraseToDelete(null);
+        queryClient.invalidateQueries({
+          queryKey: getListGestaltsQueryKey({ childId: childId ?? 0 }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetDictionaryInsightsQueryKey({
+            childId: childId ?? 0,
+          }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetPhraseTrendsQueryKey({ childId: childId ?? 0 }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetDashboardQueryKey({ childId: childId ?? 0 }),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getListAacPlanningQueryKey({ childId: childId ?? 0 }),
+        });
+      },
+    },
   });
   const mergeGestalts = useMergeGestalts({
     mutation: {
@@ -6450,753 +5521,814 @@ function DictionaryPage({
   };
 
   return (
-    <div className="space-y-7 animate-rise">
-      <SectionHeading
-        eyebrow="Shared dictionary"
-        title="Phrase Dictionary"
-        description="A shared record of phrases, meanings, and everyday context. SLP-reviewed session evidence and family or classroom observations can grow the map together."
-        action={
-          <div className="flex flex-wrap gap-2">
-            {canReviewSession && (
-              <Button
-                variant="outline"
-                onClick={() => setShowRecoveryQueue((current) => !current)}
-                data-testid="button-open-observation-recovery"
-                aria-expanded={showRecoveryQueue}
-              >
-                <RotateCcw size={17} />
-                <span>
-                  {recoveryItems.length} Older Observation
-                  {recoveryItems.length === 1 ? "" : "s"}
-                </span>
-              </Button>
-            )}
-            {canReviewSession && (
-              <Button
-                variant="outline"
-                onClick={() => setShowDuplicateQueue((current) => !current)}
-                data-testid="button-open-duplicate-suggestions"
-                aria-expanded={showDuplicateQueue}
-              >
-                <GitMerge size={17} />
-                <span>
-                  {duplicateSuggestions.length} Merge Suggestion
-                  {duplicateSuggestions.length === 1 ? "" : "s"}
-                </span>
-              </Button>
-            )}
-            {canAddPhrase && (
-              <Button
-                variant="warm"
-                onClick={onAddPhrase}
-                data-testid="button-dictionary-add-phrase"
-              >
-                <Plus size={17} /> Add a phrase
-              </Button>
-            )}
-            {canReviewSession && (
-              <Link
-                href="/session"
-                data-testid="button-dictionary-add"
-                className="inline-flex focus-ring items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-primary"
-              >
-                <Mic size={17} /> Review session phrases
-              </Link>
-            )}
-          </div>
-        }
-      />
-      {canReviewSession && showRecoveryQueue && (
-        <section
-          className="rounded-3xl border border-primary/20 bg-secondary/25 p-5 soft-shadow md:p-6"
-          data-testid="dictionary-observation-recovery-queue"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary/65">
-                Historical review
-              </p>
-              <h2 className="serif mt-1 text-2xl font-semibold">
-                Recover Older Shared Observations
-              </h2>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                These preserved care-team notes are not clinical evidence yet.
-                Review the original note and explicitly confirm a meaning,
-                communication function, context, and date before adding one
-                observation to the dictionary record.
-              </p>
-            </div>
-            <Button
-              variant="quiet"
-              className="size-9 rounded-full p-0"
-              onClick={() => {
-                setShowRecoveryQueue(false);
-                setRecoveryItem(null);
-              }}
-              aria-label="Close older observation review"
-            >
-              <X size={17} />
-            </Button>
-          </div>
-          {recoveryQueueQuery.isLoading ? (
-            <div className="mt-5">
-              <LoadingBlocks />
-            </div>
-          ) : recoveryQueueQuery.isError ? (
-            <p
-              role="alert"
-              className="mt-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive"
-            >
-              Older observations are temporarily unavailable. No evidence or
-              dictionary records were changed.
-            </p>
-          ) : recoveryItems.length ? (
-            <div className="mt-5 space-y-4">
-              {recoveryItems.map((item) => (
-                <article
-                  key={item.noteId}
-                  className="rounded-2xl border border-border bg-card p-4 md:p-5"
-                  data-testid={`legacy-observation-${item.noteId}`}
+    <>
+      <div className="space-y-7 animate-rise">
+        <SectionHeading
+          eyebrow="Shared dictionary"
+          title="Phrase Dictionary"
+          description="A shared record of phrases, meanings, and everyday context. SLP-reviewed session evidence and family or classroom observations can grow the map together."
+          action={
+            <div className="flex flex-wrap gap-2">
+              {canReviewSession && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowRecoveryQueue((current) => !current)}
+                  data-testid="button-open-observation-recovery"
+                  aria-expanded={showRecoveryQueue}
                 >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="serif text-xl font-semibold">
-                        “{item.phrase}”
-                      </p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        Shared by {item.authorName} · {item.authorRole} ·{" "}
-                        {new Date(item.sharedAt).toLocaleDateString()}
-                      </p>
-                    </div>
-                    <Button
-                      variant="outline"
-                      onClick={() => beginRecovery(item)}
-                      data-testid={`button-review-legacy-observation-${item.noteId}`}
-                    >
-                      Review observation
-                    </Button>
-                  </div>
-                  <p className="mt-3 whitespace-pre-wrap rounded-xl bg-muted/45 p-3 text-sm leading-6 text-foreground/85">
-                    {item.noteBody}
-                  </p>
-                  {recoveryItem?.noteId === item.noteId && (
-                    <div
-                      className="mt-4 space-y-4 border-t border-border pt-4"
-                      role="group"
-                      aria-label={`Review older observation for ${item.phrase}`}
-                    >
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <label className="text-sm font-semibold">
-                          Reviewed phrase
-                          <input
-                            value={recoveryDraft.phrase}
-                            onChange={(event) =>
-                              setRecoveryDraft((draft) => ({
-                                ...draft,
-                                phrase: event.target.value,
-                              }))
-                            }
-                            className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
-                          />
-                        </label>
-                        <label className="text-sm font-semibold">
-                          Use an existing reviewed phrase
-                          <select
-                            value={recoveryDraft.targetGestaltId}
-                            onChange={(event) =>
-                              setRecoveryDraft((draft) => ({
-                                ...draft,
-                                targetGestaltId: event.target.value,
-                              }))
-                            }
-                            className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
-                          >
-                            <option value="">
-                              Create a reviewed dictionary entry
-                            </option>
-                            {(gestalts ?? [])
-                              .filter(
-                                (gestalt) =>
-                                  !gestalt.source
-                                    .toLowerCase()
-                                    .includes("review pending") &&
-                                  gestalt.meaning.toLowerCase() !==
-                                    "meaning awaits clinician review.",
-                              )
-                              .map((gestalt) => (
-                                <option key={gestalt.id} value={gestalt.id}>
-                                  {gestalt.phrase}
-                                </option>
-                              ))}
-                          </select>
-                        </label>
-                      </div>
-                      <label className="block text-sm font-semibold">
-                        Clinician-confirmed working meaning
-                        <textarea
-                          value={recoveryDraft.meaning}
-                          onChange={(event) =>
-                            setRecoveryDraft((draft) => ({
-                              ...draft,
-                              meaning: event.target.value,
-                            }))
-                          }
-                          rows={2}
-                          className="mt-1 w-full rounded-xl border border-input bg-background p-3 font-normal"
-                        />
-                      </label>
-                      <div className="grid gap-4 md:grid-cols-2">
-                        <label className="text-sm font-semibold">
-                          Communication function
-                          <input
-                            value={recoveryDraft.function}
-                            onChange={(event) =>
-                              setRecoveryDraft((draft) => ({
-                                ...draft,
-                                function: event.target.value,
-                              }))
-                            }
-                            className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
-                          />
-                        </label>
-                        <label className="text-sm font-semibold">
-                          Context
-                          <input
-                            value={recoveryDraft.context}
-                            onChange={(event) =>
-                              setRecoveryDraft((draft) => ({
-                                ...draft,
-                                context: event.target.value,
-                              }))
-                            }
-                            className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
-                          />
-                        </label>
-                        <label className="text-sm font-semibold">
-                          Emotional state
-                          <input
-                            value={recoveryDraft.emotionalState}
-                            onChange={(event) =>
-                              setRecoveryDraft((draft) => ({
-                                ...draft,
-                                emotionalState: event.target.value,
-                              }))
-                            }
-                            className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
-                          />
-                        </label>
-                        <label className="text-sm font-semibold">
-                          Observed at
-                          <input
-                            type="datetime-local"
-                            value={recoveryDraft.observedAt}
-                            onChange={(event) =>
-                              setRecoveryDraft((draft) => ({
-                                ...draft,
-                                observedAt: event.target.value,
-                              }))
-                            }
-                            className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
-                          />
-                        </label>
-                      </div>
-                      <label className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/5 p-3 text-sm leading-6">
-                        <input
-                          type="checkbox"
-                          className="mt-1"
-                          checked={recoveryDraft.confirmation}
-                          onChange={(event) =>
-                            setRecoveryDraft((draft) => ({
-                              ...draft,
-                              confirmation: event.target.checked,
-                            }))
-                          }
-                        />
-                        <span>
-                          I reviewed the preserved note and confirm this
-                          interpretation as clinician-owned evidence. ChildLed
-                          did not infer the meaning or function.
-                        </span>
-                      </label>
-                      {recoverLegacyObservation.isError && (
-                        <p role="alert" className="text-sm text-destructive">
-                          This observation could not be recovered. It may
-                          already be accounted for or the selected phrase may
-                          not safely match.
-                        </p>
-                      )}
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          onClick={confirmRecovery}
-                          disabled={
-                            recoverLegacyObservation.isPending ||
-                            !recoveryDraft.phrase.trim() ||
-                            !recoveryDraft.meaning.trim() ||
-                            !recoveryDraft.function.trim() ||
-                            !recoveryDraft.context.trim() ||
-                            !recoveryDraft.observedAt ||
-                            !recoveryDraft.confirmation
-                          }
-                          data-testid={`button-confirm-legacy-observation-${item.noteId}`}
-                        >
-                          {recoverLegacyObservation.isPending
-                            ? "Recovering…"
-                            : "Confirm and recover"}
-                        </Button>
-                        <Button
-                          variant="quiet"
-                          onClick={() => setRecoveryItem(null)}
-                        >
-                          Cancel
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-                </article>
-              ))}
+                  <RotateCcw size={17} />
+                  <span>
+                    {recoveryItems.length} Older Observation
+                    {recoveryItems.length === 1 ? "" : "s"}
+                  </span>
+                </Button>
+              )}
+              {canReviewSession && (
+                <Button
+                  variant="outline"
+                  onClick={() => setShowDuplicateQueue((current) => !current)}
+                  data-testid="button-open-duplicate-suggestions"
+                  aria-expanded={showDuplicateQueue}
+                >
+                  <GitMerge size={17} />
+                  <span>
+                    {duplicateSuggestions.length} Merge Suggestion
+                    {duplicateSuggestions.length === 1 ? "" : "s"}
+                  </span>
+                </Button>
+              )}
+              {canAddPhrase && (
+                <Button
+                  variant="warm"
+                  onClick={onAddPhrase}
+                  data-testid="button-dictionary-add-phrase"
+                >
+                  <Plus size={17} /> Add a phrase
+                </Button>
+              )}
+              {canReviewSession && (
+                <Link
+                  href="/session"
+                  data-testid="button-dictionary-add"
+                  className="inline-flex focus-ring items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-primary"
+                >
+                  <Mic size={17} /> Review session phrases
+                </Link>
+              )}
             </div>
-          ) : (
-            <div className="mt-5 rounded-2xl border border-dashed border-border bg-card/60 px-5 py-8 text-center">
-              <Check className="mx-auto text-primary" size={24} />
-              <p className="mt-2 font-semibold">
-                No older observations need recovery
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Every preserved shared phrase note is either already typed
-                evidence or has a recorded clinician decision.
-              </p>
+          }
+        />
+        {canReviewSession && showRecoveryQueue && (
+          <section
+            className="rounded-3xl border border-primary/20 bg-secondary/25 p-5 soft-shadow md:p-6"
+            data-testid="dictionary-observation-recovery-queue"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary/65">
+                  Historical review
+                </p>
+                <h2 className="serif mt-1 text-2xl font-semibold">
+                  Recover Older Shared Observations
+                </h2>
+                <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                  These preserved care-team notes are not clinical evidence yet.
+                  Review the original note and explicitly confirm a meaning,
+                  communication function, context, and date before adding one
+                  observation to the dictionary record.
+                </p>
+              </div>
+              <Button
+                variant="quiet"
+                className="size-9 rounded-full p-0"
+                onClick={() => {
+                  setShowRecoveryQueue(false);
+                  setRecoveryItem(null);
+                }}
+                aria-label="Close older observation review"
+              >
+                <X size={17} />
+              </Button>
             </div>
-          )}
-        </section>
-      )}
-      {canReviewSession && showDuplicateQueue && (
-        <section
-          className="rounded-3xl border border-accent/35 bg-accent/5 p-5 soft-shadow md:p-6"
-          data-testid="dictionary-duplicate-review-queue"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary/65">
-                Dictionary review
+            {recoveryQueueQuery.isLoading ? (
+              <div className="mt-5">
+                <LoadingBlocks />
+              </div>
+            ) : recoveryQueueQuery.isError ? (
+              <p
+                role="alert"
+                className="mt-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive"
+              >
+                Older observations are temporarily unavailable. No evidence or
+                dictionary records were changed.
               </p>
-              <h2 className="serif mt-1 text-2xl font-semibold">
-                Potential Duplicate Phrases
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Review suggestions generated from clinician-confirmed dictionary
-                entries. ChildLed never merges entries without your explicit
-                confirmation.
-              </p>
-            </div>
-            <Button
-              variant="quiet"
-              className="size-9 rounded-full p-0"
-              onClick={() => {
-                setShowDuplicateQueue(false);
-                setMergeReview(null);
-              }}
-              aria-label="Close duplicate suggestions"
-            >
-              <X size={17} />
-            </Button>
-          </div>
-          {duplicateSuggestionsQuery.isLoading ? (
-            <div className="mt-5">
-              <LoadingBlocks />
-            </div>
-          ) : duplicateSuggestionsQuery.isError ? (
-            <p className="mt-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-              Merge suggestions are temporarily unavailable. No dictionary
-              entries were changed.
-            </p>
-          ) : duplicateSuggestions.length ? (
-            <div className="mt-5 space-y-4">
-              {duplicateSuggestions.map((suggestion) => {
-                const isMergeReview =
-                  mergeReview?.suggestion.suggestionId ===
-                  suggestion.suggestionId;
-                return (
+            ) : recoveryItems.length ? (
+              <div className="mt-5 space-y-4">
+                {recoveryItems.map((item) => (
                   <article
-                    key={suggestion.suggestionId}
+                    key={item.noteId}
                     className="rounded-2xl border border-border bg-card p-4 md:p-5"
-                    data-testid={`duplicate-suggestion-${suggestion.suggestionId}`}
+                    data-testid={`legacy-observation-${item.noteId}`}
                   >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <span className="rounded-full bg-accent/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
-                        {suggestion.reasonLabel}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        {Math.round(suggestion.similarityScore * 100)}% text
-                        similarity
-                      </span>
-                    </div>
-                    <div className="mt-4 grid gap-3 md:grid-cols-2">
-                      {[suggestion.first, suggestion.second].map((phrase) => (
-                        <div
-                          key={phrase.id}
-                          className="rounded-xl border border-border bg-background p-4"
-                        >
-                          <p className="serif text-lg font-semibold">
-                            “{phrase.phrase}”
-                          </p>
-                          <p className="mt-2 text-sm text-foreground">
-                            {phrase.meaning}
-                          </p>
-                          <p className="mt-2 text-xs text-muted-foreground">
-                            {phrase.function} · {phrase.occurrences} occurrence
-                            {phrase.occurrences === 1 ? "" : "s"}
-                          </p>
-                          {phrase.contexts.length > 0 && (
-                            <p className="mt-2 text-xs text-muted-foreground">
-                              Contexts: {phrase.contexts.join(", ")}
-                            </p>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                    {isMergeReview ? (
-                      <div
-                        className="mt-4 rounded-xl border border-primary/20 bg-secondary/45 p-4"
-                        role="group"
-                        aria-label="Choose the canonical phrase"
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="serif text-xl font-semibold">
+                          “{item.phrase}”
+                        </p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          Shared by {item.authorName} · {item.authorRole} ·{" "}
+                          {new Date(item.sharedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => beginRecovery(item)}
+                        data-testid={`button-review-legacy-observation-${item.noteId}`}
                       >
-                        <p className="text-sm font-semibold">
-                          Which phrase should remain in the dictionary?
-                        </p>
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                          {[suggestion.first, suggestion.second].map(
-                            (phrase) => (
-                              <label
-                                key={phrase.id}
-                                className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-card p-3 text-sm"
-                              >
-                                <input
-                                  type="radio"
-                                  name={`canonical-${suggestion.suggestionId}`}
-                                  checked={
-                                    mergeReview.canonicalId === phrase.id
-                                  }
-                                  onChange={() =>
-                                    setMergeReview({
-                                      suggestion,
-                                      canonicalId: phrase.id,
-                                    })
-                                  }
-                                />
-                                <span>Keep “{phrase.phrase}”</span>
-                              </label>
-                            ),
-                          )}
+                        Review observation
+                      </Button>
+                    </div>
+                    <p className="mt-3 whitespace-pre-wrap rounded-xl bg-muted/45 p-3 text-sm leading-6 text-foreground/85">
+                      {item.noteBody}
+                    </p>
+                    {recoveryItem?.noteId === item.noteId && (
+                      <div
+                        className="mt-4 space-y-4 border-t border-border pt-4"
+                        role="group"
+                        aria-label={`Review older observation for ${item.phrase}`}
+                      >
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <label className="text-sm font-semibold">
+                            Reviewed phrase
+                            <input
+                              value={recoveryDraft.phrase}
+                              onChange={(event) =>
+                                setRecoveryDraft((draft) => ({
+                                  ...draft,
+                                  phrase: event.target.value,
+                                }))
+                              }
+                              className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
+                            />
+                          </label>
+                          <label className="text-sm font-semibold">
+                            Use an existing reviewed phrase
+                            <select
+                              value={recoveryDraft.targetGestaltId}
+                              onChange={(event) =>
+                                setRecoveryDraft((draft) => ({
+                                  ...draft,
+                                  targetGestaltId: event.target.value,
+                                }))
+                              }
+                              className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
+                            >
+                              <option value="">
+                                Create a reviewed dictionary entry
+                              </option>
+                              {(gestalts ?? [])
+                                .filter(
+                                  (gestalt) =>
+                                    !gestalt.source
+                                      .toLowerCase()
+                                      .includes("review pending") &&
+                                    gestalt.meaning.toLowerCase() !==
+                                      "meaning awaits clinician review.",
+                                )
+                                .map((gestalt) => (
+                                  <option key={gestalt.id} value={gestalt.id}>
+                                    {gestalt.phrase}
+                                  </option>
+                                ))}
+                            </select>
+                          </label>
                         </div>
-                        <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                          All linked occurrences, session references, working
-                          meanings, AAC planning links, reports, and audit
-                          history will remain connected to the phrase you keep.
-                        </p>
-                        <div className="mt-4 flex flex-wrap gap-2">
+                        <label className="block text-sm font-semibold">
+                          Clinician-confirmed working meaning
+                          <textarea
+                            value={recoveryDraft.meaning}
+                            onChange={(event) =>
+                              setRecoveryDraft((draft) => ({
+                                ...draft,
+                                meaning: event.target.value,
+                              }))
+                            }
+                            rows={2}
+                            className="mt-1 w-full rounded-xl border border-input bg-background p-3 font-normal"
+                          />
+                        </label>
+                        <div className="grid gap-4 md:grid-cols-2">
+                          <label className="text-sm font-semibold">
+                            Communication function
+                            <input
+                              value={recoveryDraft.function}
+                              onChange={(event) =>
+                                setRecoveryDraft((draft) => ({
+                                  ...draft,
+                                  function: event.target.value,
+                                }))
+                              }
+                              className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
+                            />
+                          </label>
+                          <label className="text-sm font-semibold">
+                            Context
+                            <input
+                              value={recoveryDraft.context}
+                              onChange={(event) =>
+                                setRecoveryDraft((draft) => ({
+                                  ...draft,
+                                  context: event.target.value,
+                                }))
+                              }
+                              className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
+                            />
+                          </label>
+                          <label className="text-sm font-semibold">
+                            Emotional state
+                            <input
+                              value={recoveryDraft.emotionalState}
+                              onChange={(event) =>
+                                setRecoveryDraft((draft) => ({
+                                  ...draft,
+                                  emotionalState: event.target.value,
+                                }))
+                              }
+                              className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
+                            />
+                          </label>
+                          <label className="text-sm font-semibold">
+                            Observed at
+                            <input
+                              type="datetime-local"
+                              value={recoveryDraft.observedAt}
+                              onChange={(event) =>
+                                setRecoveryDraft((draft) => ({
+                                  ...draft,
+                                  observedAt: event.target.value,
+                                }))
+                              }
+                              className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 font-normal"
+                            />
+                          </label>
+                        </div>
+                        <label className="flex items-start gap-3 rounded-xl border border-accent/30 bg-accent/5 p-3 text-sm leading-6">
+                          <input
+                            type="checkbox"
+                            className="mt-1"
+                            checked={recoveryDraft.confirmation}
+                            onChange={(event) =>
+                              setRecoveryDraft((draft) => ({
+                                ...draft,
+                                confirmation: event.target.checked,
+                              }))
+                            }
+                          />
+                          <span>
+                            I reviewed the preserved note and confirm this
+                            interpretation as clinician-owned evidence. ChildLed
+                            did not infer the meaning or function.
+                          </span>
+                        </label>
+                        {recoverLegacyObservation.isError && (
+                          <p role="alert" className="text-sm text-destructive">
+                            This observation could not be recovered. It may
+                            already be accounted for or the selected phrase may
+                            not safely match.
+                          </p>
+                        )}
+                        <div className="flex flex-wrap gap-2">
                           <Button
-                            onClick={confirmSuggestionMerge}
-                            disabled={decideDuplicateSuggestion.isPending}
-                            data-testid={`button-confirm-duplicate-merge-${suggestion.suggestionId}`}
+                            onClick={confirmRecovery}
+                            disabled={
+                              recoverLegacyObservation.isPending ||
+                              !recoveryDraft.phrase.trim() ||
+                              !recoveryDraft.meaning.trim() ||
+                              !recoveryDraft.function.trim() ||
+                              !recoveryDraft.context.trim() ||
+                              !recoveryDraft.observedAt ||
+                              !recoveryDraft.confirmation
+                            }
+                            data-testid={`button-confirm-legacy-observation-${item.noteId}`}
                           >
-                            {decideDuplicateSuggestion.isPending
-                              ? "Merging…"
-                              : "Confirm merge"}
+                            {recoverLegacyObservation.isPending
+                              ? "Recovering…"
+                              : "Confirm and recover"}
                           </Button>
                           <Button
                             variant="quiet"
-                            onClick={() => setMergeReview(null)}
+                            onClick={() => setRecoveryItem(null)}
                           >
                             Cancel
                           </Button>
                         </div>
                       </div>
-                    ) : (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Button
-                          onClick={() =>
-                            setMergeReview({
-                              suggestion,
-                              canonicalId: suggestion.first.id,
-                            })
-                          }
-                          disabled={decideDuplicateSuggestion.isPending}
-                          data-testid={`button-approve-duplicate-${suggestion.suggestionId}`}
-                        >
-                          <GitMerge size={15} /> Approve Merge
-                        </Button>
-                        <Button
-                          variant="outline"
-                          onClick={() => decide(suggestion, "keep_separate")}
-                          disabled={decideDuplicateSuggestion.isPending}
-                          data-testid={`button-keep-separate-${suggestion.suggestionId}`}
-                        >
-                          Keep Separate
-                        </Button>
-                        <Button
-                          variant="quiet"
-                          onClick={() => decide(suggestion, "dismiss")}
-                          disabled={decideDuplicateSuggestion.isPending}
-                          data-testid={`button-dismiss-duplicate-${suggestion.suggestionId}`}
-                        >
-                          Dismiss Suggestion
-                        </Button>
-                      </div>
                     )}
                   </article>
-                );
-              })}
+                ))}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-dashed border-border bg-card/60 px-5 py-8 text-center">
+                <Check className="mx-auto text-primary" size={24} />
+                <p className="mt-2 font-semibold">
+                  No older observations need recovery
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Every preserved shared phrase note is either already typed
+                  evidence or has a recorded clinician decision.
+                </p>
+              </div>
+            )}
+          </section>
+        )}
+        {canReviewSession && showDuplicateQueue && (
+          <section
+            className="rounded-3xl border border-accent/35 bg-accent/5 p-5 soft-shadow md:p-6"
+            data-testid="dictionary-duplicate-review-queue"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary/65">
+                  Dictionary review
+                </p>
+                <h2 className="serif mt-1 text-2xl font-semibold">
+                  Potential Duplicate Phrases
+                </h2>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Review suggestions generated from clinician-confirmed
+                  dictionary entries. ChildLed never merges entries without your
+                  explicit confirmation.
+                </p>
+              </div>
+              <Button
+                variant="quiet"
+                className="size-9 rounded-full p-0"
+                onClick={() => {
+                  setShowDuplicateQueue(false);
+                  setMergeReview(null);
+                }}
+                aria-label="Close duplicate suggestions"
+              >
+                <X size={17} />
+              </Button>
             </div>
-          ) : (
-            <div className="mt-5 rounded-2xl border border-dashed border-border bg-card/60 px-5 py-8 text-center">
-              <Check className="mx-auto text-primary" size={24} />
-              <p className="mt-2 font-semibold">
-                No merge suggestions to review
+            {duplicateSuggestionsQuery.isLoading ? (
+              <div className="mt-5">
+                <LoadingBlocks />
+              </div>
+            ) : duplicateSuggestionsQuery.isError ? (
+              <p className="mt-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+                Merge suggestions are temporarily unavailable. No dictionary
+                entries were changed.
               </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                The current clinician-confirmed phrases remain separate.
+            ) : duplicateSuggestions.length ? (
+              <div className="mt-5 space-y-4">
+                {duplicateSuggestions.map((suggestion) => {
+                  const isMergeReview =
+                    mergeReview?.suggestion.suggestionId ===
+                    suggestion.suggestionId;
+                  return (
+                    <article
+                      key={suggestion.suggestionId}
+                      className="rounded-2xl border border-border bg-card p-4 md:p-5"
+                      data-testid={`duplicate-suggestion-${suggestion.suggestionId}`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <span className="rounded-full bg-accent/15 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-primary">
+                          {suggestion.reasonLabel}
+                        </span>
+                        <span className="text-xs text-muted-foreground">
+                          {Math.round(suggestion.similarityScore * 100)}% text
+                          similarity
+                        </span>
+                      </div>
+                      <div className="mt-4 grid gap-3 md:grid-cols-2">
+                        {[suggestion.first, suggestion.second].map((phrase) => (
+                          <div
+                            key={phrase.id}
+                            className="rounded-xl border border-border bg-background p-4"
+                          >
+                            <p className="serif text-lg font-semibold">
+                              “{phrase.phrase}”
+                            </p>
+                            <p className="mt-2 text-sm text-foreground">
+                              {phrase.meaning}
+                            </p>
+                            <p className="mt-2 text-xs text-muted-foreground">
+                              {phrase.function} · {phrase.occurrences}{" "}
+                              occurrence
+                              {phrase.occurrences === 1 ? "" : "s"}
+                            </p>
+                            {phrase.contexts.length > 0 && (
+                              <p className="mt-2 text-xs text-muted-foreground">
+                                Contexts: {phrase.contexts.join(", ")}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      {isMergeReview ? (
+                        <div
+                          className="mt-4 rounded-xl border border-primary/20 bg-secondary/45 p-4"
+                          role="group"
+                          aria-label="Choose the canonical phrase"
+                        >
+                          <p className="text-sm font-semibold">
+                            Which phrase should remain in the dictionary?
+                          </p>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                            {[suggestion.first, suggestion.second].map(
+                              (phrase) => (
+                                <label
+                                  key={phrase.id}
+                                  className="flex cursor-pointer items-center gap-3 rounded-xl border border-border bg-card p-3 text-sm"
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`canonical-${suggestion.suggestionId}`}
+                                    checked={
+                                      mergeReview.canonicalId === phrase.id
+                                    }
+                                    onChange={() =>
+                                      setMergeReview({
+                                        suggestion,
+                                        canonicalId: phrase.id,
+                                      })
+                                    }
+                                  />
+                                  <span>Keep “{phrase.phrase}”</span>
+                                </label>
+                              ),
+                            )}
+                          </div>
+                          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                            All linked occurrences, session references, working
+                            meanings, AAC planning links, reports, and audit
+                            history will remain connected to the phrase you
+                            keep.
+                          </p>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button
+                              onClick={confirmSuggestionMerge}
+                              disabled={decideDuplicateSuggestion.isPending}
+                              data-testid={`button-confirm-duplicate-merge-${suggestion.suggestionId}`}
+                            >
+                              {decideDuplicateSuggestion.isPending
+                                ? "Merging…"
+                                : "Confirm merge"}
+                            </Button>
+                            <Button
+                              variant="quiet"
+                              onClick={() => setMergeReview(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button
+                            onClick={() =>
+                              setMergeReview({
+                                suggestion,
+                                canonicalId: suggestion.first.id,
+                              })
+                            }
+                            disabled={decideDuplicateSuggestion.isPending}
+                            data-testid={`button-approve-duplicate-${suggestion.suggestionId}`}
+                          >
+                            <GitMerge size={15} /> Approve Merge
+                          </Button>
+                          <Button
+                            variant="outline"
+                            onClick={() => decide(suggestion, "keep_separate")}
+                            disabled={decideDuplicateSuggestion.isPending}
+                            data-testid={`button-keep-separate-${suggestion.suggestionId}`}
+                          >
+                            Keep Separate
+                          </Button>
+                          <Button
+                            variant="quiet"
+                            onClick={() => decide(suggestion, "dismiss")}
+                            disabled={decideDuplicateSuggestion.isPending}
+                            data-testid={`button-dismiss-duplicate-${suggestion.suggestionId}`}
+                          >
+                            Dismiss Suggestion
+                          </Button>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="mt-5 rounded-2xl border border-dashed border-border bg-card/60 px-5 py-8 text-center">
+                <Check className="mx-auto text-primary" size={24} />
+                <p className="mt-2 font-semibold">
+                  No merge suggestions to review
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  The current clinician-confirmed phrases remain separate.
+                </p>
+              </div>
+            )}
+            {decideDuplicateSuggestion.isError && (
+              <p className="mt-4 text-sm text-destructive">
+                That decision could not be saved. The dictionary was not
+                changed; refresh the suggestions and try again.
               </p>
-            </div>
-          )}
-          {decideDuplicateSuggestion.isError && (
-            <p className="mt-4 text-sm text-destructive">
-              That decision could not be saved. The dictionary was not changed;
-              refresh the suggestions and try again.
-            </p>
-          )}
-        </section>
-      )}
+            )}
+          </section>
+        )}
 
-      {canReviewSession && (
-        <div
-          className="rounded-2xl border border-accent/30 bg-accent/5 p-4"
-          data-testid="dictionary-merge-tool"
-        >
-          <p className="text-sm font-semibold text-foreground">
-            Merge duplicate dictionary entries
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Keep one clinician-reviewed phrase as canonical. Linked sessions,
-            transcripts, notes, and counts will be retained.
-          </p>
-          <div className="mt-3 grid gap-2 sm:grid-cols-3">
-            <select
-              value={mergeSourceId}
-              onChange={(event) => setMergeSourceId(event.target.value)}
-              className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
-              data-testid="select-duplicate-phrase"
-            >
-              <option value="">Duplicate to archive…</option>
-              {(gestalts ?? []).map((g) => (
-                <option key={g.id} value={g.id}>
-                  {g.phrase}
-                </option>
-              ))}
-            </select>
-            <select
-              value={mergeTargetId}
-              onChange={(event) => setMergeTargetId(event.target.value)}
-              className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
-              data-testid="select-canonical-phrase"
-            >
-              <option value="">Canonical phrase to keep…</option>
-              {(gestalts ?? [])
-                .filter((g) => String(g.id) !== mergeSourceId)
-                .map((g) => (
+        {canReviewSession && (
+          <div
+            className="rounded-2xl border border-accent/30 bg-accent/5 p-4"
+            data-testid="dictionary-merge-tool"
+          >
+            <p className="text-sm font-semibold text-foreground">
+              Merge duplicate dictionary entries
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Keep one clinician-reviewed phrase as canonical. Linked sessions,
+              transcripts, notes, and counts will be retained.
+            </p>
+            <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <select
+                value={mergeSourceId}
+                onChange={(event) => setMergeSourceId(event.target.value)}
+                className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
+                data-testid="select-duplicate-phrase"
+              >
+                <option value="">Duplicate to archive…</option>
+                {(gestalts ?? []).map((g) => (
                   <option key={g.id} value={g.id}>
                     {g.phrase}
                   </option>
                 ))}
-            </select>
-            <Button
-              variant="outline"
-              disabled={
-                !childId ||
-                !mergeSourceId ||
-                !mergeTargetId ||
-                mergeGestalts.isPending
-              }
-              onClick={() =>
-                mergeGestalts.mutate({
-                  params: { childId: childId! },
-                  data: {
-                    sourceGestaltId: Number(mergeSourceId),
-                    targetGestaltId: Number(mergeTargetId),
-                  },
-                })
-              }
-              data-testid="button-merge-dictionary-entries"
-            >
-              {mergeGestalts.isPending ? "Merging…" : "Merge entries"}
-            </Button>
+              </select>
+              <select
+                value={mergeTargetId}
+                onChange={(event) => setMergeTargetId(event.target.value)}
+                className="h-10 rounded-xl border border-input bg-background px-3 text-sm"
+                data-testid="select-canonical-phrase"
+              >
+                <option value="">Canonical phrase to keep…</option>
+                {(gestalts ?? [])
+                  .filter((g) => String(g.id) !== mergeSourceId)
+                  .map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.phrase}
+                    </option>
+                  ))}
+              </select>
+              <Button
+                variant="outline"
+                disabled={
+                  !childId ||
+                  !mergeSourceId ||
+                  !mergeTargetId ||
+                  mergeGestalts.isPending
+                }
+                onClick={() =>
+                  mergeGestalts.mutate({
+                    params: { childId: childId! },
+                    data: {
+                      sourceGestaltId: Number(mergeSourceId),
+                      targetGestaltId: Number(mergeTargetId),
+                    },
+                  })
+                }
+                data-testid="button-merge-dictionary-entries"
+              >
+                {mergeGestalts.isPending ? "Merging…" : "Merge entries"}
+              </Button>
+            </div>
+            {mergeGestalts.isError && (
+              <p className="mt-2 text-xs text-destructive">
+                The entries could not be merged. Confirm they are close matches
+                and try again.
+              </p>
+            )}
           </div>
-          {mergeGestalts.isError && (
-            <p className="mt-2 text-xs text-destructive">
-              The entries could not be merged. Confirm they are close matches
-              and try again.
+        )}
+        <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 soft-shadow sm:flex-row">
+          <div className="relative flex-1">
+            <Search
+              className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              size={17}
+            />
+            <input
+              data-testid="input-search-dictionary"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search a phrase, meaning, or context..."
+              className="h-11 w-full rounded-xl bg-muted/60 pl-10 pr-4 text-sm outline-none transition-shadow ring-0 placeholder:text-muted-foreground focus-ring focus:bg-secondary/60"
+            />
+          </div>
+          <div className="relative">
+            <Filter
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+              size={15}
+            />
+            <select
+              data-testid="select-function-filter"
+              value={filter}
+              onChange={(event) => setFilter(event.target.value)}
+              className="h-11 w-full appearance-none rounded-xl bg-muted/60 pl-9 pr-10 text-sm font-medium outline-none transition-shadow sm:w-48"
+            >
+              <option>All functions</option>
+              {functions.map((item) => (
+                <option key={item}>{item}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+
+        {loading || insightsQuery.isLoading ? (
+          <LoadingBlocks />
+        ) : filtered.length ? (
+          <div className="grid gap-4 lg:grid-cols-2">
+            {filtered.map((item) => {
+              const trend = trends.find((t) => t.gestaltId === item.gestalt.id);
+              return (
+                <div
+                  key={item.gestalt.id}
+                  className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 soft-shadow transition-all hover:-translate-y-1 hover:shadow-md"
+                >
+                  <PhraseRow gestalt={item.gestalt} />
+
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-border/50">
+                    <div className="flex flex-wrap gap-2">
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium bg-secondary/50 px-2.5 py-1.5 rounded-lg border border-border/50">
+                        <ActivityIcon size={12} className="text-primary" />
+                        {item.occurrences} occurrence
+                        {item.occurrences !== 1 ? "s" : ""}
+                      </div>
+                      {item.lastSeen && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium bg-secondary/50 px-2.5 py-1.5 rounded-lg border border-border/50">
+                          <Clock3 size={12} className="text-primary" />
+                          Seen {timeAgo(item.lastSeen)}
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium bg-secondary/50 px-2.5 py-1.5 rounded-lg border border-border/50">
+                        <Check size={12} className="text-primary" />
+                        {item.evidenceCount} session
+                        {item.evidenceCount !== 1 ? "s" : ""}
+                      </div>
+                    </div>
+                    {trend && <PhraseTrendChart points={trend.points} />}
+                  </div>
+
+                  {item.gestalt.audioUrl && (
+                    <div className="mt-4">
+                      <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                        Session recording
+                      </p>
+                      <audio
+                        controls
+                        preload="metadata"
+                        className="h-9 w-full rounded-md"
+                        src={item.gestalt.audioUrl}
+                      />
+                    </div>
+                  )}
+
+                  <div className="mt-5 flex items-center justify-between border-t border-border pt-4 text-xs text-muted-foreground">
+                    <span>Added by {item.gestalt.createdBy}</span>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {canReviewSession &&
+                        (item.gestalt.aacPlanningStatus ? (
+                          <Link
+                            href={`/aac-planning?childId=${childId}`}
+                            data-testid={`link-aac-planning-${item.gestalt.id}`}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/15 px-2.5 py-1.5 font-semibold text-primary"
+                          >
+                            <ClipboardList size={13} /> Open AAC Planning
+                          </Link>
+                        ) : (
+                          <button
+                            data-testid={`button-add-aac-planning-${item.gestalt.id}`}
+                            disabled={createAacPlanning.isPending}
+                            onClick={() =>
+                              childId &&
+                              createAacPlanning.mutate({
+                                data: { childId, gestaltId: item.gestalt.id },
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-primary/15 px-2.5 py-1.5 font-semibold text-primary disabled:opacity-50"
+                          >
+                            <Plus size={13} /> Add to AAC Planning
+                          </button>
+                        ))}
+                      <button
+                        data-testid={`button-comment-phrase-${item.gestalt.id}`}
+                        onClick={() => onComment(item.gestalt)}
+                        className="inline-flex focus-ring items-center gap-1.5 font-semibold text-primary transition-colors hover:text-accent"
+                      >
+                        <MessageCircle size={14} />{" "}
+                        {item.gestalt.comments?.length ?? 0} notes
+                      </button>
+                      {canReviewSession && (
+                        <button
+                          type="button"
+                          data-testid={`button-delete-phrase-${item.gestalt.id}`}
+                          onClick={() => setPhraseToDelete(item.gestalt)}
+                          className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 font-semibold text-destructive transition-colors hover:bg-destructive/10 focus-ring"
+                        >
+                          <Trash2 size={14} /> Delete
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            icon={Search}
+            title={
+              search ? "No echoes found" : "Your shared dictionary is open"
+            }
+            body={
+              search
+                ? "Try another phrase, meaning, or context."
+                : "Add a phrase from home or school, or begin a reviewed session so your team can build the map together."
+            }
+            action={
+              !search && (
+                <div className="flex flex-wrap justify-center gap-2">
+                  {canAddPhrase && (
+                    <Button
+                      variant="warm"
+                      onClick={onAddPhrase}
+                      data-testid="button-dictionary-empty-add-phrase"
+                    >
+                      <Plus size={16} /> Add a phrase
+                    </Button>
+                  )}
+                  {canReviewSession && (
+                    <Link
+                      href="/session"
+                      data-testid="button-dictionary-empty-add"
+                      className="inline-flex focus-ring items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-primary"
+                    >
+                      <Mic size={16} /> Review session phrases
+                    </Link>
+                  )}
+                </div>
+              )
+            }
+          />
+        )}
+      </div>
+      {phraseToDelete && (
+        <Modal
+          title="Delete this phrase?"
+          onClose={() => {
+            if (!deleteGestalt.isPending) setPhraseToDelete(null);
+          }}
+        >
+          <p className="text-sm leading-6 text-muted-foreground">
+            “{phraseToDelete.phrase}” will be removed from the active phrase
+            dictionary. Past session notes and historical evidence will remain
+            unchanged.
+          </p>
+          {deleteGestalt.isError && (
+            <p
+              role="alert"
+              className="mt-4 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive"
+            >
+              The phrase could not be deleted. Nothing was changed; please try
+              again.
             </p>
           )}
-        </div>
+          <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              disabled={deleteGestalt.isPending}
+              onClick={() => setPhraseToDelete(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              data-autofocus
+              variant="quiet"
+              className="min-h-11 text-destructive hover:bg-destructive/10"
+              disabled={deleteGestalt.isPending}
+              onClick={() =>
+                deleteGestalt.mutate({ gestaltId: phraseToDelete.id })
+              }
+              data-testid="button-confirm-delete-phrase"
+            >
+              <Trash2 size={16} />
+              {deleteGestalt.isPending ? "Deleting…" : "Delete phrase"}
+            </Button>
+          </div>
+        </Modal>
       )}
-      <div className="flex flex-col gap-3 rounded-2xl border border-border bg-card p-3 soft-shadow sm:flex-row">
-        <div className="relative flex-1">
-          <Search
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            size={17}
-          />
-          <input
-            data-testid="input-search-dictionary"
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search a phrase, meaning, or context..."
-            className="h-11 w-full rounded-xl bg-muted/60 pl-10 pr-4 text-sm outline-none transition-shadow ring-0 placeholder:text-muted-foreground focus-ring focus:bg-secondary/60"
-          />
-        </div>
-        <div className="relative">
-          <Filter
-            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-            size={15}
-          />
-          <select
-            data-testid="select-function-filter"
-            value={filter}
-            onChange={(event) => setFilter(event.target.value)}
-            className="h-11 w-full appearance-none rounded-xl bg-muted/60 pl-9 pr-10 text-sm font-medium outline-none transition-shadow sm:w-48"
-          >
-            <option>All functions</option>
-            {functions.map((item) => (
-              <option key={item}>{item}</option>
-            ))}
-          </select>
-        </div>
-      </div>
-
-      {loading || insightsQuery.isLoading ? (
-        <LoadingBlocks />
-      ) : filtered.length ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          {filtered.map((item) => {
-            const trend = trends.find((t) => t.gestaltId === item.gestalt.id);
-            return (
-              <div
-                key={item.gestalt.id}
-                className="flex flex-col justify-between rounded-2xl border border-border bg-card p-5 soft-shadow transition-all hover:-translate-y-1 hover:shadow-md"
-              >
-                <PhraseRow gestalt={item.gestalt} />
-
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-4 pt-4 border-t border-border/50">
-                  <div className="flex flex-wrap gap-2">
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium bg-secondary/50 px-2.5 py-1.5 rounded-lg border border-border/50">
-                      <ActivityIcon size={12} className="text-primary" />
-                      {item.occurrences} occurrence
-                      {item.occurrences !== 1 ? "s" : ""}
-                    </div>
-                    {item.lastSeen && (
-                      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium bg-secondary/50 px-2.5 py-1.5 rounded-lg border border-border/50">
-                        <Clock3 size={12} className="text-primary" />
-                        Seen {timeAgo(item.lastSeen)}
-                      </div>
-                    )}
-                    <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground font-medium bg-secondary/50 px-2.5 py-1.5 rounded-lg border border-border/50">
-                      <Check size={12} className="text-primary" />
-                      {item.evidenceCount} session
-                      {item.evidenceCount !== 1 ? "s" : ""}
-                    </div>
-                  </div>
-                  {trend && <PhraseTrendChart points={trend.points} />}
-                </div>
-
-                {item.gestalt.audioUrl && (
-                  <div className="mt-4">
-                    <p className="mb-2 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                      Session recording
-                    </p>
-                    <audio
-                      controls
-                      preload="metadata"
-                      className="h-9 w-full rounded-md"
-                      src={item.gestalt.audioUrl}
-                    />
-                  </div>
-                )}
-
-                <div className="mt-5 flex items-center justify-between border-t border-border pt-4 text-xs text-muted-foreground">
-                  <span>Added by {item.gestalt.createdBy}</span>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {canReviewSession &&
-                      (item.gestalt.aacPlanningStatus ? (
-                        <Link
-                          href={`/aac-planning?childId=${childId}`}
-                          data-testid={`link-aac-planning-${item.gestalt.id}`}
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-primary/15 px-2.5 py-1.5 font-semibold text-primary"
-                        >
-                          <ClipboardList size={13} /> Open AAC Planning
-                        </Link>
-                      ) : (
-                        <button
-                          data-testid={`button-add-aac-planning-${item.gestalt.id}`}
-                          disabled={createAacPlanning.isPending}
-                          onClick={() =>
-                            childId &&
-                            createAacPlanning.mutate({
-                              data: { childId, gestaltId: item.gestalt.id },
-                            })
-                          }
-                          className="inline-flex items-center gap-1.5 rounded-lg border border-primary/15 px-2.5 py-1.5 font-semibold text-primary disabled:opacity-50"
-                        >
-                          <Plus size={13} /> Add to AAC Planning
-                        </button>
-                      ))}
-                    <button
-                      data-testid={`button-comment-phrase-${item.gestalt.id}`}
-                      onClick={() => onComment(item.gestalt)}
-                      className="inline-flex focus-ring items-center gap-1.5 font-semibold text-primary transition-colors hover:text-accent"
-                    >
-                      <MessageCircle size={14} />{" "}
-                      {item.gestalt.comments?.length ?? 0} notes
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      ) : (
-        <EmptyState
-          icon={Search}
-          title={search ? "No echoes found" : "Your shared dictionary is open"}
-          body={
-            search
-              ? "Try another phrase, meaning, or context."
-              : "Add a phrase from home or school, or begin a reviewed session so your team can build the map together."
-          }
-          action={
-            !search && (
-              <div className="flex flex-wrap justify-center gap-2">
-                {canAddPhrase && (
-                  <Button
-                    variant="warm"
-                    onClick={onAddPhrase}
-                    data-testid="button-dictionary-empty-add-phrase"
-                  >
-                    <Plus size={16} /> Add a phrase
-                  </Button>
-                )}
-                {canReviewSession && (
-                  <Link
-                    href="/session"
-                    data-testid="button-dictionary-empty-add"
-                    className="inline-flex focus-ring items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-primary"
-                  >
-                    <Mic size={16} /> Review session phrases
-                  </Link>
-                )}
-              </div>
-            )
-          }
-        />
-      )}
-    </div>
+    </>
   );
 }
 
@@ -7875,6 +7007,28 @@ function ChildPage({
         </section>
       </div>
       <AacInformationCard childId={child.id} />
+      <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
+            <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
+              Shareable support guide
+            </p>
+            <h2 className="serif mt-1 text-2xl font-semibold">
+              Communication Passport
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Open the concise guide approved communication partners can use to
+              understand how to communicate with{" "}
+              {child.preferredName || child.name}.
+            </p>
+          </div>
+          <Link href={`/communication-passport?childId=${child.id}`}>
+            <Button variant="outline" className="min-h-11 w-full sm:w-auto">
+              <BookOpen size={16} /> Open passport
+            </Button>
+          </Link>
+        </div>
+      </section>
       <SharedChildProfile childId={child.id} />
     </div>
   );
@@ -8128,8 +7282,8 @@ function SettingsPageContent() {
                     Future insights
                   </h3>
                   <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">
-                    When your map has enough context, ChildLed can gently surface
-                    patterns across settings. You’re always in control.
+                    When your map has enough context, ChildLed can gently
+                    surface patterns across settings. You’re always in control.
                   </p>
                 </div>
               </div>
@@ -8426,7 +7580,7 @@ function AdminSecurityPage() {
         <div className="grid gap-6 md:grid-cols-4 mb-8">
           <label className="block space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Audio retention (days)
+              Unclear clips (days)
             </span>
             <input
               type="number"
@@ -8441,6 +7595,10 @@ function AdminSecurityPage() {
               }
               className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition-shadow focus-ring"
             />
+            <span className="block text-xs font-normal leading-5 text-muted-foreground">
+              Full recordings are deleted after finalization. This controls only
+              short clips retained for unclear-speech review.
+            </span>
           </label>
           <label className="block space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -9851,6 +9009,7 @@ function SessionRecorderPage({
   const completeSessionCalibration = useCompleteSessionCalibration();
   const deleteSessionCalibration = useDeleteSessionCalibration();
   const deleteSessionDraft = useDeleteSessionTranscriptionDraft();
+  const deleteTranscriptPhrase = useDeleteSessionTranscriptPhrase();
   const prepareSessionRecording = usePrepareSessionRecording();
   const transcribeAudio = useTranscribeSessionAudio();
   const updateTranscriptSpeakers = useUpdateTranscriptSpeakers();
@@ -9884,6 +9043,7 @@ function SessionRecorderPage({
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const mediaStream = useRef<MediaStream | null>(null);
   const reviewAudio = useRef<HTMLAudioElement | null>(null);
+  const phraseReplayTimer = useRef<number | undefined>(undefined);
   const nlaGuideDialogRef = useRef<HTMLElement | null>(null);
   const nlaGuideTriggerRef = useRef<HTMLButtonElement | null>(null);
   const nlaGuideCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -9998,6 +9158,7 @@ function SessionRecorderPage({
     "idle" | "uploading" | "transcribing" | "complete" | "error"
   >("idle");
   const [transcriptionError, setTranscriptionError] = useState("");
+  const [replayError, setReplayError] = useState("");
   const [reviewExceptionsOnly, setReviewExceptionsOnly] = useState(true);
   const [ignoredTranscriptPhraseIds, setIgnoredTranscriptPhraseIds] = useState<
     number[]
@@ -10025,9 +9186,6 @@ function SessionRecorderPage({
     Record<number, string>
   >({});
   const [nlaGuideOpen, setNlaGuideOpen] = useState(false);
-  const [nlaStageReviewSegmentId, setNlaStageReviewSegmentId] = useState<
-    number | null
-  >(null);
   useEffect(() => {
     if (!nlaGuideOpen) return;
     const previouslyFocused =
@@ -10101,15 +9259,6 @@ function SessionRecorderPage({
         ? undefined
         : `${basePath}/api/sessions/transcription/${draft.id}/audio`,
     );
-    const mostRecentlyStagedChild = [...draft.childUtterances]
-      .filter(
-        (utterance) =>
-          Boolean(utterance.nlaStage) &&
-          (utterance.disposition === "child" ||
-            utterance.disposition === "confirmed_gestalt"),
-      )
-      .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
-    setNlaStageReviewSegmentId(mostRecentlyStagedChild?.segmentId ?? null);
     setElapsed(
       Math.ceil(
         Math.max(
@@ -10296,6 +9445,12 @@ function SessionRecorderPage({
     );
   };
   const clearAudio = () => {
+    if (phraseReplayTimer.current !== undefined) {
+      window.clearTimeout(phraseReplayTimer.current);
+      phraseReplayTimer.current = undefined;
+    }
+    reviewAudio.current?.pause();
+    setReplayError("");
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(undefined);
     setAudioUrl(undefined);
@@ -10943,13 +10098,6 @@ function SessionRecorderPage({
         },
       });
       setTranscription(result);
-      if (segmentIds.length === 1) {
-        if (disposition === "child" || disposition === "confirmed_gestalt") {
-          setNlaStageReviewSegmentId(segmentIds[0] ?? null);
-        } else if (nlaStageReviewSegmentId === segmentIds[0]) {
-          setNlaStageReviewSegmentId(null);
-        }
-      }
       await queryClient.invalidateQueries({
         queryKey: getListChildPhraseInboxQueryKey({
           childId,
@@ -11093,10 +10241,45 @@ function SessionRecorderPage({
       );
     }
   };
-  const playUtterance = (timestampSeconds: number | null) => {
-    if (!reviewAudio.current || timestampSeconds === null) return;
-    reviewAudio.current.currentTime = timestampSeconds;
-    void reviewAudio.current.play();
+  const playUtterance = async (
+    timestampSeconds: number | null,
+    durationSeconds: number | null,
+  ) => {
+    const audio = reviewAudio.current;
+    if (!audio) {
+      setReplayError("The recording is not available for replay.");
+      return;
+    }
+    if (
+      timestampSeconds === null ||
+      !(durationSeconds && durationSeconds > 0)
+    ) {
+      setReplayError(
+        "Phrase replay is unavailable for this older transcript. Record a new session to capture phrase timing.",
+      );
+      return;
+    }
+    if (phraseReplayTimer.current !== undefined) {
+      window.clearTimeout(phraseReplayTimer.current);
+      phraseReplayTimer.current = undefined;
+    }
+    try {
+      audio.pause();
+      audio.currentTime = Math.max(0, timestampSeconds);
+      await audio.play();
+      setReplayError("");
+      phraseReplayTimer.current = window.setTimeout(
+        () => {
+          audio.pause();
+          phraseReplayTimer.current = undefined;
+        },
+        Math.max(50, Math.round(durationSeconds * 1_000)),
+      );
+    } catch {
+      setReplayError(
+        "The recording could not be played. Use the recording player below or try again.",
+      );
+    }
   };
   const setUtteranceNote = (
     segmentId: number,
@@ -11528,13 +10711,26 @@ function SessionRecorderPage({
       ];
     });
   };
-  const ignoreTranscriptPhrase = (detected: TranscriptPhrase) => {
-    setIgnoredTranscriptPhraseIds((current) =>
-      current.includes(detected.id) ? current : [...current, detected.id],
-    );
-    setCaptured((items) =>
-      items.filter((item) => item.transcriptPhraseId !== detected.id),
-    );
+  const ignoreTranscriptPhrase = async (detected: TranscriptPhrase) => {
+    setSaveError("");
+    try {
+      const updated = await deleteTranscriptPhrase.mutateAsync({
+        phraseId: detected.id,
+      });
+      setIgnoredTranscriptPhraseIds((current) =>
+        current.includes(detected.id) ? current : [...current, detected.id],
+      );
+      setCaptured((items) =>
+        items.filter((item) => item.transcriptPhraseId !== detected.id),
+      );
+      setTranscription(updated);
+    } catch (error: any) {
+      setSaveError(
+        error?.data?.error ??
+          error?.message ??
+          "The phrase could not be deleted. Your review was preserved; please try again.",
+      );
+    }
   };
   const reopenRoutinePhrase = (id: number) =>
     setCaptured((items) =>
@@ -11582,8 +10778,19 @@ function SessionRecorderPage({
         item.id === id ? { ...item, reviewState: "exception" } : item,
       ),
     );
-  const removeCaptured = (id: number) =>
+  const removeCaptured = async (id: number) => {
+    const capturedPhrase = captured.find((item) => item.id === id);
+    const transcriptPhrase = capturedPhrase?.transcriptPhraseId
+      ? transcription?.phrases.find(
+          (item) => item.id === capturedPhrase.transcriptPhraseId,
+        )
+      : undefined;
+    if (transcriptPhrase) {
+      await ignoreTranscriptPhrase(transcriptPhrase);
+      return;
+    }
     setCaptured((items) => items.filter((item) => item.id !== id));
+  };
   const replaceAudio = (file?: File) => {
     if (!file) return;
     if (!consentConfirmedAtRef.current) {
@@ -11764,47 +10971,34 @@ function SessionRecorderPage({
       );
     }
   };
-  // A completed raw transcript can still be waiting on server-side speaker grouping.
-  const speakerProcessingPending =
-    transcriptionStatus === "complete" &&
-    (transcription?.speakerSeparationStatus === "pending" ||
-      transcription?.speakerSeparationStatus === "processing");
   const reviewPreparationPending =
     transcriptionStatus === "complete" &&
     Boolean(transcription) &&
-    !speakerProcessingPending &&
     Boolean(
       transcription?.phrases.some(
         (detected) =>
           detected.childAttributed &&
           !ignoredTranscriptPhraseIds.includes(detected.id) &&
-          !captured.some(
-            (item) => item.transcriptPhraseId === detected.id,
-          ),
+          !captured.some((item) => item.transcriptPhraseId === detected.id),
       ),
     );
   const transcriptionPending =
     transcriptionStatus === "uploading" ||
     transcriptionStatus === "transcribing" ||
     (transcriptionStatus === "complete" && !transcription) ||
-    speakerProcessingPending ||
     reviewPreparationPending;
   const transcriptionProgressTitle =
     transcriptionStatus === "uploading"
       ? "Uploading the private recording…"
       : transcriptionStatus === "transcribing"
         ? "Transcribing the recording…"
-        : speakerProcessingPending
-          ? "Separating speakers and preparing review…"
-          : "Preparing the review…";
+        : "Preparing the review…";
   const transcriptionProgressBody =
     transcriptionStatus === "uploading"
       ? "ChildLed is securely uploading the recording. Transcription will begin automatically when the upload finishes."
       : transcriptionStatus === "transcribing"
         ? "ChildLed is creating the transcript. Review will remain hidden until all processing finishes."
-        : speakerProcessingPending
-          ? "The transcript is still being processed for speakers and likely Child phrases. Review will appear only when this finishes."
-          : "ChildLed is organizing the completed transcript into review items. This should only take a moment.";
+        : "ChildLed is organizing the completed transcript into review items. This should only take a moment.";
   const completedWithNoSpeech =
     transcriptionStatus === "complete" &&
     transcription?.rawTranscript.trim().length === 0;
@@ -11816,47 +11010,14 @@ function SessionRecorderPage({
         : current,
     );
   }, [captured]);
-  useEffect(() => {
-    if (
-      transcriptionStatus !== "complete" ||
-      !transcription ||
-      (transcription.speakerSeparationStatus !== "pending" &&
-        transcription.speakerSeparationStatus !== "processing") ||
-      !uploadedAudioId
-    )
-      return;
-    const refreshSpeakerReview = () => {
-      void transcribeAudio
-        .mutateAsync({
-          params: { childId },
-          data: { audioId: uploadedAudioId },
-        })
-        .then((result) => {
-          setTranscription(result);
-          addTranscriptDrafts(result);
-        })
-        .catch(() => {
-          // The raw transcript is already available; speaker review is optional.
-        });
-    };
-    const initialRefresh = window.setTimeout(refreshSpeakerReview, 1_500);
-    const interval = window.setInterval(refreshSpeakerReview, 3_000);
-    return () => {
-      window.clearTimeout(initialRefresh);
-      window.clearInterval(interval);
-    };
-  }, [
-    childId,
-    transcription?.id,
-    transcription?.speakerSeparationStatus,
-    transcriptionStatus,
-    uploadedAudioId,
-  ]);
   const speakerSeparationUnavailable =
     transcription?.speakerSeparationStatus === "failed" ||
     transcription?.speakerSeparationStatus === "unavailable";
   const reviewedSpeakers = transcription?.speakers ?? [];
   const speakerTargets = reviewedSpeakers.map((speaker) => speaker.label);
+  const manualTranscriptReviewStarted = Boolean(
+    transcription?.reviewProgress.reviewed,
+  );
   const lowConfidenceTurnCount =
     transcription?.segments.filter(
       (segment) =>
@@ -11868,7 +11029,7 @@ function SessionRecorderPage({
     .sort((left, right) => left.reviewRank - right.reviewRank)
     .find((utterance) => utterance.disposition === "pending");
   const activeInboxItem = phraseInboxQuery.data?.find(
-    (item) => item.status === "pending",
+    (item) => item.status === "pending" && !item.workingMeaning?.trim(),
   );
   useEffect(() => {
     const inboxItems = phraseInboxQuery.data ?? [];
@@ -11948,18 +11109,6 @@ function SessionRecorderPage({
         document.getElementById(`inbox-meaning-${activeInboxItem.id}`)?.focus();
         return;
       }
-      if (
-        (event.key === "d" || event.key === "D" || event.key === "Escape") &&
-        activeInboxItem
-      ) {
-        event.preventDefault();
-        void updatePhraseInboxItem(
-          activeInboxItem.id,
-          "deferred",
-          activeInboxItem.phrase,
-        );
-        return;
-      }
       if (!rapidReviewUtterance) return;
       const decisions = {
         "1": "child",
@@ -11998,25 +11147,17 @@ function SessionRecorderPage({
     updateTranscriptChildUtterances.isPending,
   ]);
   const hasRawTranscript = Boolean(transcription?.rawTranscript.trim());
-  const manualTranscriptReview = Boolean(
-    speakerSeparationUnavailable &&
-    hasRawTranscript &&
-    reviewedSpeakers.length === 0,
-  );
-  const manualTranscriptReviewStarted =
-    manualTranscriptReview && Boolean(transcription?.reviewProgress.reviewed);
   useEffect(() => {
     if (
       transcriptionStatus === "complete" &&
       hasRawTranscript &&
-      (manualTranscriptReview || childUtterances.length === 0)
+      childUtterances.length === 0
     ) {
       setShowFullTranscript(true);
     }
   }, [
     childUtterances.length,
     hasRawTranscript,
-    manualTranscriptReview,
     transcription?.id,
     transcriptionStatus,
   ]);
@@ -12036,7 +11177,6 @@ function SessionRecorderPage({
   const hasCompletedTranscriptReview =
     transcriptionStatus === "complete" &&
     Boolean(transcription) &&
-    !manualTranscriptReview &&
     !unresolvedChildUtteranceReview &&
     (Boolean(transcription?.reviewProgress.total) || !hasRawTranscript);
   const closeoutState =
@@ -12087,7 +11227,7 @@ function SessionRecorderPage({
     },
     waiting: {
       title: "Waiting for reviewed Child language",
-      body: "Complete speaker review or add a clinician-captured phrase to continue.",
+      body: "Review the transcript or add a clinician-captured phrase to continue.",
     },
   }[closeoutState];
   const singleSpeakerFastPath =
@@ -12586,23 +11726,29 @@ function SessionRecorderPage({
       </section>
     ) : null;
   const identifyChildLanguagePanel =
-    transcriptionStatus === "complete" && transcription ? (
+    transcriptionStatus === "complete" &&
+    transcription &&
+    (Boolean(rapidReviewUtterance) ||
+      Boolean(activeInboxItem) ||
+      showFullTranscript) ? (
       <section
         data-testid="section-identify-child-language"
-        className="rounded-3xl border border-accent/35 bg-accent/10 p-5 md:p-7"
+        className="flex flex-col rounded-3xl border border-accent/35 bg-accent/10 p-5 md:p-7"
       >
-        <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="order-1 flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="text-[10px] font-bold uppercase tracking-[.18em] text-primary">
               Session review ready
             </p>
             <h2 className="serif mt-1 text-2xl font-semibold">
-              Identify Child Language
+              {rapidReviewUtterance
+                ? "Identify Child Language"
+                : "Review Child Phrases"}
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Read the completed transcript, then classify each review turn.
-              Speaker grouping is optional guidance; only your explicit decision
-              changes review state.
+              {rapidReviewUtterance
+                ? "Decide whether each transcript phrase is Child language, Not Child, Unsure, or Unintelligible."
+                : "Add a working meaning to keep each Child phrase, or delete anything that should not be part of this session."}
             </p>
           </div>
           {childUtterances.length > 1 && (
@@ -12612,14 +11758,29 @@ function SessionRecorderPage({
               data-testid="button-toggle-full-transcript"
             >
               {showFullTranscript
-                ? "Prioritize review"
+                ? "Close all decisions"
                 : "Review chronologically"}
             </Button>
           )}
         </div>
+        {transcriptionError && (
+          <div
+            role="alert"
+            className="order-2 mt-4 rounded-xl border border-destructive/20 bg-destructive/10 p-4"
+            data-testid="status-utterance-review-error"
+          >
+            <p className="text-sm font-semibold text-destructive">
+              That review decision was not saved
+            </p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {transcriptionError} Your transcript is preserved. Choose the
+              decision again to retry.
+            </p>
+          </div>
+        )}
         <div
           data-testid="card-review-progress"
-          className="mt-5 rounded-2xl border border-primary/15 bg-card p-4 sm:p-5"
+          className="order-4 mt-5 rounded-2xl border border-primary/15 bg-card p-4 sm:p-5"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -12725,7 +11886,7 @@ function SessionRecorderPage({
         </div>
         <div
           data-testid="panel-completed-transcript"
-          className="mt-5 rounded-2xl border border-primary/20 bg-card p-5"
+          className="order-5 mt-5 rounded-2xl border border-primary/20 bg-card p-5"
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -12734,9 +11895,9 @@ function SessionRecorderPage({
               </p>
               <p className="mt-1 text-sm font-semibold">Full transcript</p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                Raw mixed-speaker text is always available for reference and is
-                never added to Child language evidence or documentation without
-                clinician review.
+                The original transcript is available for reference and is never
+                added to Child language evidence or documentation without your
+                review.
               </p>
             </div>
             <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-primary">
@@ -12752,19 +11913,9 @@ function SessionRecorderPage({
               : transcription.rawTranscript}
           </p>
         </div>
-        {manualTranscriptReview && (
-          <p
-            role="status"
-            data-testid="status-manual-transcript-review"
-            className="mt-4 rounded-xl border border-accent/35 bg-accent/10 p-4 text-sm font-semibold text-foreground"
-          >
-            Transcript complete. Child language identification can continue
-            manually.
-          </p>
-        )}
         <section
           data-testid="section-child-phrase-inbox"
-          className="mt-5 rounded-2xl border border-primary/20 bg-card p-5"
+          className={`${rapidReviewUtterance ? "order-6" : "order-3"} mt-5 rounded-2xl border border-primary/20 bg-card p-5`}
         >
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -12775,11 +11926,9 @@ function SessionRecorderPage({
                 Confirmed Child language, held for review
               </h3>
               <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">
-                A Child decision creates one durable inbox item with transcript
-                provenance. Working meaning is optional here. Only a
-                meaning-backed phrase completed through session closeout can
-                move into the communication dictionary and downstream clinical
-                evidence.
+                Add a working meaning to keep this phrase in the session. You
+                can edit its wording and details in the next review area before
+                finalizing.
               </p>
             </div>
             <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-primary">
@@ -12844,7 +11993,10 @@ function SessionRecorderPage({
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button
                   variant="primary"
-                  disabled={updateChildPhraseInbox.isPending}
+                  disabled={
+                    updateChildPhraseInbox.isPending ||
+                    !(inboxMeaningDrafts[activeInboxItem.id] ?? "").trim()
+                  }
                   onClick={() =>
                     void updatePhraseInboxItem(
                       activeInboxItem.id,
@@ -12854,28 +12006,26 @@ function SessionRecorderPage({
                   }
                   data-testid={`button-save-phrase-inbox-${activeInboxItem.id}`}
                 >
-                  <Check size={15} /> Save working meaning
+                  <Check size={15} /> Keep phrase & continue
                 </Button>
                 <Button
-                  aria-keyshortcuts="D Escape"
                   variant="outline"
-                  disabled={updateChildPhraseInbox.isPending}
+                  className="text-destructive hover:text-destructive"
+                  disabled={
+                    updateChildPhraseInbox.isPending ||
+                    updateTranscriptChildUtterances.isPending
+                  }
                   onClick={() =>
-                    void updatePhraseInboxItem(
-                      activeInboxItem.id,
-                      "deferred",
-                      activeInboxItem.phrase,
+                    void reviewChildUtterances(
+                      [activeInboxItem.segmentId],
+                      "not_child",
                     )
                   }
-                  data-testid={`button-defer-phrase-inbox-${activeInboxItem.id}`}
+                  data-testid={`button-delete-phrase-inbox-${activeInboxItem.id}`}
                 >
-                  <Clock3 size={15} /> Defer for now
+                  <Trash2 size={15} /> Delete phrase
                 </Button>
               </div>
-              <p className="mt-3 hidden text-[11px] text-muted-foreground md:block">
-                Keyboard: Enter focuses working meaning · D or Esc defers this
-                phrase.
-              </p>
             </article>
           )}
           {!phraseInboxQuery.isLoading && !activeInboxItem && (
@@ -12935,7 +12085,18 @@ function SessionRecorderPage({
             className="sr-only"
           />
         )}
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+        {replayError && (
+          <p
+            role="alert"
+            className="order-3 mt-4 rounded-xl border border-destructive/20 bg-destructive/10 p-3 text-sm text-destructive"
+            data-testid="status-phrase-replay-error"
+          >
+            {replayError}
+          </p>
+        )}
+        <div
+          className={`${rapidReviewUtterance || showFullTranscript ? "flex" : "hidden"} order-3 mt-5 flex-wrap items-center justify-between gap-3`}
+        >
           <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             {showFullTranscript
               ? "Complete transcript · chronological order"
@@ -12948,7 +12109,9 @@ function SessionRecorderPage({
             </p>
           )}
         </div>
-        <div className="mt-3 space-y-3">
+        <div
+          className={`${rapidReviewUtterance || showFullTranscript ? "block" : "hidden"} order-3 mt-3 space-y-3`}
+        >
           {!childUtterances.length &&
             !completedWithNoSpeech &&
             hasRawTranscript && (
@@ -12972,8 +12135,7 @@ function SessionRecorderPage({
             .filter(
               (utterance) =>
                 showFullTranscript ||
-                utterance.segmentId ===
-                  (nlaStageReviewSegmentId ?? rapidReviewUtterance?.segmentId),
+                utterance.segmentId === rapidReviewUtterance?.segmentId,
             )
             .map((utterance) => {
               const notes = utteranceNotes[utterance.segmentId];
@@ -13022,7 +12184,6 @@ function SessionRecorderPage({
                         {!showFullTranscript && (
                           <span>Priority {utterance.reviewRank}</span>
                         )}
-                        <span>{utterance.speakerLabel}</span>
                         {timestamp && <span>{timestamp}</span>}
                         {utterance.transcriptionConfidenceScore !== null && (
                           <span>
@@ -13068,12 +12229,30 @@ function SessionRecorderPage({
                       variant="outline"
                       className="px-3 py-2 text-xs"
                       disabled={
-                        !audioUrl || utterance.timestampSeconds === null
+                        !audioUrl ||
+                        utterance.timestampSeconds === null ||
+                        !(
+                          utterance.durationSeconds &&
+                          utterance.durationSeconds > 0
+                        )
                       }
-                      onClick={() => playUtterance(utterance.timestampSeconds)}
+                      onClick={() =>
+                        void playUtterance(
+                          utterance.timestampSeconds,
+                          utterance.durationSeconds,
+                        )
+                      }
                       data-testid={`button-play-utterance-${utterance.segmentId}`}
+                      title={
+                        utterance.timestampSeconds === null
+                          ? "Phrase timing is unavailable for this older transcript."
+                          : "Play only this transcribed phrase"
+                      }
                     >
-                      <Play size={14} /> Replay
+                      <Play size={14} />
+                      {utterance.timestampSeconds === null
+                        ? "Replay unavailable"
+                        : "Replay phrase"}
                     </Button>
                     {isPartial && !transcriptionConfirmed && (
                       <Button
@@ -13207,17 +12386,6 @@ function SessionRecorderPage({
                       >
                         <CircleHelp size={18} />
                       </button>
-                      {!showFullTranscript && (
-                        <Button
-                          type="button"
-                          variant="quiet"
-                          className="mb-0.5 px-3 py-2 text-xs"
-                          onClick={() => setNlaStageReviewSegmentId(null)}
-                          data-testid={`button-continue-nla-stage-${utterance.segmentId}`}
-                        >
-                          Continue review
-                        </Button>
-                      )}
                     </div>
                   )}
                   {(status === "Child" ||
@@ -13294,7 +12462,7 @@ function SessionRecorderPage({
               );
             })}
         </div>
-        <p className="mt-4 text-xs leading-5 text-muted-foreground">
+        <p className="order-7 mt-4 text-xs leading-5 text-muted-foreground">
           Safety rule: a Child decision creates a reviewable inbox item, not
           evidence. Only a meaning-backed phrase completed through dictionary
           review can affect documentation, reports, insights, Communication
@@ -13442,13 +12610,12 @@ function SessionRecorderPage({
               Actionable Provisional Candidates
             </p>
             <p className="mt-1 text-sm font-semibold">
-              Phrases from mixed-speaker audio
+              Phrases awaiting Child review
             </p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Speaker attribution is not complete, but ChildLed found reviewable
-              language patterns in the completed transcript. Your decisions stay
-              provisional until Child attribution and clinical review are
-              complete.
+              ChildLed found reviewable language patterns in the completed
+              transcript. These stay provisional until you identify Child
+              language and complete clinical review.
             </p>
           </div>
           <span className="rounded-full bg-card px-3 py-1.5 text-xs font-bold text-accent-foreground">
@@ -13500,12 +12667,6 @@ function SessionRecorderPage({
                 </div>
 
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-bold text-accent-foreground">
-                    {phrase.attributionLabel}
-                  </span>
-                  <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-bold text-accent-foreground">
-                    {phrase.sourceLabel}
-                  </span>
                   <span className="rounded-full bg-accent/10 px-2 py-0.5 text-[10px] font-bold text-accent-foreground">
                     {phrase.evidenceLabel}
                   </span>
@@ -13606,8 +12767,6 @@ function SessionRecorderPage({
         className="rounded-3xl border border-border bg-card p-6 md:p-8"
       >
         {identifyChildLanguagePanel}
-        {(lowConfidenceTurnCount > 0 || speakerSeparationUnavailable) &&
-          speakerReviewPanel}
         <div className="mt-8 flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
@@ -13627,10 +12786,24 @@ function SessionRecorderPage({
             </p>
           </div>
           {transcriptionStatus === "complete" && (
-            <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-primary">
-              {transcription?.phrases.length ?? 0} likely phrase
-              {transcription?.phrases.length === 1 ? "" : "s"}
-            </span>
+            <div className="flex flex-wrap items-center gap-2">
+              {childUtterances.length > 0 &&
+                !rapidReviewUtterance &&
+                !showFullTranscript && (
+                  <Button
+                    variant="outline"
+                    className="min-h-11 px-3 text-xs"
+                    onClick={() => setShowFullTranscript(true)}
+                    data-testid="button-review-transcript-decisions"
+                  >
+                    <ClipboardList size={15} /> Review transcript decisions
+                  </Button>
+                )}
+              <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-primary">
+                {transcription?.phrases.length ?? 0} likely phrase
+                {transcription?.phrases.length === 1 ? "" : "s"}
+              </span>
+            </div>
           )}
         </div>
         {transcriptionPending && (
@@ -13754,26 +12927,66 @@ function SessionRecorderPage({
                             </span>
                           )}
                           {routine && capturedPhrase ? (
-                            <Button
-                              variant="quiet"
-                              className="px-3 text-xs"
-                              onClick={() =>
-                                reopenRoutinePhrase(capturedPhrase.id)
-                              }
-                              data-testid={`button-review-routine-phrase-${detected.id}`}
-                            >
-                              Add context
-                            </Button>
+                            <>
+                              <Button
+                                variant="quiet"
+                                className="px-3 text-xs"
+                                onClick={() =>
+                                  reopenRoutinePhrase(capturedPhrase.id)
+                                }
+                                data-testid={`button-review-routine-phrase-${detected.id}`}
+                              >
+                                Add context
+                              </Button>
+                              <Button
+                                disabled={deleteTranscriptPhrase.isPending}
+                                variant="quiet"
+                                className="px-3 text-xs text-muted-foreground"
+                                onClick={() =>
+                                  void ignoreTranscriptPhrase(detected)
+                                }
+                                data-testid={`button-ignore-transcript-phrase-${detected.id}`}
+                              >
+                                <Trash2 size={14} /> Delete phrase
+                              </Button>
+                            </>
                           ) : (
-                            <Button
-                              disabled={!detected.childAttributed || ignored}
-                              variant="quiet"
-                              className="px-3 text-xs text-muted-foreground"
-                              onClick={() => ignoreTranscriptPhrase(detected)}
-                              data-testid={`button-ignore-transcript-phrase-${detected.id}`}
-                            >
-                              Exclude
-                            </Button>
+                            <>
+                              {capturedPhrase && !ignored && (
+                                <Button
+                                  variant="outline"
+                                  className="px-3 text-xs"
+                                  onClick={() =>
+                                    document
+                                      .getElementById(
+                                        `review-phrase-${capturedPhrase.id}`,
+                                      )
+                                      ?.scrollIntoView({
+                                        behavior: "smooth",
+                                        block: "start",
+                                      })
+                                  }
+                                  data-testid={`button-edit-transcript-phrase-${detected.id}`}
+                                >
+                                  <ClipboardList size={14} /> Review phrase
+                                </Button>
+                              )}
+                              <Button
+                                disabled={
+                                  !detected.childAttributed ||
+                                  ignored ||
+                                  deleteTranscriptPhrase.isPending
+                                }
+                                variant="quiet"
+                                className="px-3 text-xs text-muted-foreground"
+                                onClick={() =>
+                                  void ignoreTranscriptPhrase(detected)
+                                }
+                                data-testid={`button-ignore-transcript-phrase-${detected.id}`}
+                              >
+                                <Trash2 size={14} /> Delete phrase
+                              </Button>
+                            </>
                           )}
                         </div>
                         {detected.exampleUtterances.length > 0 && (
@@ -13962,7 +13175,7 @@ function SessionRecorderPage({
     <nav
       ref={workflowHeaderRef}
       aria-label="Recording workflow progress"
-      className="sticky top-2 z-30 rounded-2xl border border-border bg-card/95 p-4 shadow-sm backdrop-blur"
+      className="sticky top-2 z-30 rounded-xl border border-border bg-card/95 p-3 shadow-sm backdrop-blur sm:rounded-2xl sm:p-4"
       data-testid="recording-workflow-progress"
     >
       <div className="flex items-center justify-between gap-3">
@@ -14043,9 +13256,7 @@ function SessionRecorderPage({
               variant="outline"
               className="min-h-12"
               onClick={leaveSessionForLater}
-              disabled={
-                audioPreparationPending || deleteSessionDraft.isPending
-              }
+              disabled={audioPreparationPending || deleteSessionDraft.isPending}
               data-testid="button-save-session-for-later"
             >
               <Clock3 size={16} /> Save for later & leave
@@ -14091,7 +13302,7 @@ function SessionRecorderPage({
     (stage === "review" && !transcriptionPending) ||
     stage === "finalize"
       ? createPortal(
-          <div className="pointer-events-none fixed inset-x-3 bottom-20 z-40 md:bottom-4 lg:left-[16.75rem]">
+          <div className="pointer-events-none fixed inset-x-2 bottom-[calc(5rem+env(safe-area-inset-bottom))] z-40 sm:inset-x-3 md:bottom-4 lg:left-[16.75rem]">
             <div className="pointer-events-auto mx-auto max-w-4xl rounded-2xl border border-border bg-card/95 p-3 shadow-xl backdrop-blur">
               {stage === "finalize" && saveError && (
                 <p
@@ -14193,21 +13404,25 @@ function SessionRecorderPage({
           title="Session saved successfully."
           description={`${captured.length} reviewed phrase${captured.length === 1 ? "" : "s"} and the session note are now available to ${child?.name ?? "the care team"}.`}
           action={
-            <div className="flex flex-wrap gap-2">
+            <div className="grid w-full gap-2 sm:flex sm:w-auto sm:flex-wrap">
               <Link
                 href={`/reports?childId=${childId}${savedSession?.id ? `&sessionId=${savedSession.id}` : ""}`}
                 data-testid="button-draft-ai-session-note"
-                className="inline-flex focus-ring items-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-primary"
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2.5 text-sm font-semibold text-primary focus-ring"
               >
                 <FileText size={16} /> Open session report
               </Link>
-              <Button variant="outline" onClick={resetSession}>
+              <Button
+                className="w-full sm:w-auto"
+                variant="outline"
+                onClick={resetSession}
+              >
                 <RotateCcw size={16} /> New session
               </Button>
             </div>
           }
         />
-        <section className="rounded-3xl bg-primary p-7 text-primary-foreground md:p-10">
+        <section className="rounded-3xl bg-primary p-5 text-primary-foreground sm:p-7 md:p-10">
           <div className="flex items-center gap-3 text-accent">
             <span className="grid size-10 place-items-center rounded-full bg-accent/15">
               <Check size={19} />
@@ -14226,8 +13441,9 @@ function SessionRecorderPage({
             {savedSession?.note}
           </pre>
           <p className="mt-4 text-xs leading-5 text-primary-foreground/65">
-            The recording is attached to the saved session. Temporary upload
-            copies are now eligible for secure retention cleanup.
+            The full recording was deleted after the session note was saved.
+            Only short clips of reviewed unclear moments are retained for the
+            Unclear Speech review.
           </p>
         </section>
         {savedSession?.audioUrl && (
@@ -14251,7 +13467,7 @@ function SessionRecorderPage({
           role="status"
           aria-live="polite"
           data-testid="status-transcription-processing"
-          className="rounded-3xl border border-border bg-card p-6 soft-shadow md:p-10"
+          className="rounded-3xl border border-border bg-card p-5 soft-shadow sm:p-6 md:p-10"
         >
           <span className="grid size-12 place-items-center rounded-2xl bg-secondary text-primary">
             <Sparkles className="animate-pulse" size={22} />
@@ -14341,7 +13557,7 @@ function SessionRecorderPage({
             {!transcriptionPending && (
               <section
                 data-testid="status-session-closeout"
-                className={`rounded-2xl border p-5 ${closeoutState === "needs_review" ? "border-accent/40 bg-accent/10" : closeoutState === "processing" || closeoutState === "saving" ? "border-primary/20 bg-secondary/45" : "border-primary/15 bg-card"}`}
+                className={`rounded-2xl border p-4 sm:p-5 ${closeoutState === "needs_review" ? "border-accent/40 bg-accent/10" : closeoutState === "processing" || closeoutState === "saving" ? "border-primary/20 bg-secondary/45" : "border-primary/15 bg-card"}`}
               >
                 <div className="flex items-start gap-3">
                   <span
@@ -14378,7 +13594,7 @@ function SessionRecorderPage({
                       reviewed phrases and clinical note.
                     </p>
                   )}
-                  <label className="inline-flex min-h-11 cursor-pointer items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:border-primary focus-ring">
+                  <label className="inline-flex min-h-11 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-semibold hover:border-primary focus-ring sm:w-auto">
                     <Volume2 size={16} /> Replace recording
                     <input
                       className="sr-only"
@@ -14395,7 +13611,7 @@ function SessionRecorderPage({
             {!consentConfirmedAt && (
               <section
                 data-testid="status-recording-consent"
-                className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-accent/40 bg-accent/10 p-4"
+                className="flex flex-col items-stretch gap-4 rounded-2xl border border-accent/40 bg-accent/10 p-4 sm:flex-row sm:items-center sm:justify-between"
               >
                 <div>
                   <p className="text-sm font-semibold">
@@ -14406,6 +13622,7 @@ function SessionRecorderPage({
                   </p>
                 </div>
                 <Button
+                  className="w-full sm:w-auto"
                   variant="outline"
                   onClick={() => openConsentModal("save")}
                   data-testid="button-open-audio-consent"
@@ -14516,7 +13733,7 @@ function SessionRecorderPage({
                         <div
                           key={item.id}
                           data-testid={`card-closeout-phrase-${item.id}`}
-                          className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-primary/15 bg-secondary/30 p-4"
+                          className="flex flex-col items-stretch gap-4 rounded-2xl border border-primary/15 bg-secondary/30 p-4 sm:flex-row sm:items-center sm:justify-between"
                         >
                           <div>
                             <div className="flex flex-wrap items-center gap-2">
@@ -14536,7 +13753,7 @@ function SessionRecorderPage({
                               {item.function} · {item.context}
                             </p>
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
                             {item.reviewState === "routine" ? (
                               <Button
                                 variant="quiet"
@@ -14559,10 +13776,11 @@ function SessionRecorderPage({
                             <Button
                               variant="quiet"
                               className="px-3 py-2 text-xs text-muted-foreground"
-                              onClick={() => removeCaptured(item.id)}
+                              disabled={deleteTranscriptPhrase.isPending}
+                              onClick={() => void removeCaptured(item.id)}
                               data-testid={`button-remove-review-phrase-${item.id}`}
                             >
-                              <X size={14} /> Exclude
+                              <Trash2 size={14} /> Delete phrase
                             </Button>
                           </div>
                         </div>
@@ -14570,9 +13788,10 @@ function SessionRecorderPage({
                     return (
                       <div
                         key={item.id}
-                        className="rounded-2xl border border-border bg-card p-5"
+                        id={`review-phrase-${item.id}`}
+                        className="rounded-2xl border border-border bg-card p-4 sm:p-5"
                       >
-                        <div className="mb-4 flex items-center justify-between gap-3">
+                        <div className="mb-4 flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between">
                           <p className="mono text-[10px] font-bold tracking-wider text-muted-foreground">
                             GESTALT {String(index + 1).padStart(2, "0")}
                             {item.frequency && item.frequency > 1
@@ -14580,11 +13799,13 @@ function SessionRecorderPage({
                               : ""}
                           </p>
                           <Button
+                            className="w-full sm:w-auto"
                             variant="quiet"
-                            onClick={() => removeCaptured(item.id)}
+                            disabled={deleteTranscriptPhrase.isPending}
+                            onClick={() => void removeCaptured(item.id)}
                             data-testid={`button-remove-review-phrase-${item.id}`}
                           >
-                            <X size={14} /> Remove
+                            <Trash2 size={14} /> Delete phrase
                           </Button>
                         </div>
                         {previous && (
@@ -14741,6 +13962,7 @@ function SessionRecorderPage({
                         </label>
                         <div className="mt-4 flex justify-end">
                           <Button
+                            className="w-full sm:w-auto"
                             variant="primary"
                             onClick={() => resolveExceptionPhrase(item.id)}
                             data-testid={`button-resolve-review-phrase-${item.id}`}
@@ -14822,11 +14044,12 @@ function SessionRecorderPage({
                     />
                   </label>
                 </div>
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
+                <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                     Editable session summary
                   </span>
                   <Button
+                    className="w-full sm:w-auto"
                     variant="outline"
                     onClick={regenerateSessionNote}
                     data-testid="button-refresh-session-summary"
@@ -14844,7 +14067,7 @@ function SessionRecorderPage({
                   className="mt-2 min-h-64 w-full resize-y rounded-xl border border-input bg-background p-4 text-sm leading-6 outline-none transition-shadow focus-ring"
                 />
                 <div className="mt-5 flex flex-wrap justify-between gap-3">
-                  <div className="flex gap-2">
+                  <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
                     <Button
                       variant="outline"
                       onClick={copyNote}
@@ -14882,21 +14105,10 @@ function SessionRecorderPage({
         eyebrow="Record session"
         title={`Record ${child?.name ?? "this child"}’s session.`}
         description="Start when everyone is ready. You can pause at any time, and stopping moves the recording to review."
-        action={
-          developmentDemoEnabled && (
-            <Button
-              variant="outline"
-              onClick={() => void loadSpeakerReviewFixture()}
-              data-testid="button-load-speaker-review-fixture"
-            >
-              <Shield size={15} /> Load protected speaker fixture
-            </Button>
-          )
-        }
       />
       <div className="space-y-5">
         <section
-          className={`rounded-3xl p-6 text-primary-foreground soft-shadow md:p-10 ${recording ? "bg-primary" : "bg-primary/95"}`}
+          className={`rounded-3xl p-5 text-primary-foreground soft-shadow sm:p-6 md:p-10 ${recording ? "bg-primary" : "bg-primary/95"}`}
         >
           <div className="flex items-center justify-between">
             <div>
@@ -14915,7 +14127,7 @@ function SessionRecorderPage({
           </div>
           <div className="my-10 text-center md:my-12">
             <p
-              className={`mono text-5xl font-bold sm:text-6xl ${recording ? "text-accent" : ""}`}
+              className={`mono text-[2.75rem] font-bold sm:text-6xl ${recording ? "text-accent" : ""}`}
             >
               {formattedTime}
             </p>
@@ -16093,45 +15305,23 @@ function SelectField({
 
 function ParentObservationForm({
   childId,
+  childName,
   onClose,
 }: {
   childId: number;
+  childName: string;
   onClose: () => void;
 }) {
   const createObservation = useCreateObservation();
   const logPhrase = useLogPhraseObservation();
-  const reserveVideoUpload = useRequestObservationVideoUpload();
   const client = useQueryClient();
   const [phrase, setPhrase] = useState("");
   const [context, setContext] = useState("Home");
   const [notes, setNotes] = useState("");
   const [question, setQuestion] = useState("");
-  const [videoFile, setVideoFile] = useState<File>();
-  const [videoConsent, setVideoConsent] = useState(false);
-  const [videoError, setVideoError] = useState("");
-  const [uploadingVideo, setUploadingVideo] = useState(false);
-  const selectVideo = (file?: File) => {
-    setVideoError("");
-    if (!file) {
-      setVideoFile(undefined);
-      setVideoConsent(false);
-      return;
-    }
-    const allowedTypes = ["video/mp4", "video/webm", "video/quicktime"];
-    if (!allowedTypes.includes(file.type.toLowerCase())) {
-      setVideoFile(undefined);
-      setVideoConsent(false);
-      setVideoError("Choose an MP4, WebM, or QuickTime video.");
-      return;
-    }
-    if (file.size > 50 * 1024 * 1024) {
-      setVideoFile(undefined);
-      setVideoConsent(false);
-      setVideoError("Choose a video that is 50 MB or smaller.");
-      return;
-    }
-    setVideoFile(file);
-  };
+  const [error, setError] = useState("");
+  const [saved, setSaved] = useState(false);
+  const [phraseWarning, setPhraseWarning] = useState("");
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const body = [
@@ -16141,50 +15331,19 @@ function ParentObservationForm({
     ]
       .filter(Boolean)
       .join("\n\n");
-    if (videoFile && !videoConsent) {
-      setVideoError(
-        "Confirm that you have permission to share this private video before saving.",
-      );
-      return;
-    }
-    setVideoError("");
+    setError("");
+    setPhraseWarning("");
     try {
-      let video:
-        | {
-            uploadId: string;
-            consentConfirmed: boolean;
-            consentConfirmedAt: string;
-          }
-        | undefined;
-      if (videoFile) {
-        setUploadingVideo(true);
-        const consentConfirmedAt = new Date().toISOString();
-        const reservation = await reserveVideoUpload.mutateAsync({
-          data: {
-            childId,
-            contentType: videoFile.type,
-            sizeBytes: videoFile.size,
-            consentConfirmed: true,
-            consentConfirmedAt,
-          },
-        });
-        const upload = await fetch(reservation.uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": reservation.contentType },
-          body: videoFile,
-        });
-        if (!upload.ok) throw new Error("upload-failed");
-        video = {
-          uploadId: reservation.videoId,
-          consentConfirmed: true,
-          consentConfirmedAt,
-        };
-      }
       await createObservation.mutateAsync({
         params: { childId },
-        data: { body, context, ...(video ? { video } : {}) },
+        data: { body, context },
       });
-      if (phrase.trim()) {
+    } catch {
+      setError("We couldn’t save that observation. Please try again.");
+      return;
+    }
+    if (phrase.trim()) {
+      try {
         await logPhrase.mutateAsync({
           params: { childId },
           data: {
@@ -16195,38 +15354,58 @@ function ParentObservationForm({
             observedAt: new Date().toISOString(),
           },
         });
+      } catch {
+        setPhraseWarning(
+          "The update was saved, but the phrase could not be added to the dictionary.",
+        );
       }
-      await Promise.all([
-        client.invalidateQueries({
-          queryKey: getGetDashboardQueryKey({ childId }),
-        }),
-        client.invalidateQueries({
-          queryKey: getListGestaltsQueryKey({ childId }),
-        }),
-        client.invalidateQueries({
-          queryKey: getGetDictionaryInsightsQueryKey({ childId }),
-        }),
-        client.invalidateQueries({ queryKey: getGetFrequentScriptsQueryKey() }),
-        client.invalidateQueries({
-          queryKey: getGetRecurringLanguagePatternsQueryKey(),
-        }),
-      ]);
-      onClose();
-    } catch {
-      setVideoError(
-        videoFile
-          ? "We couldn’t save the video and observation. Try again, or remove the video and save the note on its own."
-          : "We couldn’t save that observation. Please try again.",
-      );
-    } finally {
-      setUploadingVideo(false);
     }
+    await Promise.allSettled([
+      client.invalidateQueries({
+        queryKey: getGetDashboardQueryKey({ childId }),
+      }),
+      client.invalidateQueries({
+        queryKey: getListGestaltsQueryKey({ childId }),
+      }),
+      client.invalidateQueries({
+        queryKey: getGetDictionaryInsightsQueryKey({ childId }),
+      }),
+      client.invalidateQueries({ queryKey: getGetFrequentScriptsQueryKey() }),
+      client.invalidateQueries({
+        queryKey: getGetRecurringLanguagePatternsQueryKey(),
+      }),
+    ]);
+    setSaved(true);
   };
-  const pending =
-    createObservation.isPending ||
-    logPhrase.isPending ||
-    reserveVideoUpload.isPending ||
-    uploadingVideo;
+  const pending = createObservation.isPending || logPhrase.isPending;
+  if (saved) {
+    return (
+      <Modal title="Update saved" onClose={onClose}>
+        <div
+          className="space-y-5 text-center"
+          data-testid="status-parent-observation-saved"
+        >
+          <div className="mx-auto flex size-12 items-center justify-center rounded-full bg-primary/10 text-primary">
+            <Check size={24} aria-hidden="true" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-foreground">
+              Your update was saved
+            </h3>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {childName}’s clinician can now review what you shared.
+            </p>
+            {phraseWarning && (
+              <p className="mt-3 text-sm text-destructive">{phraseWarning}</p>
+            )}
+          </div>
+          <Button type="button" className="w-full sm:w-auto" onClick={onClose}>
+            Done
+          </Button>
+        </div>
+      </Modal>
+    );
+  }
   return (
     <Modal title="Log an observation" onClose={onClose}>
       <form onSubmit={submit} className="space-y-5">
@@ -16281,53 +15460,12 @@ function ParentObservationForm({
             className="min-h-20 w-full resize-y rounded-xl border border-input bg-background p-3 text-sm outline-none transition-shadow focus-ring"
           />
         </label>
-        <div className="rounded-xl border border-dashed border-border p-4 text-sm">
-          <div className="flex items-center gap-2 font-semibold text-foreground">
-            <Video size={16} /> Video (optional)
-          </div>
-          <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Share one short MP4, WebM, or QuickTime video (50 MB or smaller). It
-            is stored privately for your assigned care team, never in public
-            storage.
-          </p>
-          <label className="mt-3 inline-flex cursor-pointer items-center rounded-lg border border-input bg-background px-3 py-2 text-xs font-semibold text-primary">
-            <input
-              type="file"
-              accept="video/mp4,video/webm,video/quicktime"
-              className="sr-only"
-              onChange={(event) => selectVideo(event.target.files?.[0])}
-              data-testid="input-parent-observation-video"
-            />
-            {videoFile
-              ? `Change video · ${videoFile.name}`
-              : "Choose short video"}
-          </label>
-          {videoFile && (
-            <>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Selected: {videoFile.name} ·{" "}
-                {Math.max(1, Math.round(videoFile.size / 1024 / 1024))} MB
-              </p>
-              <label className="mt-3 flex gap-2 text-xs leading-5 text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={videoConsent}
-                  onChange={(event) => setVideoConsent(event.target.checked)}
-                  data-testid="checkbox-parent-observation-video-consent"
-                />
-                I have permission to share this video with this child’s assigned
-                care team. It follows our organization’s observation-video
-                retention policy and can be included in a deletion request.
-              </label>
-            </>
-          )}
-        </div>
-        {videoError && (
+        {error && (
           <p
             className="text-sm text-destructive"
-            data-testid="status-parent-observation-video-error"
+            data-testid="status-parent-observation-error"
           >
-            {videoError}
+            {error}
           </p>
         )}
         <div className="flex justify-end gap-3">
@@ -16341,11 +15479,7 @@ function ParentObservationForm({
             }
             data-testid="button-submit-parent-observation"
           >
-            {pending
-              ? uploadingVideo
-                ? "Uploading privately…"
-                : "Saving…"
-              : "Save observation"}
+            {pending ? "Saving…" : "Save observation"}
           </Button>
         </div>
       </form>
@@ -17406,8 +16540,8 @@ function CareTeamInvitationForm({
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               Copy this one-time invitation now and share it with{" "}
               <strong className="text-foreground">{email}</strong> through your
-              organization’s approved secure channel. For safety, ChildLed cannot
-              show the token again after you close this window.
+              organization’s approved secure channel. For safety, ChildLed
+              cannot show the token again after you close this window.
             </p>
           </div>
           <div className="flex justify-end gap-3">
@@ -17429,8 +16563,8 @@ function CareTeamInvitationForm({
           <div className="rounded-2xl border border-primary/15 bg-secondary/35 p-4 text-sm leading-6 text-muted-foreground">
             Create a secure pending invitation for a parent or teacher assigned
             to <strong className="text-foreground">{child.name}</strong>.
-            ChildLed records the invitation for your organization; delivery stays
-            within your organization’s approved invite process.
+            ChildLed records the invitation for your organization; delivery
+            stays within your organization’s approved invite process.
           </div>
           <label className="block space-y-2">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -17524,6 +16658,19 @@ function SessionsLandingPage({
       refetchOnWindowFocus: false,
     },
   });
+  const manualSessionSetupQuery = useGetManualSessionSetup(
+    { childId: selectedChildId ?? 0 },
+    {
+      query: {
+        queryKey: getGetManualSessionSetupQueryKey({
+          childId: selectedChildId ?? 0,
+        }),
+        enabled: Boolean(selectedChildId),
+        retry: false,
+        refetchOnWindowFocus: false,
+      },
+    },
+  );
   const openedRecordingQuery = useListSessions(
     { childId: openedRecording?.childId ?? 0 },
     {
@@ -17616,6 +16763,14 @@ function SessionsLandingPage({
     setResumeTranscriptId(undefined);
     setOpenedRecording(undefined);
     setStartRequestToken((current) => current + 1);
+  };
+  const requestManualSession = () => {
+    if (!selectedChildId) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      childSelectRef.current?.focus();
+      return;
+    }
+    setLocation(`/manual-session?childId=${selectedChildId}`);
   };
   const permanentlyDeleteQueuedDraft = async () => {
     if (!draftDeletionTarget || deleteQueuedSessionDraft.isPending) return;
@@ -17711,7 +16866,7 @@ function SessionsLandingPage({
         </Modal>
       )}
       <section
-        className={`${sessionActive ? "hidden" : ""} ${heroSticks ? "sticky top-2 z-20" : ""} overflow-hidden rounded-[2rem] border border-primary/15 bg-card soft-shadow`}
+        className={`${sessionActive ? "hidden" : ""} ${heroSticks ? "lg:sticky lg:top-2 lg:z-20" : ""} overflow-hidden rounded-[2rem] border border-primary/15 bg-card soft-shadow`}
         data-testid="recording-hero"
       >
         <div className="relative p-5 md:p-7 lg:p-8">
@@ -17729,7 +16884,7 @@ function SessionsLandingPage({
             <div className="flex flex-1 flex-col justify-between gap-6">
               <div>
                 <p className="mono text-[10px] font-bold uppercase tracking-[.2em] text-primary">
-                  Clinician Workspace · New Recording
+                  Clinician Workspace · New Session
                 </p>
                 {selectedChild ? (
                   <div className="mt-5">
@@ -17753,7 +16908,7 @@ function SessionsLandingPage({
                               className="serif break-words text-2xl font-semibold sm:text-3xl md:text-4xl"
                               data-testid="recording-hero-title"
                             >
-                              Recording for {selectedChild.name}
+                              Session for {selectedChild.name}
                             </h1>
                             <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
                               <span className="rounded-full bg-secondary px-2.5 py-1 text-secondary-foreground">
@@ -17853,15 +17008,15 @@ function SessionsLandingPage({
                 ) : (
                   <div className="mt-5">
                     <h1 className="serif text-3xl font-semibold tracking-tight md:text-5xl">
-                      Start a New Recording
+                      Start a Therapy Session
                     </h1>
                     <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-                      Choose an authorized child to prepare a blank recording.
-                      Previous work stays safely separated below.
+                      Choose an authorized child, then record the session or
+                      track IEP goal progress manually.
                     </p>
                     <label className="mt-6 block max-w-sm">
                       <span className="mb-2 block text-xs font-bold uppercase tracking-[.14em] text-muted-foreground">
-                        Recording child
+                        Student
                       </span>
                       <select
                         ref={childSelectRef}
@@ -17920,29 +17075,42 @@ function SessionsLandingPage({
             {/* Right Column: Dominant Action & Readiness */}
             <div className="flex w-full flex-col gap-4 lg:w-80 lg:shrink-0">
               <div className="flex flex-col justify-center rounded-3xl border border-primary/15 bg-secondary/30 p-5 pt-6 text-center">
-                <Button
-                  variant="primary"
-                  className="min-h-16 w-full text-lg shadow-xl"
-                  onClick={requestNewRecording}
-                  disabled={
-                    !selectedChild ||
-                    sessionActive ||
-                    Boolean(resumeTranscriptId)
-                  }
-                  data-testid="button-start-recording"
-                >
-                  <span className="grid size-8 place-items-center rounded-full bg-primary-foreground/20">
+                <div className="grid gap-3">
+                  <Button
+                    variant="primary"
+                    className="min-h-14 w-full text-base shadow-lg"
+                    onClick={requestNewRecording}
+                    disabled={
+                      !selectedChild ||
+                      sessionActive ||
+                      Boolean(resumeTranscriptId)
+                    }
+                    data-testid="button-start-recording"
+                  >
                     <Mic size={18} />
-                  </span>
-                  {sessionActive
-                    ? "Session in progress"
-                    : resumeTranscriptId
-                      ? "Previous work is open"
-                      : "Start Recording"}
-                </Button>
+                    {sessionActive
+                      ? "Session in progress"
+                      : resumeTranscriptId
+                        ? "Previous work is open"
+                        : "Record Session"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="min-h-14 w-full text-base"
+                    onClick={requestManualSession}
+                    disabled={
+                      !selectedChild ||
+                      sessionActive ||
+                      Boolean(resumeTranscriptId)
+                    }
+                    data-testid="button-start-manual-session"
+                  >
+                    <ClipboardList size={18} /> Track Manually
+                  </Button>
+                </div>
                 <p className="mt-4 text-[11px] leading-5 text-muted-foreground">
-                  Recordings remain private to your caseload. Consent
-                  confirmation is required before audio capture.
+                  Audio consent is required only when recording. Manual tracking
+                  stores session and goal data without audio.
                 </p>
               </div>
 
@@ -17959,8 +17127,8 @@ function SessionsLandingPage({
                     </h3>
                     <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                       {selectedChild
-                        ? "Audio is temporarily buffered locally. A blank session will be prepared to separate new work from previous recordings."
-                        : "Select a child to prepare the recording environment."}
+                        ? "Choose recording or manual IEP goal tracking for this therapy session."
+                        : "Select a child to prepare the session options."}
                     </p>
                   </div>
                 </div>
@@ -18015,14 +17183,14 @@ function SessionsLandingPage({
           </div>
         ) : sessionsDashboardQuery.isError || !weeklySnapshot ? (
           <p className="mt-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-            This week’s operational snapshot is temporarily unavailable.
-            Recording remains ready.
+            This week’s operational snapshot is temporarily unavailable. Session
+            tools remain ready.
           </p>
         ) : (
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {[
               {
-                label: "Sessions Recorded",
+                label: "Sessions Completed",
                 value: weeklySnapshot.sessionsRecorded,
                 icon: AudioWaveform,
               },
@@ -18059,6 +17227,55 @@ function SessionsLandingPage({
             ))}
           </div>
         )}
+        {selectedChildId &&
+          manualSessionSetupQuery.data?.serviceRequirements.map(
+            (requirement) => (
+              <div
+                key={requirement.id}
+                className="mt-5 border-t border-border pt-5"
+                data-testid={`service-status-${requirement.id}`}
+              >
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-sm font-semibold">
+                      {requirement.serviceName} · {requirement.periodLabel}
+                    </p>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      IEP service delivery status
+                    </p>
+                  </div>
+                  <span
+                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
+                      requirement.status === "complete"
+                        ? "bg-primary/10 text-primary"
+                        : requirement.status === "behind"
+                          ? "bg-amber-100 text-amber-900"
+                          : "bg-emerald-100 text-emerald-800"
+                    }`}
+                  >
+                    {requirement.status.replace("_", " ")}
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                  {[
+                    ["Required sessions", requirement.requiredSessions],
+                    ["Completed sessions", requirement.sessionsCompleted],
+                    ["Sessions remaining", requirement.sessionsRemaining],
+                    ["Required minutes", requirement.requiredMinutes],
+                    ["Completed minutes", requirement.minutesCompleted],
+                    ["Minutes remaining", requirement.minutesRemaining],
+                  ].map(([label, value]) => (
+                    <div key={label} className="bg-muted/40 p-3">
+                      <p className="text-lg font-bold">{value}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        {label}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ),
+          )}
       </section>
       {openedRecording && (
         <section
@@ -18071,10 +17288,12 @@ function SessionsLandingPage({
                 Opened explicitly
               </p>
               <h2 className="serif mt-2 text-2xl font-semibold">
-                Previous Recording
+                {openedSession?.sessionMode === "manual"
+                  ? "Manual Session"
+                  : "Previous Recording"}
               </h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                This historical session is separate from the blank New Recording
+                This completed session is separate from the new-session
                 workspace above.
               </p>
             </div>
@@ -18117,6 +17336,51 @@ function SessionsLandingPage({
                   Completed session
                 </span>
               </div>
+              {openedSession.goalProgress?.length ? (
+                <div className="mt-4 space-y-3 border-t border-border pt-4">
+                  <p className="text-xs font-bold uppercase text-muted-foreground">
+                    IEP goals addressed
+                  </p>
+                  {openedSession.goalProgress.map((progress) => (
+                    <div
+                      key={progress.id}
+                      className="rounded-xl bg-muted/40 p-3"
+                    >
+                      <p className="text-sm font-semibold">
+                        {progress.goalTitle}
+                      </p>
+                      <p className="mt-1 text-xs text-primary">
+                        {progress.goalArea}
+                      </p>
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        {[
+                          progress.accuracyPercent === null
+                            ? null
+                            : `${progress.accuracyPercent}% accuracy`,
+                          progress.totalAttempts === null
+                            ? null
+                            : `${progress.successfulAttempts ?? 0}/${progress.totalAttempts} attempts`,
+                          progress.promptingLevel
+                            ? `${progress.promptingLevel} support`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </p>
+                      {progress.progressNote && (
+                        <p className="mt-2 text-sm leading-6">
+                          {progress.progressNote}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                  {openedSession.note && (
+                    <p className="text-sm leading-6 text-muted-foreground">
+                      {openedSession.note}
+                    </p>
+                  )}
+                </div>
+              ) : null}
               {openedSession.audioUrl ? (
                 <audio
                   controls
@@ -18127,7 +17391,9 @@ function SessionsLandingPage({
                 />
               ) : (
                 <p className="mt-4 rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  This completed session has no retained recording audio.
+                  {openedSession.sessionMode === "manual"
+                    ? "This session was tracked manually without audio."
+                    : "This completed session has no retained recording audio."}
                 </p>
               )}
             </div>
@@ -18339,17 +17605,14 @@ function SessionsLandingPage({
           <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary">
             Session history
           </p>
-          <h2 className="serif mt-2 text-2xl font-semibold">
-            Recent Recordings
-          </h2>
+          <h2 className="serif mt-2 text-2xl font-semibold">Recent Sessions</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            Previous recordings never open automatically. Choose Open Recording
-            to load one.
+            Recorded and manually tracked sessions are kept in one history.
           </p>
         </div>
         {!selectedChildId ? (
           <p className="mt-5 rounded-xl border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-            Select a child to see recent recordings.
+            Select a child to see recent sessions.
           </p>
         ) : sessionsDashboardQuery.isLoading ? (
           <p className="mt-5 text-sm text-muted-foreground">
@@ -18370,6 +17633,8 @@ function SessionsLandingPage({
                       day: "numeric",
                       year: "numeric",
                     })}
+                    {" · "}
+                    {session.sessionMode === "manual" ? "Manual" : "Recorded"}
                   </p>
                 </div>
                 <Button
@@ -18382,16 +17647,16 @@ function SessionsLandingPage({
                       sessionId: session.sessionId,
                     });
                   }}
-                  data-testid={`button-open-recording-${session.sessionId}`}
+                  data-testid={`button-open-session-${session.sessionId}`}
                 >
-                  Open Recording <ArrowRight size={15} />
+                  Open Session <ArrowRight size={15} />
                 </Button>
               </div>
             ))}
           </div>
         ) : !sessionsDashboardQuery.isError ? (
           <p className="mt-5 text-sm text-muted-foreground">
-            No recent recordings for this child.
+            No recent sessions for this child.
           </p>
         ) : null}
       </section>
@@ -18447,13 +17712,6 @@ function Workspace() {
   const [clinicianOverviewSince, setClinicianOverviewSince] = useState<
     string | undefined | null
   >(null);
-  const [caseloadInboxChildId, setCaseloadInboxChildId] = useState<
-    number | undefined
-  >();
-  const [caseloadInboxSearch, setCaseloadInboxSearch] = useState("");
-  const [caseloadInboxRole, setCaseloadInboxRole] = useState<
-    import("@workspace/api-client-react").GetTeamInboxSenderRole | undefined
-  >();
   const [selectedId, setSelectedId] = useState<number | undefined>(() => {
     const fromUrl = Number(
       new URLSearchParams(window.location.search).get("childId"),
@@ -18510,6 +17768,8 @@ function Workspace() {
     "/clinical-knowledge",
     "/unclear-speech",
     "/activity",
+    "/manual-session",
+    "/communication-passport",
   ]);
   const teacherChildRoutes = new Set([
     "/children",
@@ -18517,6 +17777,7 @@ function Workspace() {
     "/dictionary",
     "/activity",
     "/teacher-resources",
+    "/communication-passport",
   ]);
   const needsActiveChild = canUseClinicalPortal
     ? clinicianChildRoutes.has(routePath)
@@ -18560,14 +17821,6 @@ function Workspace() {
       ...(inboxSearch ? { search: inboxSearch } : {}),
     }),
     [inboxChildId, inboxSearch],
-  );
-  const caseloadInboxParams = useMemo(
-    () => ({
-      ...(caseloadInboxChildId ? { childId: caseloadInboxChildId } : {}),
-      ...(caseloadInboxSearch ? { search: caseloadInboxSearch } : {}),
-      ...(caseloadInboxRole ? { senderRole: caseloadInboxRole } : {}),
-    }),
-    [caseloadInboxChildId, caseloadInboxRole, caseloadInboxSearch],
   );
   const canLoadClinicianOverview = canUseClinicalPortal;
   const overviewSessionIdentity =
@@ -18644,15 +17897,6 @@ function Workspace() {
       enabled: routePath === "/team-communication" && Boolean(viewer?.userId),
     },
   });
-  const caseloadTeamInboxQuery = useGetTeamInbox(caseloadInboxParams, {
-    query: {
-      queryKey: getGetTeamInboxQueryKey(caseloadInboxParams),
-      enabled:
-        currentRoleOverviewPath === routePath &&
-        canUseClinicalPortal &&
-        Boolean(viewer?.userId),
-    },
-  });
   useEffect(() => {
     if (canLoadClinicianOverview && clinicianOverviewSince === null) {
       console.info(
@@ -18671,14 +17915,6 @@ function Workspace() {
       );
     }
   }, [clinicianOverviewQuery.error, clinicianOverviewQuery.isError]);
-  useEffect(() => {
-    if (caseloadTeamInboxQuery.isError) {
-      logOverviewRequestFailure(
-        "/api/team-inbox",
-        caseloadTeamInboxQuery.error,
-      );
-    }
-  }, [caseloadTeamInboxQuery.error, caseloadTeamInboxQuery.isError]);
   const invitationsQuery = useListCareTeamInvitations({
     query: {
       queryKey: getListCareTeamInvitationsQueryKey(),
@@ -18697,7 +17933,51 @@ function Workspace() {
   });
   const markTeamMessagesRead = useMarkTeamMessagesRead({
     mutation: {
-      onSuccess: () =>
+      onMutate: async (variables) => {
+        const inboxQueryKey = getGetTeamInboxQueryKey();
+        await queryClient.cancelQueries({ queryKey: inboxQueryKey });
+        const snapshots = queryClient.getQueriesData<ApiTeamInbox>({
+          queryKey: inboxQueryKey,
+        });
+        const requestedIds = new Set(variables.data.messageIds);
+        for (const [queryKey, cached] of snapshots) {
+          if (!cached) continue;
+          const newlyRead = cached.messages.filter(
+            (message) => requestedIds.has(message.id) && !message.read,
+          );
+          if (!newlyRead.length) continue;
+          const readByChild = new Map<number, number>();
+          for (const message of newlyRead) {
+            readByChild.set(
+              message.childId,
+              (readByChild.get(message.childId) ?? 0) + 1,
+            );
+          }
+          queryClient.setQueryData<ApiTeamInbox>(queryKey, {
+            ...cached,
+            totalUnread: Math.max(0, cached.totalUnread - newlyRead.length),
+            children: cached.children.map((child) => ({
+              ...child,
+              unreadCount: Math.max(
+                0,
+                child.unreadCount - (readByChild.get(child.childId) ?? 0),
+              ),
+            })),
+            messages: cached.messages.map((message) =>
+              requestedIds.has(message.id)
+                ? { ...message, read: true }
+                : message,
+            ),
+          });
+        }
+        return { snapshots };
+      },
+      onError: (_error, _variables, context) => {
+        for (const [queryKey, cached] of context?.snapshots ?? []) {
+          queryClient.setQueryData(queryKey, cached);
+        }
+      },
+      onSettled: () =>
         queryClient.invalidateQueries({ queryKey: getGetTeamInboxQueryKey() }),
     },
   });
@@ -18785,6 +18065,7 @@ function Workspace() {
     (!canUseClinicalPortal &&
       [
         "/session",
+        "/manual-session",
         "/reports",
         "/clinical-knowledge",
         "/aac-planning",
@@ -18795,8 +18076,12 @@ function Workspace() {
     (routePath === "/teacher-resources" && viewer?.role !== "Teacher") ||
     (routePath === "/caseload" && !canUseClinicalPortal) ||
     (routePath === "/students" && viewer?.role !== "Teacher") ||
-    (routePath === "/security" && !viewer?.isAdmin) ||
-    (routePath === "/admin-conversations" && !viewer?.isAdmin);
+    (["/admin-overview", "/admin-conversations", "/security"].includes(
+      routePath,
+    ) &&
+      !viewer?.isAdmin) ||
+    (routePath === "/ux-testing" &&
+      (!viewer?.isSuperAdmin || viewer.isRolePreview));
   const portalTimeline = (gestaltsQuery.data ?? [])
     .slice(0, 5)
     .map((gestalt) => ({
@@ -18851,6 +18136,9 @@ function Workspace() {
   }, [location]);
   const refreshChildren = () => {
     queryClient.invalidateQueries({ queryKey: getListChildrenQueryKey() });
+    queryClient.invalidateQueries({
+      queryKey: getGetClinicianOverviewQueryKey(),
+    });
   };
   const openChildWorkspace = (childId: number) => {
     setSelectedId(childId);
@@ -18887,6 +18175,9 @@ function Workspace() {
         setTeacherQuestionAudience("team");
         setModal("team-question");
       }}
+      onViewPassport={() =>
+        setLocation(`/communication-passport?childId=${activeChild.id}`)
+      }
       onAddObservation={() => setModal("observation")}
       onAddPhrase={() => setModal("phrase-observation")}
       onAddInterest={() => {
@@ -18998,9 +18289,9 @@ function Workspace() {
             );
         }}
         onUpdateSensory={() => setModal("sensory")}
-      />
-      <ParentObservationVideoLinks
-        observations={dashboard?.observations ?? []}
+        onViewPassport={() =>
+          setLocation(`/communication-passport?childId=${activeChild.id}`)
+        }
       />
     </div>
   ) : viewer.role === "Teacher" ? (
@@ -19036,40 +18327,21 @@ function Workspace() {
       }
       caseloadChildren={children}
       onOpenChild={openChildWorkspace}
-      onRecordSession={() => setChildAction("record-session")}
-      onAddPhrase={() => setChildAction("add-phrase")}
-      onReviewAlerts={() =>
-        document
-          .querySelector<HTMLElement>(
-            '[data-testid="clinician-overview-review"]',
-          )
-          ?.scrollIntoView({ behavior: "smooth", block: "start" })
-      }
-      onOpenMessages={() => setLocation("/team-communication")}
+      onAddStudent={() => setModal("child")}
+      onStartRecordedSession={(childId) => {
+        setSelectedId(childId);
+        setLocation(`/session?childId=${childId}`);
+      }}
+      onStartManualSession={(childId) => {
+        setSelectedId(childId);
+        setLocation(`/manual-session?childId=${childId}`);
+      }}
+      onViewGoals={(childId) => {
+        setSelectedId(childId);
+        setLocation(`/children?childId=${childId}#child-communication-goals`);
+      }}
       onRetryOverview={() => {
         void clinicianOverviewQuery.refetch();
-      }}
-      teamInbox={caseloadTeamInboxQuery.data}
-      teamInboxLoading={caseloadTeamInboxQuery.isLoading}
-      teamInboxError={
-        caseloadTeamInboxQuery.isError
-          ? "New Messages are temporarily unavailable. The rest of your Overview is ready."
-          : undefined
-      }
-      teamInboxSearch={caseloadInboxSearch}
-      teamInboxChildId={caseloadInboxChildId}
-      teamInboxRole={caseloadInboxRole}
-      sendingTeamMessage={createTeamMessage.isPending}
-      markingTeamMessagesRead={markTeamMessagesRead.isPending}
-      onSelectInboxChild={setCaseloadInboxChildId}
-      onSelectInboxRole={setCaseloadInboxRole}
-      onSearchInbox={setCaseloadInboxSearch}
-      onReplyToInboxMessage={(input) =>
-        createTeamMessage.mutate({ data: input })
-      }
-      onMarkInboxMessagesRead={(messageIds) => {
-        if (messageIds.length)
-          markTeamMessagesRead.mutate({ data: { messageIds } });
       }}
     />
   );
@@ -19133,6 +18405,7 @@ function Workspace() {
           markTeamMessagesRead.mutate({ data: { messageIds } });
       }}
       onSend={(input) => createTeamMessage.mutate({ data: input })}
+      onOpenProfile={openChildWorkspace}
     />
   ) : routePath === "/students" ? (
     <TeacherStudentsDashboard
@@ -19193,6 +18466,13 @@ function Workspace() {
     />
   ) : routePath === "/aac-planning" ? (
     <AacPlanningPage childId={activeId} child={activeChild} />
+  ) : routePath === "/manual-session" ? (
+    <ManualSessionTrackingPage
+      children={children}
+      initialChildId={validRequestedChildId ?? selectedId}
+    />
+  ) : routePath === "/communication-passport" ? (
+    <CommunicationPassportPage childId={activeId} />
   ) : routePath === "/session" ? (
     <SessionsLandingPage
       children={children}
@@ -19344,14 +18624,6 @@ function Workspace() {
   );
   const shellChild = activeChild;
 
-  const betaBanner = (
-    <div className="bg-primary/95 px-4 py-2.5 text-center text-xs font-semibold tracking-wide text-primary-foreground shadow-sm">
-      ChildLed Private Beta — Access is restricted to authorized users. Do not
-      share recordings, transcripts, or child information outside approved
-      care-team workflows.
-    </div>
-  );
-
   return (
     <Shell
       child={shellChild}
@@ -19359,16 +18631,13 @@ function Workspace() {
       selectedId={activeId || undefined}
       onChangeChild={selectChild}
       showChildWorkspace={clinicianChildRoutes.has(routePath)}
-      topBanner={
-        <>
-          {betaBanner}
-          {viewer ? (
-            <SuperAdminPreviewBanner
-              viewer={viewer}
-              onViewerChange={handleViewerChange}
-            />
-          ) : null}
-        </>
+      navigationControls={
+        viewer ? (
+          <SuperAdminRoleSwitcher
+            viewer={viewer}
+            onViewerChange={handleViewerChange}
+          />
+        ) : null
       }
       workspaceStats={{
         dictionaryCount: activeChild?.gestaltCount ?? 0,
@@ -19449,6 +18718,7 @@ function Workspace() {
       {modal === "parent-observation" && (
         <ParentObservationForm
           childId={activeId}
+          childName={activeChild?.name ?? "Your child"}
           onClose={() => setModal(null)}
         />
       )}
@@ -19546,8 +18816,8 @@ function Workspace() {
 
 function AuthLoading() {
   return (
-    <div className="paper-grain grid min-h-screen place-items-center bg-background p-6">
-      <div className="w-full max-w-md rounded-3xl border border-border bg-card p-8 text-center soft-shadow">
+    <div className="paper-grain grid min-h-[100dvh] place-items-center bg-background p-3 sm:p-6">
+      <div className="w-full max-w-md rounded-2xl border border-border bg-card p-5 text-center soft-shadow sm:rounded-3xl sm:p-8">
         <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-accent text-primary">
           <Leaf size={22} />
         </div>
@@ -19582,6 +18852,9 @@ function Router() {
         <Route path="/sign-in/*?" component={SignInPage} />
         <Route path="/sign-up/*?" component={SignUpPage} />
         <Route path="/request-beta-access" component={RequestBetaAccessPage} />
+        {developmentDemoEnabled && (
+          <Route path="/development-login" component={DevelopmentLoginPage} />
+        )}
         {[
           "/",
           "/overview",
@@ -19601,6 +18874,8 @@ function Router() {
           "/dictionary",
           "/aac-planning",
           "/session",
+          "/manual-session",
+          "/communication-passport",
           "/children",
           "/communication-profile",
           "/activity",
@@ -19641,18 +18916,11 @@ function ClerkProviderWithRoutes() {
       proxyUrl={clerkProxyUrl}
       appearance={clerkAppearance}
       signInUrl={`${basePath}/sign-in`}
-      signUpUrl={`${basePath}/sign-up`}
       localization={{
         signIn: {
           start: {
             title: "Welcome back to ChildLed",
             subtitle: "Sign in to your verified care-team account",
-          },
-        },
-        signUp: {
-          start: {
-            title: "Join ChildLed",
-            subtitle: "Create your verified care-team account",
           },
         },
       }}
@@ -19857,8 +19125,8 @@ function CareTeamGate() {
     );
   if (status === "ready") return <Workspace />;
   return (
-    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background p-6">
-      <section className="w-full max-w-lg rounded-3xl border border-border bg-card p-8 text-center soft-shadow">
+    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background p-3 sm:p-6">
+      <section className="w-full max-w-lg rounded-2xl border border-border bg-card p-5 text-center soft-shadow sm:rounded-3xl sm:p-8">
         <Shield className="mx-auto text-primary" size={32} />
         <h1 className="serif mt-5 text-3xl font-semibold">
           Care-team access needed
@@ -19870,17 +19138,16 @@ function CareTeamGate() {
           {message ||
             "Please verify your email and ask a care-team administrator to invite your account."}
         </p>
-        <div className="mt-6 flex flex-wrap justify-center gap-3">
+        <div className="mt-6 grid gap-3 sm:flex sm:flex-wrap sm:justify-center">
           <Link
             href="/sign-in"
-            className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
           >
             Use another account
           </Link>
-          {developmentDemoEnabled && <DevelopmentLoginButton />}
           <Link
             href="/"
-            className="rounded-xl border border-border px-4 py-2.5 text-sm font-semibold"
+            className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border px-4 py-2.5 text-sm font-semibold"
           >
             Back home
           </Link>
@@ -19917,7 +19184,7 @@ function SignInPage() {
         <SignIn
           routing="path"
           path={`${basePath}/sign-in`}
-          signUpUrl={invitationTarget ?? `${basePath}/sign-up`}
+          signUpUrl={invitationTarget}
           forceRedirectUrl={invitationTarget}
         />
       </div>
@@ -19927,8 +19194,8 @@ function SignInPage() {
 
 function LandingPage() {
   return (
-    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background px-5 py-8 sm:py-10">
-      <section className="w-full max-w-2xl rounded-[2rem] border border-border bg-card p-7 text-center soft-shadow sm:p-8 md:p-12">
+    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background px-3 py-5 sm:px-5 sm:py-10">
+      <section className="w-full max-w-2xl rounded-2xl border border-border bg-card p-5 text-center soft-shadow sm:rounded-[2rem] sm:p-8 md:p-12">
         <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-accent text-primary">
           <Leaf size={28} />
         </div>
@@ -19945,41 +19212,30 @@ function LandingPage() {
           {CHILDLED_TAGLINE}
         </p>
         <p className="mx-auto mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-          A private workspace connecting families, educators, and clinicians
-          around an invited child’s communication. Your email must be verified
-          before any child profile or session information is available.
+          An invite-only workspace connecting families, educators, and SLPs
+          around an assigned child’s communication. A verified account and an
+          active ChildLed invitation are required.
         </p>
-        <div className="mt-7 flex flex-wrap justify-center gap-3">
+        <div className="mt-7 grid gap-3 sm:flex sm:flex-wrap sm:justify-center">
           <Link
             href="/sign-in"
             data-testid="link-sign-in"
-            className="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
+            className="inline-flex min-h-12 items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground"
           >
             Sign in
           </Link>
           <Link
             href="/request-beta-access"
             data-testid="link-request-beta"
-            className="rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground hover:bg-secondary transition"
+            className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border px-5 py-3 text-sm font-semibold text-foreground transition hover:bg-secondary"
           >
-            Request Beta Access
+            SLP pilot access
           </Link>
-          {developmentDemoEnabled && <DevelopmentLoginButton />}
         </div>
-        {developmentDemoEnabled && (
-          <div className="mx-auto mt-5 max-w-xl rounded-2xl border border-primary/15 bg-secondary/45 p-5 text-left">
-            <p className="text-sm font-bold text-primary">Prototype testing</p>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Select Development Login to open ChildLed Demo. No invitation,
-              email verification, or password is required in preview. You’ll
-              enter as <strong>demo.admin@childled.local</strong> with
-              Administrator access plus clinician testing tools.
-            </p>
-          </div>
-        )}
         <p className="mt-5 text-xs leading-5 text-muted-foreground">
           Password setup, verification, and recovery are securely provided by
-          our identity provider. ChildLed never receives or stores your password.
+          our identity provider. ChildLed never receives or stores your
+          password.
         </p>
         <div className="mt-6 flex justify-center gap-5 text-xs font-semibold text-primary">
           <Link href="/privacy">Privacy Policy</Link>
@@ -19990,13 +19246,20 @@ function LandingPage() {
   );
 }
 
-function DevelopmentLoginButton() {
+function DevelopmentLoginPage() {
+  const [accessKey, setAccessKey] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const startDemo = async () => {
+    if (!accessKey.trim()) {
+      setState("error");
+      return;
+    }
     setState("loading");
     try {
       const response = await fetch("/api/development/login", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accessKey }),
         credentials: "include",
       });
       if (!response.ok) throw new Error("Unable to start the demo workspace.");
@@ -20012,22 +19275,60 @@ function DevelopmentLoginButton() {
     }
   };
   return (
-    <div className="contents">
-      <Button
-        type="button"
-        variant="warm"
-        onClick={startDemo}
-        disabled={state === "loading"}
-        data-testid="button-development-login"
-      >
-        {state === "loading" ? "Preparing demo…" : "Development Login"}
-      </Button>
-      {state === "error" && (
-        <p className="w-full text-center text-xs text-destructive">
-          We couldn’t prepare the demo workspace. Please try again.
+    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background p-3 sm:p-6">
+      <section className="w-full max-w-md rounded-2xl border border-border bg-card p-5 soft-shadow sm:rounded-3xl sm:p-8">
+        <Shield className="text-primary" size={30} />
+        <h1 className="serif mt-5 text-3xl font-semibold">
+          Owner development access
+        </h1>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          This local testing workspace is separate from SLP and care-team
+          accounts.
         </p>
-      )}
-    </div>
+        <label
+          className="mt-6 block text-sm font-semibold"
+          htmlFor="development-access-key"
+        >
+          Development access code
+        </label>
+        <input
+          id="development-access-key"
+          type="password"
+          autoComplete="off"
+          value={accessKey}
+          onChange={(event) => {
+            setAccessKey(event.target.value);
+            if (state === "error") setState("idle");
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") void startDemo();
+          }}
+          className="mt-2 h-12 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground outline-none focus-ring"
+        />
+        <Button
+          type="button"
+          className="mt-4 w-full"
+          onClick={startDemo}
+          disabled={state === "loading"}
+          data-testid="button-development-login"
+        >
+          {state === "loading"
+            ? "Preparing demo…"
+            : "Open development workspace"}
+        </Button>
+        {state === "error" && (
+          <p className="mt-3 text-sm text-destructive" role="alert">
+            The development access code was not accepted.
+          </p>
+        )}
+        <Link
+          href="/"
+          className="mt-5 block text-center text-sm font-semibold text-primary"
+        >
+          Back to ChildLed
+        </Link>
+      </section>
+    </main>
   );
 }
 
@@ -20124,7 +19425,7 @@ function SignUpPage() {
   if (tokenStatus === "invalid") {
     return (
       <div className="paper-grain grid min-h-[100dvh] place-items-center bg-background p-5">
-        <section className="w-full max-w-md rounded-[2rem] border border-destructive/20 bg-card p-8 text-center soft-shadow">
+        <section className="w-full max-w-md rounded-2xl border border-destructive/20 bg-card p-5 text-center soft-shadow sm:rounded-[2rem] sm:p-8">
           <div className="mx-auto grid size-12 place-items-center rounded-full bg-destructive/10 text-destructive">
             <AlertCircle size={24} />
           </div>
@@ -20138,7 +19439,7 @@ function SignUpPage() {
           <div className="mt-8">
             <Link
               href="/"
-              className="inline-flex rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-sm hover:bg-primary/90 transition"
+              className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-primary-foreground shadow-sm transition hover:bg-primary/90 sm:w-auto"
             >
               Return to Home
             </Link>
@@ -20229,11 +19530,11 @@ function SessionInactivityGuard() {
   }, [isSignedIn, signOut]);
   if (!warning || !isSignedIn) return null;
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-primary/50 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 grid place-items-center overflow-y-auto bg-primary/50 p-2 backdrop-blur-sm sm:p-4">
       <section
         role="alertdialog"
         aria-modal="true"
-        className="w-full max-w-md rounded-3xl border border-border bg-card p-7 text-center shadow-2xl"
+        className="max-h-[calc(100dvh-1rem)] w-full max-w-md overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-5 text-center shadow-2xl sm:rounded-3xl sm:p-7"
       >
         <Clock3 className="mx-auto text-primary" size={30} />
         <h2 className="serif mt-4 text-2xl font-semibold">Still working?</h2>
@@ -20241,7 +19542,7 @@ function SessionInactivityGuard() {
           To protect private care-team data, you’ll be signed out after 15
           minutes of inactivity.
         </p>
-        <div className="mt-6 flex justify-center gap-3">
+        <div className="mt-6 grid gap-3 sm:flex sm:justify-center">
           <Button
             onClick={() => {
               setWarning(false);

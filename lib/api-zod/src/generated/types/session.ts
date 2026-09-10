@@ -5,8 +5,11 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ManualSessionGoalProgress } from './manualSessionGoalProgress';
 import type { RecordingConsent } from './recordingConsent';
+import type { SessionDurationSource } from './sessionDurationSource';
 import type { SessionGestalt } from './sessionGestalt';
+import type { SessionSessionMode } from './sessionSessionMode';
 
 export interface Session {
   id: number;
@@ -23,4 +26,14 @@ export interface Session {
   role: string;
   /** @nullable */
   consent: RecordingConsent | null;
+  sessionMode?: SessionSessionMode;
+  sessionDate?: Date;
+  /** @nullable */
+  startedAt?: Date | null;
+  /** @nullable */
+  endedAt?: Date | null;
+  durationSource?: SessionDurationSource;
+  durationEdited?: boolean;
+  slpName?: string;
+  goalProgress?: ManualSessionGoalProgress[];
 }

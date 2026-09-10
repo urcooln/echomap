@@ -49,7 +49,22 @@ paths:
           name: includeArchived
           schema: { type: boolean, default: false }
       responses:
-        "200": { description: Child communication goals, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/CommunicationGoal" } } } } }
+        "200":
+          {
+            description: Child communication goals,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        type: array,
+                        items:
+                          { $ref: "#/components/schemas/CommunicationGoal" },
+                      },
+                  },
+              },
+          }
         "403": { description: Clinician and child access required }
     post:
       operationId: createCommunicationGoal
@@ -57,9 +72,25 @@ paths:
       summary: Create a clinician-managed communication goal
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/CommunicationGoalInput" } } }
+        content:
+          {
+            application/json:
+              {
+                schema: { $ref: "#/components/schemas/CommunicationGoalInput" },
+              },
+          }
       responses:
-        "201": { description: Created goal, content: { application/json: { schema: { $ref: "#/components/schemas/CommunicationGoal" } } } }
+        "201":
+          {
+            description: Created goal,
+            content:
+              {
+                application/json:
+                  {
+                    schema: { $ref: "#/components/schemas/CommunicationGoal" },
+                  },
+              },
+          }
         "403": { description: Clinician and child access required }
   /communication-goals/{goalId}:
     patch:
@@ -73,12 +104,110 @@ paths:
           schema: { type: number }
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/CommunicationGoalUpdate" } } }
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { $ref: "#/components/schemas/CommunicationGoalUpdate" },
+              },
+          }
       responses:
-        "200": { description: Updated goal, content: { application/json: { schema: { $ref: "#/components/schemas/CommunicationGoal" } } } }
+        "200":
+          {
+            description: Updated goal,
+            content:
+              {
+                application/json:
+                  {
+                    schema: { $ref: "#/components/schemas/CommunicationGoal" },
+                  },
+              },
+          }
         "403": { description: Clinician and child access required }
         "404": { description: Goal not found }
         "409": { description: Goal version changed }
+  /manual-sessions/setup:
+    get:
+      operationId: getManualSessionSetup
+      tags: [sessions]
+      summary: Load active IEP goals and current service requirements for manual tracking
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Manual session setup
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ManualSessionSetup" }
+        "403": { description: SLP and assigned child access required }
+  /manual-sessions:
+    post:
+      operationId: createManualSession
+      tags: [sessions]
+      summary: Save a completed non-recorded therapy session
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ManualSessionInput" }
+      responses:
+        "201":
+          description: Saved manual therapy session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "400": { description: Invalid timing or goal progress data }
+        "403": { description: SLP and assigned child access required }
+  /iep-service-requirements:
+    get:
+      operationId: listIepServiceRequirements
+      tags: [sessions]
+      summary: List IEP therapy service requirements and current-period completion
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Current service requirement status
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/IepServiceRequirement" }
+        "403": { description: SLP and assigned child access required }
+    put:
+      operationId: upsertIepServiceRequirement
+      tags: [sessions]
+      summary: Create or update an IEP therapy service requirement
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/IepServiceRequirementInput" }
+      responses:
+        "200":
+          description: Updated service requirement status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/IepServiceRequirement" }
+        "400": { description: Invalid requirement }
+        "403": { description: SLP and assigned child access required }
   /healthz:
     get:
       operationId: healthCheck
@@ -172,7 +301,8 @@ paths:
             application/json:
               schema:
                 type: array
-                items: { $ref: "#/components/schemas/TeacherPhraseLookupResult" }
+                items:
+                  { $ref: "#/components/schemas/TeacherPhraseLookupResult" }
         "401": { description: Authentication required }
         "403": { description: Teacher access required }
   /frequent-scripts:
@@ -266,7 +396,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ParentLearningCenter" }
         "401": { description: Authentication required }
-        "403": { description: "Parent, caregiver, or authorized family access required" }
+        "403":
+          {
+            description: "Parent, caregiver, or authorized family access required",
+          }
   /parent-learning-center/module:
     get:
       operationId: getParentLearningModule
@@ -286,9 +419,13 @@ paths:
           description: Family learning module
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ParentLearningModuleDetail" }
+              schema:
+                { $ref: "#/components/schemas/ParentLearningModuleDetail" }
         "401": { description: Authentication required }
-        "403": { description: "Parent, caregiver, or authorized family access required" }
+        "403":
+          {
+            description: "Parent, caregiver, or authorized family access required",
+          }
         "404": { description: Learning module not found }
   /parent-learning-center/progress:
     put:
@@ -307,7 +444,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ParentLearningProgress" }
         "401": { description: Authentication required }
-        "403": { description: "Parent, caregiver, or authorized family access required" }
+        "403":
+          {
+            description: "Parent, caregiver, or authorized family access required",
+          }
         "404": { description: Learning module not found }
   /parent-learning-center/reflection:
     put:
@@ -319,7 +459,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ParentLearningReflectionInput" }
+            schema:
+              { $ref: "#/components/schemas/ParentLearningReflectionInput" }
       responses:
         "200":
           description: Saved private family reflection
@@ -327,7 +468,10 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ParentLearningReflection" }
         "401": { description: Authentication required }
-        "403": { description: "Parent, caregiver, or authorized family access required" }
+        "403":
+          {
+            description: "Parent, caregiver, or authorized family access required",
+          }
         "404": { description: Learning module not found }
   /parent-learning-center/download:
     get:
@@ -346,7 +490,10 @@ paths:
             application/pdf:
               schema: { type: string, format: binary }
         "401": { description: Authentication required }
-        "403": { description: "Parent, caregiver, or authorized family access required" }
+        "403":
+          {
+            description: "Parent, caregiver, or authorized family access required",
+          }
         "404": { description: Handbook not found }
   /teacher-resource-center:
     get:
@@ -359,7 +506,18 @@ paths:
           required: true
           schema: { type: number }
       responses:
-        "200": { description: Teacher resources, content: { application/json: { schema: { $ref: "#/components/schemas/TeacherResourceCenter" } } } }
+        "200":
+          {
+            description: Teacher resources,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      { $ref: "#/components/schemas/TeacherResourceCenter" },
+                  },
+              },
+          }
         "401": { description: Authentication required }
         "403": { description: "Authorized teacher access required" }
   /teacher-resource-center/progress:
@@ -369,9 +527,27 @@ paths:
       summary: Save teacher resource progress
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/TeacherResourceProgressInput" } } }
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  { $ref: "#/components/schemas/TeacherResourceProgressInput" },
+              },
+          }
       responses:
-        "200": { description: Saved progress, content: { application/json: { schema: { $ref: "#/components/schemas/TeacherResourceProgress" } } } }
+        "200":
+          {
+            description: Saved progress,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      { $ref: "#/components/schemas/TeacherResourceProgress" },
+                  },
+              },
+          }
         "401": { description: Authentication required }
         "403": { description: "Authorized teacher access required" }
   /teacher-resource-center/download:
@@ -385,7 +561,12 @@ paths:
           required: true
           schema: { type: number }
       responses:
-        "200": { description: Protected teacher handbook PDF, content: { application/pdf: { schema: { type: string, format: binary } } } }
+        "200":
+          {
+            description: Protected teacher handbook PDF,
+            content:
+              { application/pdf: { schema: { type: string, format: binary } } },
+          }
         "401": { description: Authentication required }
         "403": { description: "Authorized teacher access required" }
   /clinician-learning-center:
@@ -394,7 +575,18 @@ paths:
       tags: [clinician-learning]
       summary: Get the clinician learning center
       responses:
-        "200": { description: Clinician learning modules and progress, content: { application/json: { schema: { $ref: "#/components/schemas/ClinicianLearningCenter" } } } }
+        "200":
+          {
+            description: Clinician learning modules and progress,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      { $ref: "#/components/schemas/ClinicianLearningCenter" },
+                  },
+              },
+          }
         "401": { description: Authentication required }
         "403": { description: Authorized clinician access required }
   /clinician-learning-center/progress:
@@ -404,9 +596,31 @@ paths:
       summary: Save clinician learning progress
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/ClinicianLearningProgressInput" } } }
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    $ref: "#/components/schemas/ClinicianLearningProgressInput",
+                  },
+              },
+          }
       responses:
-        "200": { description: Saved progress, content: { application/json: { schema: { $ref: "#/components/schemas/ClinicianLearningProgress" } } } }
+        "200":
+          {
+            description: Saved progress,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        $ref: "#/components/schemas/ClinicianLearningProgress",
+                      },
+                  },
+              },
+          }
         "401": { description: Authentication required }
         "403": { description: Authorized clinician access required }
   /clinician-learning-center/preferences:
@@ -415,7 +629,20 @@ paths:
       tags: [clinician-learning]
       summary: Get clinician workflow coaching preference
       responses:
-        "200": { description: Clinician learning preferences, content: { application/json: { schema: { $ref: "#/components/schemas/ClinicianLearningPreferences" } } } }
+        "200":
+          {
+            description: Clinician learning preferences,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        $ref: "#/components/schemas/ClinicianLearningPreferences",
+                      },
+                  },
+              },
+          }
         "401": { description: Authentication required }
         "403": { description: Authorized clinician access required }
     put:
@@ -424,9 +651,31 @@ paths:
       summary: Update clinician workflow coaching preference
       requestBody:
         required: true
-        content: { application/json: { schema: { $ref: "#/components/schemas/ClinicianLearningPreferencesInput" } } }
+        content:
+          {
+            application/json:
+              {
+                schema:
+                  {
+                    $ref: "#/components/schemas/ClinicianLearningPreferencesInput",
+                  },
+              },
+          }
       responses:
-        "200": { description: Updated preferences, content: { application/json: { schema: { $ref: "#/components/schemas/ClinicianLearningPreferences" } } } }
+        "200":
+          {
+            description: Updated preferences,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      {
+                        $ref: "#/components/schemas/ClinicianLearningPreferences",
+                      },
+                  },
+              },
+          }
         "401": { description: Authentication required }
         "403": { description: Authorized clinician access required }
   /clinician-learning-center/download:
@@ -435,7 +684,12 @@ paths:
       tags: [clinician-learning]
       summary: Download the clinician learning handbook
       responses:
-        "200": { description: Protected clinician handbook, content: { text/plain: { schema: { type: string, format: binary } } } }
+        "200":
+          {
+            description: Protected clinician handbook,
+            content:
+              { text/plain: { schema: { type: string, format: binary } } },
+          }
         "401": { description: Authentication required }
         "403": { description: Authorized clinician access required }
   /auth/viewer:
@@ -492,7 +746,8 @@ paths:
           description: Organization-scoped team message results
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/AdminTeamConversationSearch" }
+              schema:
+                { $ref: "#/components/schemas/AdminTeamConversationSearch" }
         "403": { description: Administrator access required }
   /admin/child-permissions:
     get:
@@ -649,15 +904,24 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ClinicalDocumentationLifecycleInput" }
+            schema:
+              {
+                $ref: "#/components/schemas/ClinicalDocumentationLifecycleInput",
+              }
       responses:
         "200":
           description: Documentation lifecycle transition
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ClinicalDocumentationLifecycleResult" }
+              schema:
+                {
+                  $ref: "#/components/schemas/ClinicalDocumentationLifecycleResult",
+                }
         "403": { description: Clinician access and child access required }
-        "409": { description: The note is already in an incompatible lifecycle state }
+        "409":
+          {
+            description: The note is already in an incompatible lifecycle state,
+          }
     post:
       operationId: createClinicalDocumentation
       tags: [sessions]
@@ -666,7 +930,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ClinicalDocumentationCreateInput" }
+            schema:
+              { $ref: "#/components/schemas/ClinicalDocumentationCreateInput" }
       responses:
         "201":
           description: Editable clinician documentation draft
@@ -682,7 +947,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ClinicalDocumentationUpdateInput" }
+            schema:
+              { $ref: "#/components/schemas/ClinicalDocumentationUpdateInput" }
       responses:
         "200":
           description: Saved clinician documentation draft
@@ -700,7 +966,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ClinicalDocumentationApproveInput" }
+            schema:
+              { $ref: "#/components/schemas/ClinicalDocumentationApproveInput" }
       responses:
         "200":
           description: Finalized clinician documentation
@@ -718,15 +985,24 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ClinicalDocumentationLifecycleInput" }
+            schema:
+              {
+                $ref: "#/components/schemas/ClinicalDocumentationLifecycleInput",
+              }
       responses:
         "200":
           description: Restored documentation
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ClinicalDocumentationLifecycleResult" }
+              schema:
+                {
+                  $ref: "#/components/schemas/ClinicalDocumentationLifecycleResult",
+                }
         "403": { description: Clinician access and child access required }
-        "409": { description: The recovery window has expired or the note cannot be restored }
+        "409":
+          {
+            description: The recovery window has expired or the note cannot be restored,
+          }
   /clinical-documentation/archive:
     post:
       operationId: archiveClinicalDocumentation
@@ -736,13 +1012,19 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ClinicalDocumentationLifecycleInput" }
+            schema:
+              {
+                $ref: "#/components/schemas/ClinicalDocumentationLifecycleInput",
+              }
       responses:
         "200":
           description: Archived documentation
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ClinicalDocumentationLifecycleResult" }
+              schema:
+                {
+                  $ref: "#/components/schemas/ClinicalDocumentationLifecycleResult",
+                }
         "403": { description: Clinician access and child access required }
         "409": { description: Only finalized notes can be archived }
   /clinical-documentation/archive/restore:
@@ -754,13 +1036,19 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/ClinicalDocumentationLifecycleInput" }
+            schema:
+              {
+                $ref: "#/components/schemas/ClinicalDocumentationLifecycleInput",
+              }
       responses:
         "200":
           description: Restored finalized documentation
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/ClinicalDocumentationLifecycleResult" }
+              schema:
+                {
+                  $ref: "#/components/schemas/ClinicalDocumentationLifecycleResult",
+                }
         "403": { description: Clinician access and child access required }
         "409": { description: Only archived notes can be restored }
   /clinical-documentation/ai-session-note:
@@ -780,8 +1068,12 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ClinicalDocumentation" }
         "403": { description: Clinician access and child access required }
-        "409": { description: Every transcript turn must be reviewed before generation }
-        "422": { description: No eligible confirmed Child utterances were found }
+        "409":
+          {
+            description: Every transcript turn must be reviewed before generation,
+          }
+        "422":
+          { description: No eligible confirmed Child utterances were found }
         "502": { description: The AI provider could not generate the draft }
   /session-soap-note:
     get:
@@ -910,14 +1202,18 @@ paths:
           name: senderRole
           required: false
           description: Filter messages by the displayed sender role.
-          schema: { type: string, enum: [SLP, Parent, Teacher, OT, Administrator] }
+          schema:
+            { type: string, enum: [SLP, Parent, Teacher, OT, Administrator] }
       responses:
         "200":
           description: Authorized children, unread counts, and child-scoped team messages
           content:
             application/json:
               schema: { $ref: "#/components/schemas/TeamInbox" }
-        "403": { description: Assigned child access required when childId is provided }
+        "403":
+          {
+            description: Assigned child access required when childId is provided,
+          }
     post:
       operationId: createTeamMessage
       tags: [collaboration]
@@ -951,6 +1247,62 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/TeamMessageReadResponse" }
         "403": { description: Assigned child access required }
+  /communication-passport:
+    get:
+      operationId: getCommunicationPassport
+      tags: [collaboration]
+      summary: Get the saved communication passport for an authorized child
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Saved passport or an empty authorized state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommunicationPassport" }
+        "403": { description: Assigned child access required }
+    put:
+      operationId: saveCommunicationPassport
+      tags: [collaboration]
+      summary: Save an SLP-reviewed communication passport
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              { $ref: "#/components/schemas/CommunicationPassportSaveInput" }
+      responses:
+        "200":
+          description: Saved passport
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommunicationPassport" }
+        "403": { description: Assigned SLP access required }
+        "409": { description: Passport was updated by another request }
+  /communication-passport/generate:
+    post:
+      operationId: generateCommunicationPassport
+      tags: [collaboration]
+      summary: Generate a share-safe communication passport draft
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              {
+                $ref: "#/components/schemas/CommunicationPassportGenerateInput",
+              }
+      responses:
+        "200":
+          description: Unsaved passport draft generated from share-safe child data
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CommunicationPassportDraft" }
+        "403": { description: Assigned SLP access required }
   /child:
     get:
       operationId: getChild
@@ -1028,8 +1380,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AacProfile" }
-        "400": { description: Invalid AAC profile or incompatible catalog selection }
-        "403": { description: Clinician access required to edit AAC information }
+        "400":
+          { description: Invalid AAC profile or incompatible catalog selection }
+        "403":
+          { description: Clinician access required to edit AAC information }
         "404": { description: Child not found }
         "409": { description: AAC profile changed since it was opened }
     delete:
@@ -1051,7 +1405,8 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AacProfile" }
-        "403": { description: Clinician access required to remove AAC information }
+        "403":
+          { description: Clinician access required to remove AAC information }
         "404": { description: Current AAC profile not found }
         "409": { description: AAC profile changed since it was opened }
   /child-interests:
@@ -1093,7 +1448,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ChildInterest" }
-        "403": { description: Assigned child and care-team contributor access required }
+        "403":
+          {
+            description: Assigned child and care-team contributor access required,
+          }
   /child-interests/{interestId}:
     patch:
       operationId: updateChildInterest
@@ -1115,7 +1473,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/ChildInterest" }
-        "403": { description: Assigned child and permitted contributor access required }
+        "403":
+          {
+            description: Assigned child and permitted contributor access required,
+          }
         "404": { description: Interest entry not found }
     delete:
       operationId: deleteChildInterest
@@ -1128,7 +1489,10 @@ paths:
           schema: { type: string }
       responses:
         "204": { description: Interest removed }
-        "403": { description: Only the contributor or an SLP can remove this interest }
+        "403":
+          {
+            description: Only the contributor or an SLP can remove this interest,
+          }
         "404": { description: Interest entry not found }
   /child-sensory:
     patch:
@@ -1151,7 +1515,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SensoryProfile" }
-        "403": { description: Assigned child and care-team contributor access required }
+        "403":
+          {
+            description: Assigned child and care-team contributor access required,
+          }
   /child-shared-profile:
     get:
       operationId: getChildSharedProfile
@@ -1182,7 +1549,8 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/SharedChildProfileEntryInput" }
+            schema:
+              { $ref: "#/components/schemas/SharedChildProfileEntryInput" }
       responses:
         "201":
           description: Created shared profile entry
@@ -1205,14 +1573,16 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/SharedChildProfileEntryUpdate" }
+            schema:
+              { $ref: "#/components/schemas/SharedChildProfileEntryUpdate" }
       responses:
         "200":
           description: Updated shared profile entry
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SharedChildProfileEntry" }
-        "403": { description: Entry ownership or assigned child access required }
+        "403":
+          { description: Entry ownership or assigned child access required }
         "404": { description: Shared profile entry not found }
         "409": { description: Entry was changed by another contributor }
   /child-shared-profile/entries/{entryId}/versions/{version}:
@@ -1231,7 +1601,8 @@ paths:
           schema: { type: number, minimum: 1 }
       responses:
         "204": { description: Shared profile entry removed }
-        "403": { description: Entry ownership or assigned child access required }
+        "403":
+          { description: Entry ownership or assigned child access required }
         "404": { description: Shared profile entry not found }
         "409": { description: Entry was changed by another contributor }
   /gestalts:
@@ -1281,6 +1652,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Gestalt"
+  /gestalts/{gestaltId}:
+    delete:
+      operationId: deleteGestalt
+      tags: [gestalts]
+      summary: Remove a phrase from the active dictionary while retaining historical session evidence
+      parameters:
+        - in: path
+          name: gestaltId
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "204": { description: Dictionary phrase archived }
+        "403": { description: SLP access and assigned child access required }
+        "404": { description: Active dictionary phrase not found }
   /phrase-observations:
     post:
       operationId: logPhraseObservation
@@ -1302,7 +1687,10 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/PhraseObservation" }
-        "403": { description: Assigned child and care-team contributor access required }
+        "403":
+          {
+            description: Assigned child and care-team contributor access required,
+          }
   /phrase-observations/recovery:
     get:
       operationId: listLegacyPhraseObservations
@@ -1318,7 +1706,8 @@ paths:
           description: Clinician-only historical phrase observation recovery queue
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/LegacyPhraseObservationQueue" }
+              schema:
+                { $ref: "#/components/schemas/LegacyPhraseObservationQueue" }
         "403": { description: Clinician access required }
   /phrase-observations/recovery-action:
     post:
@@ -1338,14 +1727,21 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/LegacyPhraseObservationRecoveryInput" }
+            schema:
+              {
+                $ref: "#/components/schemas/LegacyPhraseObservationRecoveryInput",
+              }
       responses:
         "201":
           description: Historical note recovered as reviewed phrase evidence
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/LegacyPhraseObservationRecovery" }
-        "409": { description: Note was already recovered or conflicts with the selected phrase }
+              schema:
+                { $ref: "#/components/schemas/LegacyPhraseObservationRecovery" }
+        "409":
+          {
+            description: Note was already recovered or conflicts with the selected phrase,
+          }
         "403": { description: Clinician access required }
   /gestalts/merge:
     post:
@@ -1384,7 +1780,10 @@ paths:
           description: Active duplicate suggestions for the selected child
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DictionaryDuplicateSuggestionList" }
+              schema:
+                {
+                  $ref: "#/components/schemas/DictionaryDuplicateSuggestionList",
+                }
         "401": { description: Authentication required }
         "403": { description: Assigned clinician access required }
   /dictionary/duplicate-suggestions/decision:
@@ -1402,18 +1801,26 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/DictionaryDuplicateDecisionInput" }
+            schema:
+              { $ref: "#/components/schemas/DictionaryDuplicateDecisionInput" }
       responses:
         "200":
           description: Saved duplicate suggestion decision
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/DictionaryDuplicateDecisionResult" }
-        "400": { description: The phrase pair is no longer a conservative duplicate suggestion }
+              schema:
+                {
+                  $ref: "#/components/schemas/DictionaryDuplicateDecisionResult",
+                }
+        "400":
+          {
+            description: The phrase pair is no longer a conservative duplicate suggestion,
+          }
         "401": { description: Authentication required }
         "403": { description: Assigned clinician access required }
         "404": { description: One or both dictionary entries are unavailable }
-        "409": { description: The suggestion changed while it was being reviewed }
+        "409":
+          { description: The suggestion changed while it was being reviewed }
   /gestalts/comments:
     post:
       operationId: addGestaltComment
@@ -1544,7 +1951,8 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/TeacherCommunicationHelper"
-        "403": { description: Teacher access and assigned child access required }
+        "403":
+          { description: Teacher access and assigned child access required }
         "404": { description: Child not found }
   /phrase-trends:
     get:
@@ -1596,7 +2004,7 @@ paths:
     post:
       operationId: requestObservationVideoUpload
       tags: [collaboration]
-      summary: Reserve a private family observation video upload
+      summary: Reserve a private care-team observation video upload
       requestBody:
         required: true
         content:
@@ -1612,12 +2020,12 @@ paths:
                 $ref: "#/components/schemas/ObservationVideoUpload"
         "400": { description: Invalid video metadata or consent }
         "401": { description: Authentication required }
-        "403": { description: Child access required }
+        "403": { description: SLP or teacher child access required }
   /observations/{observationId}/video:
     get:
       operationId: getObservationVideo
       tags: [collaboration]
-      summary: Stream a private family observation video
+      summary: Stream a private care-team observation video
       parameters:
         - in: path
           name: observationId
@@ -1958,7 +2366,10 @@ paths:
         "204": { description: Unfinished recording draft permanently deleted }
         "400": { description: A transcript or audio identifier is required }
         "401": { description: Authentication required }
-        "403": { description: "Clinician access, ownership, and child access required" }
+        "403":
+          {
+            description: "Clinician access, ownership, and child access required",
+          }
         "404": { description: Unfinished recording draft not found }
         "503": { description: Private recording storage could not be deleted }
   /sessions/transcription/{transcriptId}/audio:
@@ -1975,6 +2386,42 @@ paths:
         "200": { description: Private therapy recording }
         "403": { description: Clinician access and child access required }
         "404": { description: Recording not found }
+  /sessions/transcription/phrases/{phraseId}:
+    delete:
+      operationId: deleteSessionTranscriptPhrase
+      tags: [sessions]
+      summary: Exclude a detected phrase from an unfinished transcript review
+      parameters:
+        - in: path
+          name: phraseId
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200":
+          description: Refreshed transcript review without the excluded phrase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionTranscript"
+        "403":
+          {
+            description: "SLP access, ownership, and assigned child access required",
+          }
+        "404": { description: Active transcript phrase not found }
+  /sessions/unclear-vocalizations/{segmentId}/audio:
+    get:
+      operationId: getUnclearVocalizationAudio
+      tags: [sessions]
+      summary: Stream the retained short audio clip for one saved unclear moment
+      parameters:
+        - in: path
+          name: segmentId
+          required: true
+          schema: { type: number, minimum: 1 }
+      responses:
+        "200": { description: Private short unclear-moment audio clip }
+        "403": { description: SLP access and assigned child access required }
+        "404": { description: Retained audio clip not found }
   /sessions/transcription/speakers:
     post:
       operationId: updateTranscriptSpeakers
@@ -2338,7 +2785,8 @@ paths:
         required: false
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/DeletionRequestReconcileInput" }
+            schema:
+              { $ref: "#/components/schemas/DeletionRequestReconcileInput" }
       responses:
         "200":
           description: Reconciled deletion request
@@ -2346,98 +2794,352 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/DeletionRequestDetail" }
         "403": { description: Authorized staff access required }
-        "409": { description: Request cannot be reconciled or is already processing }
+        "409":
+          { description: Request cannot be reconciled or is already processing }
   /beta-access-requests:
     post:
       operationId: createBetaAccessRequest
       tags: [security]
       summary: Submit a private beta access request
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BetaAccessRequestInput" } } } }
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    { $ref: "#/components/schemas/BetaAccessRequestInput" },
+                },
+            },
+        }
       responses:
-        "201": { description: Received request, content: { application/json: { schema: { $ref: "#/components/schemas/BetaAccessRequestStatus" } } } }
+        "201":
+          {
+            description: Received request,
+            content:
+              {
+                application/json:
+                  {
+                    schema:
+                      { $ref: "#/components/schemas/BetaAccessRequestStatus" },
+                  },
+              },
+          }
         "400": { description: Invalid request }
   /invitations/validate:
     get:
       operationId: validateInvitation
       tags: [security]
       summary: Safely validate an opaque invitation token
-      parameters: [{ in: query, name: token, required: true, schema: { type: string } }]
-      responses: { "200": { description: Safe invitation metadata, content: { application/json: { schema: { $ref: "#/components/schemas/InvitationValidation" } } } } }
+      parameters:
+        [{ in: query, name: token, required: true, schema: { type: string } }]
+      responses:
+        {
+          "200":
+            {
+              description: Safe invitation metadata,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        { $ref: "#/components/schemas/InvitationValidation" },
+                    },
+                },
+            },
+        }
   /invitations/accept:
     post:
       operationId: acceptInvitation
       tags: [security]
       summary: Accept an invitation with the signed-in verified email
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/InvitationAcceptanceInput" } } } }
-      responses: { "200": { description: Accepted invitation, content: { application/json: { schema: { $ref: "#/components/schemas/InvitationAcceptance" } } } }, "403": { description: Invitation cannot be accepted } }
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    { $ref: "#/components/schemas/InvitationAcceptanceInput" },
+                },
+            },
+        }
+      responses:
+        {
+          "200":
+            {
+              description: Accepted invitation,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        { $ref: "#/components/schemas/InvitationAcceptance" },
+                    },
+                },
+            },
+          "403": { description: Invitation cannot be accepted },
+        }
   /beta-notice:
     get:
       operationId: getBetaNotice
       tags: [security]
       summary: Get the current beta participation notice
-      responses: { "200": { description: Current beta notice, content: { application/json: { schema: { $ref: "#/components/schemas/BetaNotice" } } } }, "401": { description: Authentication required } }
+      responses:
+        {
+          "200":
+            {
+              description: Current beta notice,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/BetaNotice" } },
+                },
+            },
+          "401": { description: Authentication required },
+        }
   /beta-notice/acknowledge:
     post:
       operationId: acknowledgeBetaNotice
       tags: [security]
       summary: Acknowledge the current beta participation notice
-      responses: { "200": { description: Acknowledged notice, content: { application/json: { schema: { $ref: "#/components/schemas/BetaNoticeAcknowledgement" } } } }, "401": { description: Authentication required } }
+      responses:
+        {
+          "200":
+            {
+              description: Acknowledged notice,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          $ref: "#/components/schemas/BetaNoticeAcknowledgement",
+                        },
+                    },
+                },
+            },
+          "401": { description: Authentication required },
+        }
   /admin/beta-access-requests:
     get:
       operationId: listBetaAccessRequests
       tags: [security]
       summary: List beta access requests for super administrators
-      responses: { "200": { description: Beta request queue, content: { application/json: { schema: { type: array, items: { $ref: "#/components/schemas/BetaAccessRequestAdmin" } } } } }, "403": { description: Super Admin access required } }
+      responses:
+        {
+          "200":
+            {
+              description: Beta request queue,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          type: array,
+                          items:
+                            {
+                              $ref: "#/components/schemas/BetaAccessRequestAdmin",
+                            },
+                        },
+                    },
+                },
+            },
+          "403": { description: Super Admin access required },
+        }
   /admin/beta-controls:
     get:
       operationId: getBetaControls
       tags: [security]
       summary: Get singleton private beta controls
-      responses: { "200": { description: Beta controls, content: { application/json: { schema: { $ref: "#/components/schemas/BetaControls" } } } } }
+      responses:
+        {
+          "200":
+            {
+              description: Beta controls,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/BetaControls" } },
+                },
+            },
+        }
     patch:
       operationId: updateBetaControls
       tags: [security]
       summary: Update singleton private beta controls
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BetaControlsInput" } } } }
-      responses: { "200": { description: Updated beta controls, content: { application/json: { schema: { $ref: "#/components/schemas/BetaControls" } } } }, "403": { description: Super Admin access required } }
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                { schema: { $ref: "#/components/schemas/BetaControlsInput" } },
+            },
+        }
+      responses:
+        {
+          "200":
+            {
+              description: Updated beta controls,
+              content:
+                {
+                  application/json:
+                    { schema: { $ref: "#/components/schemas/BetaControls" } },
+                },
+            },
+          "403": { description: Super Admin access required },
+        }
   /admin/beta-access-requests/{id}/approve:
     post:
       operationId: approveBetaAccessRequest
       tags: [security]
       summary: Approve a beta access request
-      parameters: [{ in: path, name: id, required: true, schema: { type: number } }]
-      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/BetaAccessApprovalInput" } } } }
-      responses: { "200": { description: Updated request, content: { application/json: { schema: { $ref: "#/components/schemas/BetaAccessRequestAction" } } } }, "403": { description: Super Admin access required } }
+      parameters:
+        [{ in: path, name: id, required: true, schema: { type: number } }]
+      requestBody:
+        {
+          required: true,
+          content:
+            {
+              application/json:
+                {
+                  schema:
+                    { $ref: "#/components/schemas/BetaAccessApprovalInput" },
+                },
+            },
+        }
+      responses:
+        {
+          "200":
+            {
+              description: Updated request,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          $ref: "#/components/schemas/BetaAccessRequestAction",
+                        },
+                    },
+                },
+            },
+          "403": { description: Super Admin access required },
+        }
   /admin/beta-access-requests/{id}/reject:
     post:
       operationId: rejectBetaAccessRequest
       tags: [security]
       summary: Reject a beta access request
-      parameters: [{ in: path, name: id, required: true, schema: { type: number } }]
-      responses: { "200": { description: Updated request, content: { application/json: { schema: { $ref: "#/components/schemas/BetaAccessRequestAction" } } } }, "403": { description: Super Admin access required } }
+      parameters:
+        [{ in: path, name: id, required: true, schema: { type: number } }]
+      responses:
+        {
+          "200":
+            {
+              description: Updated request,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          $ref: "#/components/schemas/BetaAccessRequestAction",
+                        },
+                    },
+                },
+            },
+          "403": { description: Super Admin access required },
+        }
   /admin/beta-access-requests/{id}/archive:
     post:
       operationId: archiveBetaAccessRequest
       tags: [security]
       summary: Archive a beta access request
-      parameters: [{ in: path, name: id, required: true, schema: { type: number } }]
-      responses: { "200": { description: Updated request, content: { application/json: { schema: { $ref: "#/components/schemas/BetaAccessRequestAction" } } } }, "403": { description: Super Admin access required } }
+      parameters:
+        [{ in: path, name: id, required: true, schema: { type: number } }]
+      responses:
+        {
+          "200":
+            {
+              description: Updated request,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          $ref: "#/components/schemas/BetaAccessRequestAction",
+                        },
+                    },
+                },
+            },
+          "403": { description: Super Admin access required },
+        }
   /admin/access-controls/revoke-invitations:
     post:
       operationId: revokeBetaInvitations
       tags: [security]
       summary: Revoke all active private-beta invitations
-      responses: { "200": { description: Revocation result, content: { application/json: { schema: { $ref: "#/components/schemas/BetaAccessControlResult" } } } }, "403": { description: Super Admin access required } }
+      responses:
+        {
+          "200":
+            {
+              description: Revocation result,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          $ref: "#/components/schemas/BetaAccessControlResult",
+                        },
+                    },
+                },
+            },
+          "403": { description: Super Admin access required },
+        }
   /admin/access-controls/{type}/{id}/{action}:
     post:
       operationId: updateBetaAccessControl
       tags: [security]
       summary: Emergency disable or enable a user or organization
       parameters:
-        - { in: path, name: type, required: true, schema: { type: string, enum: [users, organizations] } }
+        - {
+            in: path,
+            name: type,
+            required: true,
+            schema: { type: string, enum: [users, organizations] },
+          }
         - { in: path, name: id, required: true, schema: { type: string } }
-        - { in: path, name: action, required: true, schema: { type: string, enum: [disable, enable] } }
-      responses: { "200": { description: Access control result, content: { application/json: { schema: { $ref: "#/components/schemas/BetaAccessControlResult" } } } }, "403": { description: Super Admin access required } }
+        - {
+            in: path,
+            name: action,
+            required: true,
+            schema: { type: string, enum: [disable, enable] },
+          }
+      responses:
+        {
+          "200":
+            {
+              description: Access control result,
+              content:
+                {
+                  application/json:
+                    {
+                      schema:
+                        {
+                          $ref: "#/components/schemas/BetaAccessControlResult",
+                        },
+                    },
+                },
+            },
+          "403": { description: Super Admin access required },
+        }
 components:
   securitySchemes:
     ClerkSession:
@@ -2454,18 +3156,35 @@ components:
         - status
     Viewer:
       type: object
-      required: [userId, name, role, actualRole, childIds, isAdmin, isSuperAdmin, isRolePreview, isDevelopmentDemo, previewRole]
+      required:
+        [
+          userId,
+          name,
+          role,
+          actualRole,
+          childIds,
+          isAdmin,
+          isSuperAdmin,
+          isRolePreview,
+          isDevelopmentDemo,
+          previewRole,
+        ]
       properties:
         userId: { type: string }
         name: { type: string }
         role: { type: string, enum: [SLP, Parent, Teacher, Administrator] }
-        actualRole: { type: string, enum: [SLP, Parent, Teacher, Administrator] }
+        actualRole:
+          { type: string, enum: [SLP, Parent, Teacher, Administrator] }
         childIds: { type: array, items: { type: number } }
         isAdmin: { type: boolean }
         isSuperAdmin: { type: boolean }
         isRolePreview: { type: boolean }
         isDevelopmentDemo: { type: boolean }
-        previewRole: { type: ["string", "null"], enum: [SLP, Parent, Teacher, Administrator, null] }
+        previewRole:
+          {
+            type: ["string", "null"],
+            enum: [SLP, Parent, Teacher, Administrator, null],
+          }
     RolePreviewInput:
       type: object
       required: [role]
@@ -2505,10 +3224,26 @@ components:
         label: { type: string }
         path: { type: string }
         description: { type: string }
-        roles: { type: array, items: { type: string, enum: [SLP, Parent, Teacher, Administrator] } }
+        roles:
+          {
+            type: array,
+            items:
+              { type: string, enum: [SLP, Parent, Teacher, Administrator] },
+          }
     SecurityAuditEvent:
       type: object
-      required: [id, userId, actorName, actorRole, action, targetType, outcome, metadata, occurredAt]
+      required:
+        [
+          id,
+          userId,
+          actorName,
+          actorRole,
+          action,
+          targetType,
+          outcome,
+          metadata,
+          occurredAt,
+        ]
       properties:
         id: { type: number }
         userId: { type: string }
@@ -2534,7 +3269,14 @@ components:
         description: { type: string }
     RetentionSettings:
       type: object
-      required: [audioRetentionDays, observationVideoRetentionDays, sessionNoteRetentionDays, archivedClientStorageDays, updatedAt]
+      required:
+        [
+          audioRetentionDays,
+          observationVideoRetentionDays,
+          sessionNoteRetentionDays,
+          archivedClientStorageDays,
+          updatedAt,
+        ]
       properties:
         audioRetentionDays: { type: number }
         observationVideoRetentionDays: { type: number }
@@ -2543,15 +3285,33 @@ components:
         updatedAt: { type: string, format: date-time }
     RetentionSettingsInput:
       type: object
-      required: [audioRetentionDays, observationVideoRetentionDays, sessionNoteRetentionDays, archivedClientStorageDays]
+      required:
+        [
+          audioRetentionDays,
+          observationVideoRetentionDays,
+          sessionNoteRetentionDays,
+          archivedClientStorageDays,
+        ]
       properties:
         audioRetentionDays: { type: number, minimum: 1, maximum: 36500 }
-        observationVideoRetentionDays: { type: number, minimum: 1, maximum: 36500 }
+        observationVideoRetentionDays:
+          { type: number, minimum: 1, maximum: 36500 }
         sessionNoteRetentionDays: { type: number, minimum: 1, maximum: 36500 }
         archivedClientStorageDays: { type: number, minimum: 1, maximum: 36500 }
     AdminSecurityOverview:
       type: object
-      required: [activeUsers, failedLoginAttempts, consentRecordCount, recentLogins, recentConsentRecords, auditEvents, retentionSettings, classifications, encryption]
+      required:
+        [
+          activeUsers,
+          failedLoginAttempts,
+          consentRecordCount,
+          recentLogins,
+          recentConsentRecords,
+          auditEvents,
+          retentionSettings,
+          classifications,
+          encryption,
+        ]
       properties:
         activeUsers: { type: number }
         failedLoginAttempts: { type: number }
@@ -2598,7 +3358,8 @@ components:
         recordedAt: { type: string, format: date-time }
     AacSnapshot:
       type: object
-      required: [isUser, device, vocabularySystem, accessMethod, lastConfirmedAt]
+      required:
+        [isUser, device, vocabularySystem, accessMethod, lastConfirmedAt]
       properties:
         isUser: { type: boolean }
         device: { type: ["string", "null"] }
@@ -2607,7 +3368,8 @@ components:
         lastConfirmedAt: { type: ["string", "null"], format: date }
     AacCommunicationModality:
       type: string
-      enum: [aac, spoken_language, sign_language, gestures, written_language, other]
+      enum:
+        [aac, spoken_language, sign_language, gestures, written_language, other]
     AacUserStatus:
       type: string
       enum: [yes, no, unknown]
@@ -2635,7 +3397,14 @@ components:
           items: { type: string }
     AacProfileCatalog:
       type: object
-      required: [vendors, deviceModels, vocabularySystems, accessMethods, ownershipOptions]
+      required:
+        [
+          vendors,
+          deviceModels,
+          vocabularySystems,
+          accessMethods,
+          ownershipOptions,
+        ]
       properties:
         vendors:
           type: array
@@ -2654,7 +3423,23 @@ components:
           items: { $ref: "#/components/schemas/AacCatalogOption" }
     AacProfileHistoryValue:
       type: object
-      required: [communicationModalities, otherModalityLabel, aacUserStatus, deviceVendorId, deviceVendorCustomLabel, deviceModelId, deviceModelCustomLabel, vocabularySystemId, vocabularySystemCustomLabel, accessMethodId, accessMethodCustomLabel, ownershipId, ownershipCustomLabel, notes]
+      required:
+        [
+          communicationModalities,
+          otherModalityLabel,
+          aacUserStatus,
+          deviceVendorId,
+          deviceVendorCustomLabel,
+          deviceModelId,
+          deviceModelCustomLabel,
+          vocabularySystemId,
+          vocabularySystemCustomLabel,
+          accessMethodId,
+          accessMethodCustomLabel,
+          ownershipId,
+          ownershipCustomLabel,
+          notes,
+        ]
       properties:
         communicationModalities:
           type: array
@@ -2674,7 +3459,18 @@ components:
         notes: { type: ["string", "null"] }
     AacProfileHistoryEvent:
       type: object
-      required: [id, childId, action, changedFields, previousValue, nextValue, actorName, actorRole, occurredAt]
+      required:
+        [
+          id,
+          childId,
+          action,
+          changedFields,
+          previousValue,
+          nextValue,
+          actorName,
+          actorRole,
+          occurredAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
@@ -2695,7 +3491,36 @@ components:
         occurredAt: { type: string, format: date-time }
     AacProfile:
       type: object
-      required: [childId, exists, communicationModalities, otherModalityLabel, aacUserStatus, deviceVendorId, deviceVendorCustomLabel, deviceModelId, deviceModelCustomLabel, vocabularySystemId, vocabularySystemCustomLabel, accessMethodId, accessMethodCustomLabel, ownershipId, ownershipCustomLabel, notes, canView, canEdit, version, lastUpdatedAt, lastUpdatedBy, lastUpdatedRole, lastConfirmedAt, lastConfirmedBy, lastConfirmedRole, catalog, history]
+      required:
+        [
+          childId,
+          exists,
+          communicationModalities,
+          otherModalityLabel,
+          aacUserStatus,
+          deviceVendorId,
+          deviceVendorCustomLabel,
+          deviceModelId,
+          deviceModelCustomLabel,
+          vocabularySystemId,
+          vocabularySystemCustomLabel,
+          accessMethodId,
+          accessMethodCustomLabel,
+          ownershipId,
+          ownershipCustomLabel,
+          notes,
+          canView,
+          canEdit,
+          version,
+          lastUpdatedAt,
+          lastUpdatedBy,
+          lastUpdatedRole,
+          lastConfirmedAt,
+          lastConfirmedBy,
+          lastConfirmedRole,
+          catalog,
+          history,
+        ]
       properties:
         childId: { type: number }
         exists: { type: boolean }
@@ -2730,7 +3555,24 @@ components:
           items: { $ref: "#/components/schemas/AacProfileHistoryEvent" }
     AacProfileUpdateInput:
       type: object
-      required: [communicationModalities, otherModalityLabel, aacUserStatus, deviceVendorId, deviceVendorCustomLabel, deviceModelId, deviceModelCustomLabel, vocabularySystemId, vocabularySystemCustomLabel, accessMethodId, accessMethodCustomLabel, ownershipId, ownershipCustomLabel, notes, version]
+      required:
+        [
+          communicationModalities,
+          otherModalityLabel,
+          aacUserStatus,
+          deviceVendorId,
+          deviceVendorCustomLabel,
+          deviceModelId,
+          deviceModelCustomLabel,
+          vocabularySystemId,
+          vocabularySystemCustomLabel,
+          accessMethodId,
+          accessMethodCustomLabel,
+          ownershipId,
+          ownershipCustomLabel,
+          notes,
+          version,
+        ]
       properties:
         communicationModalities:
           type: array
@@ -2742,7 +3584,8 @@ components:
         deviceModelId: { type: ["string", "null"], maxLength: 80 }
         deviceModelCustomLabel: { type: ["string", "null"], maxLength: 120 }
         vocabularySystemId: { type: ["string", "null"], maxLength: 80 }
-        vocabularySystemCustomLabel: { type: ["string", "null"], maxLength: 120 }
+        vocabularySystemCustomLabel:
+          { type: ["string", "null"], maxLength: 120 }
         accessMethodId: { type: ["string", "null"], maxLength: 80 }
         accessMethodCustomLabel: { type: ["string", "null"], maxLength: 120 }
         ownershipId: { type: ["string", "null"], maxLength: 80 }
@@ -2751,7 +3594,21 @@ components:
         version: { type: number, minimum: 0 }
     Child:
       type: object
-      required: [id, name, firstName, lastName, preferredName, pronouns, age, school, grade, communicationStyle, gestaltCount, team]
+      required:
+        [
+          id,
+          name,
+          firstName,
+          lastName,
+          preferredName,
+          pronouns,
+          age,
+          school,
+          grade,
+          communicationStyle,
+          gestaltCount,
+          team,
+        ]
       properties:
         id: { type: number }
         name: { type: string }
@@ -2775,10 +3632,12 @@ components:
         sensorySupports: { type: array, items: { type: string } }
         sensoryChallenges: { type: array, items: { type: string } }
         gestaltCount: { type: number }
-        team: { type: array, items: { $ref: "#/components/schemas/TeamMember" } }
+        team:
+          { type: array, items: { $ref: "#/components/schemas/TeamMember" } }
     ChildInput:
       type: object
-      required: [name, school, grade, communicationStyle, legalAuthorityConfirmed]
+      required:
+        [name, school, grade, communicationStyle, legalAuthorityConfirmed]
       properties:
         name: { type: string, minLength: 1 }
         firstName: { type: string, minLength: 1 }
@@ -2816,7 +3675,20 @@ components:
       enum: [strengths, interests, sensory_supports, regulation_notes]
     SharedChildProfileEntry:
       type: object
-      required: [id, childId, section, category, value, authorName, authorRole, createdAt, updatedAt, version, canEdit]
+      required:
+        [
+          id,
+          childId,
+          section,
+          category,
+          value,
+          authorName,
+          authorRole,
+          createdAt,
+          updatedAt,
+          version,
+          canEdit,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
@@ -2841,7 +3713,19 @@ components:
         lastUpdatedBy: { type: ["string", "null"] }
     SharedChildProfileHistoryEvent:
       type: object
-      required: [id, entryId, childId, section, action, previousValue, nextValue, actorName, actorRole, occurredAt]
+      required:
+        [
+          id,
+          entryId,
+          childId,
+          section,
+          action,
+          previousValue,
+          nextValue,
+          actorName,
+          actorRole,
+          occurredAt,
+        ]
       properties:
         id: { type: number }
         entryId: { type: ["number", "null"] }
@@ -2881,7 +3765,8 @@ components:
         version: { type: number, minimum: 1 }
     ChildInterest:
       type: object
-      required: [id, childId, interest, status, addedAt, addedBy, addedByRole, canEdit]
+      required:
+        [id, childId, interest, status, addedAt, addedBy, addedByRole, canEdit]
       properties:
         id: { type: string }
         childId: { type: number }
@@ -2931,8 +3816,10 @@ components:
       type: object
       required: [supports, challenges]
       properties:
-        supports: { type: array, maxItems: 30, items: { type: string, maxLength: 160 } }
-        challenges: { type: array, maxItems: 30, items: { type: string, maxLength: 160 } }
+        supports:
+          { type: array, maxItems: 30, items: { type: string, maxLength: 160 } }
+        challenges:
+          { type: array, maxItems: 30, items: { type: string, maxLength: 160 } }
     TeamMember:
       type: object
       required: [id, name, role, initials]
@@ -2943,7 +3830,21 @@ components:
         initials: { type: string }
     Gestalt:
       type: object
-      required: [id, childId, phrase, meaning, source, function, contexts, emotionalState, dateAdded, createdBy, comments, aacPlanningStatus]
+      required:
+        [
+          id,
+          childId,
+          phrase,
+          meaning,
+          source,
+          function,
+          contexts,
+          emotionalState,
+          dateAdded,
+          createdBy,
+          comments,
+          aacPlanningStatus,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
@@ -2956,10 +3857,12 @@ components:
         emotionalState: { type: string }
         dateAdded: { type: string, format: date-time }
         createdBy: { type: string }
-        comments: { type: array, items: { $ref: "#/components/schemas/Comment" } }
+        comments:
+          { type: array, items: { $ref: "#/components/schemas/Comment" } }
         aacPlanningStatus:
           type: ["string", "null"]
-          enum: [candidate, review_later, added_to_device, not_appropriate, null]
+          enum:
+            [candidate, review_later, added_to_device, not_appropriate, null]
     GestaltInput:
       type: object
       required: [phrase, function, contexts, emotionalState]
@@ -2970,7 +3873,12 @@ components:
           description: Explicit clinician confirmation that a near-duplicate should remain a separate phrase.
         audioUrl: { type: ["string", "null"] }
         source: { type: string }
-        meaning: { type: string, minLength: 1, description: Optional initial interpretation; clinicians can add meaning during review. }
+        meaning:
+          {
+            type: string,
+            minLength: 1,
+            description: Optional initial interpretation; clinicians can add meaning during review.,
+          }
         function: { type: string }
         contexts: { type: array, items: { type: string } }
         emotionalState: { type: string }
@@ -2992,11 +3900,14 @@ components:
         occurrences: { type: number }
     DictionaryDuplicateSuggestion:
       type: object
-      required: [suggestionId, first, second, reason, reasonLabel, similarityScore]
+      required:
+        [suggestionId, first, second, reason, reasonLabel, similarityScore]
       properties:
         suggestionId: { type: string }
-        first: { $ref: "#/components/schemas/DictionaryDuplicateSuggestionPhrase" }
-        second: { $ref: "#/components/schemas/DictionaryDuplicateSuggestionPhrase" }
+        first:
+          { $ref: "#/components/schemas/DictionaryDuplicateSuggestionPhrase" }
+        second:
+          { $ref: "#/components/schemas/DictionaryDuplicateSuggestionPhrase" }
         reason:
           type: string
           enum: [exact, capitalization, punctuation, whitespace, minor_spelling]
@@ -3048,7 +3959,15 @@ components:
         possibleMeaning: { type: string, maxLength: 1200 }
         communicationFunction:
           type: string
-          enum: [Requesting, Commenting, Social Interaction, Self-Regulation, Shared Joy, Other]
+          enum:
+            [
+              Requesting,
+              Commenting,
+              Social Interaction,
+              Self-Regulation,
+              Shared Joy,
+              Other,
+            ]
         observedAt: { type: string, format: date-time }
     PhraseObservation:
       type: object
@@ -3060,7 +3979,20 @@ components:
         lastObservedAt: { type: string, format: date-time }
     LegacyPhraseObservation:
       type: object
-      required: [noteId, childId, sourceGestaltId, phrase, noteBody, authorName, authorRole, sharedAt, inferredContext, suggestedObservedAt, suggestedTargetGestaltId]
+      required:
+        [
+          noteId,
+          childId,
+          sourceGestaltId,
+          phrase,
+          noteBody,
+          authorName,
+          authorRole,
+          sharedAt,
+          inferredContext,
+          suggestedObservedAt,
+          suggestedTargetGestaltId,
+        ]
       properties:
         noteId: { type: number }
         childId: { type: number }
@@ -3077,11 +4009,24 @@ components:
       type: object
       required: [items, total]
       properties:
-        items: { type: array, items: { $ref: "#/components/schemas/LegacyPhraseObservation" } }
+        items:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/LegacyPhraseObservation" },
+          }
         total: { type: number }
     LegacyPhraseObservationRecoveryInput:
       type: object
-      required: [phrase, meaning, function, context, emotionalState, observedAt, confirmation]
+      required:
+        [
+          phrase,
+          meaning,
+          function,
+          context,
+          emotionalState,
+          observedAt,
+          confirmation,
+        ]
       properties:
         targetGestaltId: { type: number }
         phrase: { type: string, minLength: 1, maxLength: 500 }
@@ -3135,14 +4080,33 @@ components:
         generatedAt: { type: string, format: date-time }
     AacPlanningEntry:
       type: object
-      required: [id, childId, gestaltId, phrase, meaning, status, occurrenceCount, firstObservedAt, lastObservedAt, communicationFunction, contexts, dateAdded, updatedAt]
+      required:
+        [
+          id,
+          childId,
+          gestaltId,
+          phrase,
+          meaning,
+          status,
+          occurrenceCount,
+          firstObservedAt,
+          lastObservedAt,
+          communicationFunction,
+          contexts,
+          dateAdded,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
         gestaltId: { type: number }
         phrase: { type: string }
         meaning: { type: string }
-        status: { type: string, enum: [candidate, review_later, added_to_device, not_appropriate] }
+        status:
+          {
+            type: string,
+            enum: [candidate, review_later, added_to_device, not_appropriate],
+          }
         occurrenceCount: { type: number }
         firstObservedAt: { type: ["string", "null"], format: date-time }
         lastObservedAt: { type: ["string", "null"], format: date-time }
@@ -3155,7 +4119,11 @@ components:
       required: [childId, entries, generatedAt]
       properties:
         childId: { type: number }
-        entries: { type: array, items: { $ref: "#/components/schemas/AacPlanningEntry" } }
+        entries:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/AacPlanningEntry" },
+          }
         generatedAt: { type: string, format: date-time }
     AacPlanningCreateInput:
       type: object
@@ -3167,13 +4135,18 @@ components:
       type: object
       required: [status]
       properties:
-        status: { type: string, enum: [candidate, review_later, added_to_device, not_appropriate] }
+        status:
+          {
+            type: string,
+            enum: [candidate, review_later, added_to_device, not_appropriate],
+          }
     TeacherCommunicationMeaning:
       type: object
       required: [text, source]
       properties:
         text: { type: string }
-        source: { type: string, enum: [communication_dictionary, session_history] }
+        source:
+          { type: string, enum: [communication_dictionary, session_history] }
     TeacherCommunicationTeamInsight:
       type: object
       required: [authorRole, body, createdAt]
@@ -3183,7 +4156,20 @@ components:
         createdAt: { type: string, format: date-time }
     TeacherCommunicationHelper:
       type: object
-      required: [childId, phrase, found, meanings, suggestedResponses, observedIn, relatedInterests, teamInsights, confidence, confidenceNote, sources]
+      required:
+        [
+          childId,
+          phrase,
+          found,
+          meanings,
+          suggestedResponses,
+          observedIn,
+          relatedInterests,
+          teamInsights,
+          confidence,
+          confidenceNote,
+          sources,
+        ]
       properties:
         childId: { type: number }
         phrase: { type: string }
@@ -3205,15 +4191,34 @@ components:
         teamInsights:
           type: array
           maxItems: 5
-          items: { $ref: "#/components/schemas/TeacherCommunicationTeamInsight" }
+          items:
+            { $ref: "#/components/schemas/TeacherCommunicationTeamInsight" }
         confidence: { type: string, enum: [high, moderate, low] }
         confidenceNote: { type: string }
         sources:
           type: array
-          items: { type: string, enum: [communication_dictionary, session_history, team_notes] }
+          items:
+            {
+              type: string,
+              enum: [communication_dictionary, session_history, team_notes],
+            }
     ClinicalKnowledgeSource:
       type: object
-      required: [id, title, sourceType, authorship, citation, tags, status, activeVersion, contentType, sizeBytes, createdAt, updatedAt]
+      required:
+        [
+          id,
+          title,
+          sourceType,
+          authorship,
+          citation,
+          tags,
+          status,
+          activeVersion,
+          contentType,
+          sizeBytes,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         title: { type: string }
@@ -3242,7 +4247,8 @@ components:
         sourceType: { type: string, minLength: 1, maxLength: 80 }
         authorship: { type: string, maxLength: 500 }
         citation: { type: string, maxLength: 1200 }
-        tags: { type: array, maxItems: 20, items: { type: string, maxLength: 80 } }
+        tags:
+          { type: array, maxItems: 20, items: { type: string, maxLength: 80 } }
         contentType: { type: string }
         data: { type: string, minLength: 4 }
     ClinicalKnowledgeCitation:
@@ -3257,7 +4263,14 @@ components:
         section: { type: ["string", "null"] }
     ClinicalKnowledgeEvidence:
       type: object
-      required: [reviewedPhraseCount, reviewedObservationCount, sessionId, phrase, evidenceVersion]
+      required:
+        [
+          reviewedPhraseCount,
+          reviewedObservationCount,
+          sessionId,
+          phrase,
+          evidenceVersion,
+        ]
       properties:
         reviewedPhraseCount: { type: number }
         reviewedObservationCount: { type: number }
@@ -3266,17 +4279,61 @@ components:
         evidenceVersion: { type: string }
     ClinicalKnowledgeInsight:
       type: object
-      required: [id, childId, sessionId, category, confidence, disposition, reviewReason, alternatives, suggestion, rationale, citations, evidence, provider, model, status, clinicianEdit, reviewNote, reviewedAt, createdAt, updatedAt]
+      required:
+        [
+          id,
+          childId,
+          sessionId,
+          category,
+          confidence,
+          disposition,
+          reviewReason,
+          alternatives,
+          suggestion,
+          rationale,
+          citations,
+          evidence,
+          provider,
+          model,
+          status,
+          clinicianEdit,
+          reviewNote,
+          reviewedAt,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
         sessionId: { type: ["number", "null"] }
         category:
           type: string
-          enum: [gestalt_identification, communication_function, mitigation_observation, nla_stage_indicator, parent_coaching, soap_insight, longitudinal_growth]
+          enum:
+            [
+              gestalt_identification,
+              communication_function,
+              mitigation_observation,
+              nla_stage_indicator,
+              parent_coaching,
+              soap_insight,
+              longitudinal_growth,
+            ]
         confidence: { type: string, enum: [high, medium, low] }
-        disposition: { type: string, enum: [applied, monitoring, draft, exception] }
-        reviewReason: { type: ["string", "null"], enum: [low_confidence, competing_interpretations, possible_mitigation, possible_stage_transition, unknown_function, null] }
+        disposition:
+          { type: string, enum: [applied, monitoring, draft, exception] }
+        reviewReason:
+          {
+            type: ["string", "null"],
+            enum:
+              [
+                low_confidence,
+                competing_interpretations,
+                possible_mitigation,
+                possible_stage_transition,
+                unknown_function,
+                null,
+              ],
+          }
         alternatives: { type: array, items: { type: string } }
         suggestion: { type: string }
         rationale: { type: string }
@@ -3286,7 +4343,11 @@ components:
         evidence: { $ref: "#/components/schemas/ClinicalKnowledgeEvidence" }
         provider: { type: string }
         model: { type: ["string", "null"] }
-        status: { type: string, enum: [draft, applied, monitoring, exception, reviewed, reverted] }
+        status:
+          {
+            type: string,
+            enum: [draft, applied, monitoring, exception, reviewed, reverted],
+          }
         clinicianEdit: { type: ["string", "null"] }
         reviewNote: { type: ["string", "null"] }
         reviewedAt: { type: ["string", "null"], format: date-time }
@@ -3321,7 +4382,8 @@ components:
         occurrences: { type: number }
     PhraseTrend:
       type: object
-      required: [phrase, gestaltId, totalOccurrences, contexts, points, meanings]
+      required:
+        [phrase, gestaltId, totalOccurrences, contexts, points, meanings]
       properties:
         phrase: { type: string }
         gestaltId: { type: ["number", "null"] }
@@ -3350,7 +4412,16 @@ components:
         occurrences: { type: number }
     PhraseTrendReport:
       type: object
-      required: [childId, from, to, trends, functionTimeline, reviewedSessionCount, generatedAt]
+      required:
+        [
+          childId,
+          from,
+          to,
+          trends,
+          functionTimeline,
+          reviewedSessionCount,
+          generatedAt,
+        ]
       properties:
         childId: { type: number }
         from: { type: string, format: date }
@@ -3365,7 +4436,16 @@ components:
         generatedAt: { type: string, format: date-time }
     SoapNoteInput:
       type: object
-      required: [subjective, objective, assessment, nlaObservations, gestaltTracking, plan, caregiverSummary]
+      required:
+        [
+          subjective,
+          objective,
+          assessment,
+          nlaObservations,
+          gestaltTracking,
+          plan,
+          caregiverSummary,
+        ]
       properties:
         subjective: { type: string }
         objective: { type: string }
@@ -3376,7 +4456,16 @@ components:
         caregiverSummary: { type: string }
     SoapNoteEvidence:
       type: object
-      required: [childUtterances, uniqueGestalts, repeatedGestalts, newGestalts, recurrentGestalts, functions, longitudinalChange]
+      required:
+        [
+          childUtterances,
+          uniqueGestalts,
+          repeatedGestalts,
+          newGestalts,
+          recurrentGestalts,
+          functions,
+          longitudinalChange,
+        ]
       properties:
         childUtterances: { type: number }
         uniqueGestalts: { type: number }
@@ -3387,7 +4476,16 @@ components:
         longitudinalChange: { type: string }
     SessionSoapNote:
       type: object
-      required: [sessionId, childId, sessionDate, content, evidence, generatedAt, updatedAt]
+      required:
+        [
+          sessionId,
+          childId,
+          sessionDate,
+          content,
+          evidence,
+          generatedAt,
+          updatedAt,
+        ]
       properties:
         sessionId: { type: number }
         childId: { type: number }
@@ -3398,10 +4496,30 @@ components:
         updatedAt: { type: string, format: date-time }
     ClinicalDocumentationFormat:
       type: string
-      enum: [session_note, soap_note, progress_note, parent_summary, teacher_summary]
+      enum:
+        [
+          session_note,
+          soap_note,
+          progress_note,
+          parent_summary,
+          teacher_summary,
+        ]
     CommunicationGoal:
       type: object
-      required: [id, childId, title, goalArea, description, status, startDate, targetDate, version, createdAt, updatedAt]
+      required:
+        [
+          id,
+          childId,
+          title,
+          goalArea,
+          description,
+          status,
+          startDate,
+          targetDate,
+          version,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
@@ -3436,12 +4554,170 @@ components:
         startDate: { type: string, format: date }
         targetDate: { type: [string, "null"], format: date }
         status: { type: string, enum: [active, archived] }
+    ManualSessionGoalProgressInput:
+      type: object
+      required: [goalId, progressNote]
+      properties:
+        goalId: { type: number }
+        accuracyPercent: { type: [number, "null"], minimum: 0, maximum: 100 }
+        successfulAttempts: { type: [number, "null"], minimum: 0 }
+        totalAttempts: { type: [number, "null"], minimum: 0 }
+        promptingLevel:
+          type: [string, "null"]
+          enum: [independent, minimal, moderate, maximal, total, null]
+        progressNote: { type: string, maxLength: 4000 }
+    ManualSessionInput:
+      type: object
+      required:
+        [
+          sessionDate,
+          durationSeconds,
+          timerElapsedSeconds,
+          durationSource,
+          durationEdited,
+          goals,
+          note,
+        ]
+      properties:
+        sessionDate: { type: string, format: date }
+        startedAt: { type: [string, "null"], format: date-time }
+        endedAt: { type: [string, "null"], format: date-time }
+        durationSeconds: { type: number, minimum: 60, maximum: 28800 }
+        timerElapsedSeconds: { type: number, minimum: 0, maximum: 28800 }
+        durationSource:
+          type: string
+          enum: [timer, manual, timer_edited]
+        durationEdited: { type: boolean }
+        goals:
+          type: array
+          minItems: 1
+          maxItems: 50
+          items: { $ref: "#/components/schemas/ManualSessionGoalProgressInput" }
+        note: { type: string, minLength: 1, maxLength: 10000 }
+    ManualSessionGoalProgress:
+      type: object
+      required:
+        [
+          id,
+          goalId,
+          goalVersion,
+          goalTitle,
+          goalArea,
+          accuracyPercent,
+          successfulAttempts,
+          totalAttempts,
+          promptingLevel,
+          progressNote,
+        ]
+      properties:
+        id: { type: number }
+        goalId: { type: number }
+        goalVersion: { type: number }
+        goalTitle: { type: string }
+        goalArea: { type: string }
+        accuracyPercent: { type: [number, "null"] }
+        successfulAttempts: { type: [number, "null"] }
+        totalAttempts: { type: [number, "null"] }
+        promptingLevel: { type: [string, "null"] }
+        progressNote: { type: string }
+    IepServiceRequirementInput:
+      type: object
+      required:
+        [
+          serviceName,
+          requiredSessions,
+          requiredMinutes,
+          sessionDurationMinutes,
+          period,
+          effectiveFrom,
+        ]
+      properties:
+        serviceName: { type: string, minLength: 1, maxLength: 160 }
+        requiredSessions: { type: number, minimum: 1, maximum: 100 }
+        requiredMinutes: { type: number, minimum: 1, maximum: 10000 }
+        sessionDurationMinutes: { type: number, minimum: 1, maximum: 480 }
+        period: { type: string, enum: [weekly, monthly] }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, "null"], format: date }
+    IepServiceRequirement:
+      type: object
+      required:
+        [
+          id,
+          childId,
+          serviceName,
+          requiredSessions,
+          requiredMinutes,
+          sessionDurationMinutes,
+          period,
+          effectiveFrom,
+          effectiveTo,
+          periodLabel,
+          periodStart,
+          periodEnd,
+          sessionsCompleted,
+          sessionsRemaining,
+          minutesCompleted,
+          minutesRemaining,
+          status,
+          updatedAt,
+        ]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        serviceName: { type: string }
+        requiredSessions: { type: number }
+        requiredMinutes: { type: number }
+        sessionDurationMinutes: { type: number }
+        period: { type: string, enum: [weekly, monthly] }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: [string, "null"], format: date }
+        periodLabel: { type: string }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        sessionsCompleted: { type: number, minimum: 0 }
+        sessionsRemaining: { type: number, minimum: 0 }
+        minutesCompleted: { type: number, minimum: 0 }
+        minutesRemaining: { type: number, minimum: 0 }
+        status: { type: string, enum: [on_track, behind, complete] }
+        updatedAt: { type: string, format: date-time }
+    ManualSessionSetup:
+      type: object
+      required: [childId, goals, serviceRequirements]
+      properties:
+        childId: { type: number }
+        goals:
+          type: array
+          items: { $ref: "#/components/schemas/CommunicationGoal" }
+        serviceRequirements:
+          type: array
+          items: { $ref: "#/components/schemas/IepServiceRequirement" }
     ClinicalDocumentationStatus:
       type: string
       enum: [draft, finalized, archived, recently_deleted]
     ClinicalDocumentationContent:
       type: object
-      required: [sessionSummary, observedGestalts, communicationFunctions, nlaObservations, potentialGestalts, suggestedClinicalImpressions, clinicianNotes, observedLanguage, communicationFunctionsObserved, notableLanguageChanges, nlaGestaltInsights, sessionParticipation, aacPlanningOpportunities, suggestedDictionaryCandidates, suggestedFollowUpTargets, communicationGrowthSnapshot, familyTeamHighlights, evidenceReferences]
+      required:
+        [
+          sessionSummary,
+          observedGestalts,
+          communicationFunctions,
+          nlaObservations,
+          potentialGestalts,
+          suggestedClinicalImpressions,
+          clinicianNotes,
+          observedLanguage,
+          communicationFunctionsObserved,
+          notableLanguageChanges,
+          nlaGestaltInsights,
+          sessionParticipation,
+          aacPlanningOpportunities,
+          suggestedDictionaryCandidates,
+          suggestedFollowUpTargets,
+          communicationGrowthSnapshot,
+          familyTeamHighlights,
+          evidenceReferences,
+        ]
       properties:
         sessionSummary: { type: string }
         observedGestalts: { type: string }
@@ -3469,17 +4745,44 @@ components:
           items: { $ref: "#/components/schemas/GoalConnection" }
     GoalConnection:
       type: object
-      required: [goalId, goalTitle, goalArea, goalVersion, sourceKind, sourceId, sourceLabel, sourceDetail, evidenceClass, included]
+      required:
+        [
+          goalId,
+          goalTitle,
+          goalArea,
+          goalVersion,
+          sourceKind,
+          sourceId,
+          sourceLabel,
+          sourceDetail,
+          evidenceClass,
+          included,
+        ]
       properties:
         goalId: { type: number }
         goalTitle: { type: string }
         goalArea: { type: string }
         goalVersion: { type: number }
-        sourceKind: { type: string, enum: [reviewed_utterance, dictionary_phrase, aac_profile, shared_moment, teacher_observation] }
+        sourceKind:
+          {
+            type: string,
+            enum:
+              [
+                reviewed_utterance,
+                dictionary_phrase,
+                aac_profile,
+                shared_moment,
+                teacher_observation,
+              ],
+          }
         sourceId: { type: number }
         sourceLabel: { type: string }
         sourceDetail: { type: string }
-        evidenceClass: { type: string, enum: [reviewed_clinical_evidence, care_team_context] }
+        evidenceClass:
+          {
+            type: string,
+            enum: [reviewed_clinical_evidence, care_team_context],
+          }
         included: { type: boolean }
     ClinicalDocumentationEvidenceReference:
       type: object
@@ -3493,7 +4796,30 @@ components:
         detail: { type: string }
     ClinicalDocumentation:
       type: object
-      required: [id, childId, sourceSessionId, format, status, title, inputObservations, inputSummary, inputQuickNote, content, generated, evidenceVersion, approvedAt, approvedBy, archivedAt, archivedBy, deletedAt, deletedBy, purgeAfter, createdAt, updatedAt]
+      required:
+        [
+          id,
+          childId,
+          sourceSessionId,
+          format,
+          status,
+          title,
+          inputObservations,
+          inputSummary,
+          inputQuickNote,
+          content,
+          generated,
+          evidenceVersion,
+          approvedAt,
+          approvedBy,
+          archivedAt,
+          archivedBy,
+          deletedAt,
+          deletedBy,
+          purgeAfter,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
@@ -3537,7 +4863,21 @@ components:
         name: { type: string }
     SessionSoapNoteSummary:
       type: object
-      required: [sessionId, childId, title, status, clinicianEdited, archivedAt, archivedBy, deletedAt, deletedBy, purgeAfter, createdAt, updatedAt]
+      required:
+        [
+          sessionId,
+          childId,
+          title,
+          status,
+          clinicianEdited,
+          archivedAt,
+          archivedBy,
+          deletedAt,
+          deletedBy,
+          purgeAfter,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         sessionId: { type: number }
         childId: { type: number }
@@ -3578,7 +4918,18 @@ components:
       required: [goalId, sourceKind, sourceId, included]
       properties:
         goalId: { type: number }
-        sourceKind: { type: string, enum: [reviewed_utterance, dictionary_phrase, aac_profile, shared_moment, teacher_observation] }
+        sourceKind:
+          {
+            type: string,
+            enum:
+              [
+                reviewed_utterance,
+                dictionary_phrase,
+                aac_profile,
+                shared_moment,
+                teacher_observation,
+              ],
+          }
         sourceId: { type: number }
         included: { type: boolean }
     ClinicalDocumentationApproveInput:
@@ -3653,7 +5004,8 @@ components:
         consentConfirmedAt: { type: string, format: date-time }
     ObservationVideoUploadRequest:
       type: object
-      required: [childId, contentType, sizeBytes, consentConfirmed, consentConfirmedAt]
+      required:
+        [childId, contentType, sizeBytes, consentConfirmed, consentConfirmedAt]
       properties:
         childId: { type: number }
         contentType: { type: string }
@@ -3689,10 +5041,23 @@ components:
           description: Explicitly attests that this new or changed Child phrase was reviewed by the clinician before saving.
     SessionInput:
       type: object
-      required: [durationSeconds, gestalts, clinicalObservations, nextSteps, note, consentConfirmed, consentConfirmedAt]
+      required:
+        [
+          durationSeconds,
+          gestalts,
+          clinicalObservations,
+          nextSteps,
+          note,
+          consentConfirmed,
+          consentConfirmedAt,
+        ]
       properties:
         durationSeconds: { type: number, minimum: 0 }
-        gestalts: { type: array, items: { $ref: "#/components/schemas/SessionGestalt" } }
+        gestalts:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SessionGestalt" },
+          }
         clinicalObservations: { type: string }
         nextSteps: { type: string }
         note: { type: string, minLength: 1 }
@@ -3707,7 +5072,8 @@ components:
           items: { type: string, minLength: 1 }
     SessionAudioUploadRequest:
       type: object
-      required: [contentType, sizeBytes, childId, consentConfirmed, consentConfirmedAt]
+      required:
+        [contentType, sizeBytes, childId, consentConfirmed, consentConfirmedAt]
       properties:
         contentType: { type: string }
         fileName: { type: string }
@@ -3763,7 +5129,8 @@ components:
         durationMilliseconds: { type: number, minimum: 5000, maximum: 10000 }
     SessionCalibration:
       type: object
-      required: [audioId, childId, role, durationMilliseconds, status, diagnostics]
+      required:
+        [audioId, childId, role, durationMilliseconds, status, diagnostics]
       properties:
         audioId: { type: string }
         childId: { type: number }
@@ -3778,7 +5145,23 @@ components:
           $ref: "#/components/schemas/CalibrationDiagnostics"
     CalibrationDiagnostics:
       type: object
-      required: [recordedDurationMilliseconds, serverDurationMilliseconds, fileSizeBytes, contentType, sourceContainer, sourceAudioCodec, sourceFileExtension, storageObjectExtension, durationConversion, durationParsingError, uploadStatus, voiceProfileStatus, verificationStatus, stage]
+      required:
+        [
+          recordedDurationMilliseconds,
+          serverDurationMilliseconds,
+          fileSizeBytes,
+          contentType,
+          sourceContainer,
+          sourceAudioCodec,
+          sourceFileExtension,
+          storageObjectExtension,
+          durationConversion,
+          durationParsingError,
+          uploadStatus,
+          voiceProfileStatus,
+          verificationStatus,
+          stage,
+        ]
       properties:
         recordedDurationMilliseconds: { type: ["number", "null"] }
         serverDurationMilliseconds: { type: ["number", "null"] }
@@ -3803,12 +5186,26 @@ components:
           enum: [not_run, passed, failed]
         stage:
           type: string
-          enum: [capture, upload_reservation, private_upload, duration_probe, finalization, database_save]
+          enum:
+            [
+              capture,
+              upload_reservation,
+              private_upload,
+              duration_probe,
+              finalization,
+              database_save,
+            ]
         errorCode: { type: string }
         errorMessage: { type: string }
     SessionAudioLimits:
       type: object
-      required: [maxAudioUploadBytes, maxVideoUploadBytes, maxProviderBytes, supportedContentTypes]
+      required:
+        [
+          maxAudioUploadBytes,
+          maxVideoUploadBytes,
+          maxProviderBytes,
+          supportedContentTypes,
+        ]
       properties:
         maxAudioUploadBytes: { type: number, minimum: 1 }
         maxVideoUploadBytes: { type: number, minimum: 1 }
@@ -3823,7 +5220,24 @@ components:
         error: { type: string }
         code:
           type: string
-          enum: [EMPTY_RECORDING, INVALID_RECORDING_DATA, RECORDING_TOO_LARGE, RECORDING_UPLOAD_INCOMPLETE, AUDIO_FORMAT_UNREADABLE, AUDIO_PREPARATION_FAILED, TRANSCRIPTION_PROVIDER_LIMIT, TRANSCRIPTION_NOT_CONFIGURED, TRANSCRIPTION_PROVIDER_FAILED, CALIBRATION_OBJECT_UNAVAILABLE, CALIBRATION_DURATION_PROBE_TIMEOUT, CALIBRATION_MEDIA_UNREADABLE, CALIBRATION_DURATION_UNVERIFIED, CALIBRATION_FINALIZATION_FAILED, CALIBRATION_DATABASE_SAVE_FAILED]
+          enum:
+            [
+              EMPTY_RECORDING,
+              INVALID_RECORDING_DATA,
+              RECORDING_TOO_LARGE,
+              RECORDING_UPLOAD_INCOMPLETE,
+              AUDIO_FORMAT_UNREADABLE,
+              AUDIO_PREPARATION_FAILED,
+              TRANSCRIPTION_PROVIDER_LIMIT,
+              TRANSCRIPTION_NOT_CONFIGURED,
+              TRANSCRIPTION_PROVIDER_FAILED,
+              CALIBRATION_OBJECT_UNAVAILABLE,
+              CALIBRATION_DURATION_PROBE_TIMEOUT,
+              CALIBRATION_MEDIA_UNREADABLE,
+              CALIBRATION_DURATION_UNVERIFIED,
+              CALIBRATION_FINALIZATION_FAILED,
+              CALIBRATION_DATABASE_SAVE_FAILED,
+            ]
         diagnostics:
           $ref: "#/components/schemas/CalibrationDiagnostics"
     SessionTranscriptionInput:
@@ -3856,16 +5270,40 @@ components:
       properties:
         signal:
           type: string
-          enum: [diarization_consistency, profile_match, transcript_cues, conversation_behavior, confirmed_child_patterns, confirmed_slp_patterns, confirmed_feedback]
+          enum:
+            [
+              diarization_consistency,
+              profile_match,
+              transcript_cues,
+              conversation_behavior,
+              confirmed_child_patterns,
+              confirmed_slp_patterns,
+              confirmed_feedback,
+            ]
         available: { type: boolean }
         contribution: { type: number, minimum: 0, maximum: 100 }
         detail: { type: string }
     SpeakerRoleInference:
       type: object
       description: Explainable, temporary role-review guidance. It is never identity evidence and cannot unlock Child clinical evidence without clinician confirmation.
-      required: [state, predictedRole, confidenceScore, competingRole, competingScore, margin, signalCount, signalSummary]
+      required:
+        [
+          state,
+          predictedRole,
+          confidenceScore,
+          competingRole,
+          competingScore,
+          margin,
+          signalCount,
+          signalSummary,
+        ]
       properties:
-        state: { type: string, enum: [provisional, review_required, unavailable, confirmed, rejected] }
+        state:
+          {
+            type: string,
+            enum:
+              [provisional, review_required, unavailable, confirmed, rejected],
+          }
         predictedRole:
           type: ["string", "null"]
           enum: [child, slp, parent, teacher, caregiver, unknown, null]
@@ -3881,18 +5319,33 @@ components:
           items: { $ref: "#/components/schemas/SpeakerRoleInferenceSignal" }
     TranscriptSpeaker:
       type: object
-      required: [label, role, speakerConfidence, speakerConfidenceScore, lowConfidenceTurnCount, reviewedTurnCount, suggestedRole, suggestedRoleConfidenceScore, suggestedProfileId, canRememberProfile, roleInference]
+      required:
+        [
+          label,
+          role,
+          speakerConfidence,
+          speakerConfidenceScore,
+          lowConfidenceTurnCount,
+          reviewedTurnCount,
+          suggestedRole,
+          suggestedRoleConfidenceScore,
+          suggestedProfileId,
+          canRememberProfile,
+          roleInference,
+        ]
       properties:
         label: { type: string }
         role: { $ref: "#/components/schemas/SpeakerRole" }
         speakerConfidence: { $ref: "#/components/schemas/SpeakerConfidence" }
-        speakerConfidenceScore: { type: ["number", "null"], minimum: 0, maximum: 100 }
+        speakerConfidenceScore:
+          { type: ["number", "null"], minimum: 0, maximum: 100 }
         lowConfidenceTurnCount: { type: number }
         reviewedTurnCount: { type: number }
         suggestedRole:
           type: ["string", "null"]
           enum: [child, slp, parent, teacher, caregiver, unknown, null]
-        suggestedRoleConfidenceScore: { type: ["number", "null"], minimum: 0, maximum: 100 }
+        suggestedRoleConfidenceScore:
+          { type: ["number", "null"], minimum: 0, maximum: 100 }
         suggestedProfileId: { type: ["number", "null"] }
         canRememberProfile:
           type: boolean
@@ -3910,16 +5363,32 @@ components:
           description: Create or refresh a child-scoped profile only after this clinician-confirmed role is saved.
     TranscriptSpeakerSegment:
       type: object
-      required: [id, speakerLabel, text, position, speakerConfidence, speakerConfidenceScore, intelligibility, transcriptionConfidenceScore, startTimeMilliseconds, durationMilliseconds, speakerReviewed, role]
+      required:
+        [
+          id,
+          speakerLabel,
+          text,
+          position,
+          speakerConfidence,
+          speakerConfidenceScore,
+          intelligibility,
+          transcriptionConfidenceScore,
+          startTimeMilliseconds,
+          durationMilliseconds,
+          speakerReviewed,
+          role,
+        ]
       properties:
         id: { type: number }
         speakerLabel: { type: string }
         text: { type: string }
         position: { type: number }
         speakerConfidence: { $ref: "#/components/schemas/SpeakerConfidence" }
-        speakerConfidenceScore: { type: ["number", "null"], minimum: 0, maximum: 100 }
+        speakerConfidenceScore:
+          { type: ["number", "null"], minimum: 0, maximum: 100 }
         intelligibility: { $ref: "#/components/schemas/SpeechIntelligibility" }
-        transcriptionConfidenceScore: { type: ["number", "null"], minimum: 0, maximum: 100 }
+        transcriptionConfidenceScore:
+          { type: ["number", "null"], minimum: 0, maximum: 100 }
         startTimeMilliseconds: { type: ["number", "null"], minimum: 0 }
         durationMilliseconds: { type: ["number", "null"], minimum: 0 }
         speakerReviewed: { type: boolean }
@@ -3927,7 +5396,13 @@ components:
     ChildLanguagePromptSummary:
       type: object
       description: Transient review prompts from clinician-attributed Child turns. These values are never clinical evidence or saved language conclusions.
-      required: [utteranceCount, possibleGestaltCount, possibleMitigationCount, possibleCommunicationFunctionCount]
+      required:
+        [
+          utteranceCount,
+          possibleGestaltCount,
+          possibleMitigationCount,
+          possibleCommunicationFunctionCount,
+        ]
       properties:
         utteranceCount: { type: number }
         possibleGestaltCount: { type: number }
@@ -3945,7 +5420,17 @@ components:
       properties:
         stage:
           type: string
-          enum: [recording, upload, transcription, speaker_grouping, clinician_identification, phrase_extraction, gestalt_review, insight_generation]
+          enum:
+            [
+              recording,
+              upload,
+              transcription,
+              speaker_grouping,
+              clinician_identification,
+              phrase_extraction,
+              gestalt_review,
+              insight_generation,
+            ]
         label: { type: string }
         status:
           type: string
@@ -3957,7 +5442,19 @@ components:
     ProvisionalPhraseCandidate:
       type: object
       description: Mixed-speaker review prompt. It is never clinical evidence and is excluded from dictionaries, reports, insights, and NLA analytics.
-      required: [id, phrase, frequency, candidateKind, disposition, workingMeaning, attributionLabel, sourceLabel, evidenceLabel, updatedAt]
+      required:
+        [
+          id,
+          phrase,
+          frequency,
+          candidateKind,
+          disposition,
+          workingMeaning,
+          attributionLabel,
+          sourceLabel,
+          evidenceLabel,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         phrase: { type: string }
@@ -3965,7 +5462,8 @@ components:
         candidateKind:
           type: string
           enum: [potential_phrase, repeated_phrase, recurring_utterance]
-        disposition: { $ref: "#/components/schemas/ProvisionalPhraseDisposition" }
+        disposition:
+          { $ref: "#/components/schemas/ProvisionalPhraseDisposition" }
         workingMeaning: { type: ["string", "null"] }
         attributionLabel: { type: string, enum: [Speaker attribution pending] }
         sourceLabel: { type: string, enum: [Mixed-speaker transcript] }
@@ -3976,7 +5474,8 @@ components:
       required: [id, disposition]
       properties:
         id: { type: number }
-        disposition: { $ref: "#/components/schemas/ProvisionalPhraseDisposition" }
+        disposition:
+          { $ref: "#/components/schemas/ProvisionalPhraseDisposition" }
         phrase: { type: string, minLength: 1, maxLength: 1000 }
         workingMeaning: { type: ["string", "null"], maxLength: 2000 }
     ProvisionalPhraseReviewsInput:
@@ -4016,13 +5515,35 @@ components:
     ChildUtteranceDisposition:
       type: string
       description: Explicit clinician classification. Legacy values remain readable for previously saved reviews.
-      enum: [pending, child, not_child, unsure, unintelligible, confirmed_gestalt, not_gestalt, context, unlabeled]
+      enum:
+        [
+          pending,
+          child,
+          not_child,
+          unsure,
+          unintelligible,
+          confirmed_gestalt,
+          not_gestalt,
+          context,
+          unlabeled,
+        ]
     UtterancePriorityReason:
       type: string
       enum: [repeated, distinct, longer, new, high_confidence]
     SessionReviewProgress:
       type: object
-      required: [total, reviewed, unresolved, child, notChild, unsure, unintelligible, phraseCandidates, nextStep]
+      required:
+        [
+          total,
+          reviewed,
+          unresolved,
+          child,
+          notChild,
+          unsure,
+          unintelligible,
+          phraseCandidates,
+          nextStep,
+        ]
       properties:
         total: { type: number }
         reviewed: { type: number }
@@ -4047,7 +5568,20 @@ components:
       enum: [pending, deferred]
     TranscriptPhraseInboxItem:
       type: object
-      required: [id, childId, transcriptId, transcriptPhraseId, segmentId, phrase, workingMeaning, reviewDisposition, status, sourceLabel, updatedAt]
+      required:
+        [
+          id,
+          childId,
+          transcriptId,
+          transcriptPhraseId,
+          segmentId,
+          phrase,
+          workingMeaning,
+          reviewDisposition,
+          status,
+          sourceLabel,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
@@ -4056,7 +5590,8 @@ components:
         segmentId: { type: number }
         phrase: { type: string }
         workingMeaning: { type: ["string", "null"] }
-        reviewDisposition: { $ref: "#/components/schemas/ChildUtteranceDisposition" }
+        reviewDisposition:
+          { $ref: "#/components/schemas/ChildUtteranceDisposition" }
         status: { $ref: "#/components/schemas/ChildPhraseInboxStatus" }
         sourceLabel: { type: string, enum: [Confirmed Child transcript] }
         updatedAt: { type: string, format: date-time }
@@ -4074,7 +5609,34 @@ components:
         transcript: { $ref: "#/components/schemas/SessionTranscript" }
     TranscriptChildUtterance:
       type: object
-      required: [id, segmentId, text, suggestedTranscription, speakerLabel, position, timestampSeconds, durationSeconds, intelligibility, transcriptionConfidenceScore, intelligibilityReviewStatus, disposition, reviewRank, priorityScore, priorityReasons, repeatedInSession, previouslyObserved, wordCount, context, meaning, interpretation, note, crossSessionLabel, nlaStage, updatedAt]
+      required:
+        [
+          id,
+          segmentId,
+          text,
+          suggestedTranscription,
+          speakerLabel,
+          position,
+          timestampSeconds,
+          durationSeconds,
+          intelligibility,
+          transcriptionConfidenceScore,
+          intelligibilityReviewStatus,
+          disposition,
+          reviewRank,
+          priorityScore,
+          priorityReasons,
+          repeatedInSession,
+          previouslyObserved,
+          wordCount,
+          context,
+          meaning,
+          interpretation,
+          note,
+          crossSessionLabel,
+          nlaStage,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         segmentId: { type: number }
@@ -4085,8 +5647,10 @@ components:
         timestampSeconds: { type: ["number", "null"], minimum: 0 }
         durationSeconds: { type: ["number", "null"], minimum: 0 }
         intelligibility: { $ref: "#/components/schemas/SpeechIntelligibility" }
-        transcriptionConfidenceScore: { type: ["number", "null"], minimum: 0, maximum: 100 }
-        intelligibilityReviewStatus: { $ref: "#/components/schemas/IntelligibilityReviewStatus" }
+        transcriptionConfidenceScore:
+          { type: ["number", "null"], minimum: 0, maximum: 100 }
+        intelligibilityReviewStatus:
+          { $ref: "#/components/schemas/IntelligibilityReviewStatus" }
         disposition: { $ref: "#/components/schemas/ChildUtteranceDisposition" }
         reviewRank: { type: number, minimum: 1 }
         priorityScore: { type: number }
@@ -4113,7 +5677,8 @@ components:
       properties:
         segmentId: { type: number }
         disposition: { $ref: "#/components/schemas/ChildUtteranceDisposition" }
-        intelligibilityReviewStatus: { $ref: "#/components/schemas/IntelligibilityReviewStatus" }
+        intelligibilityReviewStatus:
+          { $ref: "#/components/schemas/IntelligibilityReviewStatus" }
         context: { type: ["string", "null"] }
         meaning: { type: ["string", "null"] }
         interpretation: { type: ["string", "null"] }
@@ -4125,7 +5690,23 @@ components:
           description: Optional clinician-assigned stage; null clears the stage.
     UnclearVocalizationOccurrence:
       type: object
-      required: [segmentId, transcriptId, sessionId, sessionDate, position, timestampSeconds, durationSeconds, intelligibility, providerText, clinicianInterpretation, note, crossSessionLabel, revision]
+      required:
+        [
+          segmentId,
+          transcriptId,
+          sessionId,
+          sessionDate,
+          position,
+          timestampSeconds,
+          durationSeconds,
+          intelligibility,
+          providerText,
+          clinicianInterpretation,
+          note,
+          crossSessionLabel,
+          audioClipUrl,
+          revision,
+        ]
       properties:
         segmentId: { type: number }
         transcriptId: { type: number }
@@ -4141,6 +5722,9 @@ components:
         clinicianInterpretation: { type: ["string", "null"] }
         note: { type: ["string", "null"] }
         crossSessionLabel: { type: ["string", "null"] }
+        audioClipUrl:
+          type: ["string", "null"]
+          description: Authenticated URL for the retained short clip; null when source timing was unavailable.
         revision:
           type: ["string", "null"]
           format: date-time
@@ -4150,7 +5734,16 @@ components:
       enum: [clinician_label, provider_text, timing_pattern, single_occurrence]
     UnclearVocalizationGroup:
       type: object
-      required: [id, reviewPrompt, source, label, occurrenceCount, sessionCount, occurrences]
+      required:
+        [
+          id,
+          reviewPrompt,
+          source,
+          label,
+          occurrenceCount,
+          sessionCount,
+          occurrences,
+        ]
       properties:
         id: { type: string }
         reviewPrompt:
@@ -4215,7 +5808,18 @@ components:
           items: { $ref: "#/components/schemas/TranscriptChildUtteranceReview" }
     TranscriptPhrase:
       type: object
-      required: [id, phrase, frequency, childAttributed, occurrenceCount, firstObservedAt, mostRecentAt, exampleUtterances, existingGestalt]
+      required:
+        [
+          id,
+          phrase,
+          frequency,
+          childAttributed,
+          occurrenceCount,
+          firstObservedAt,
+          mostRecentAt,
+          exampleUtterances,
+          existingGestalt,
+        ]
       properties:
         id: { type: number }
         phrase: { type: string }
@@ -4232,19 +5836,51 @@ components:
           $ref: "#/components/schemas/ExistingGestaltMatch"
     SessionTranscript:
       type: object
-      required: [id, childId, audioId, recordingConsentConfirmedAt, status, rawTranscript, speakerSeparationStatus, speakerSeparationAttempt, speakerSeparationFailureCode, speakerSeparationFailureMessage, calibrationStatus, calibrationStatusMessage, processingStages, provider, model, transcriptionAttempted, transcriptionSucceeded, speakers, segments, childUtterances, reviewProgress, childLanguagePrompts, provisionalPhrases, phrases, error, createdAt, updatedAt]
+      required:
+        [
+          id,
+          childId,
+          audioId,
+          recordingConsentConfirmedAt,
+          status,
+          rawTranscript,
+          speakerSeparationStatus,
+          speakerSeparationAttempt,
+          speakerSeparationFailureCode,
+          speakerSeparationFailureMessage,
+          calibrationStatus,
+          calibrationStatusMessage,
+          processingStages,
+          provider,
+          model,
+          transcriptionAttempted,
+          transcriptionSucceeded,
+          speakers,
+          segments,
+          childUtterances,
+          reviewProgress,
+          childLanguagePrompts,
+          provisionalPhrases,
+          phrases,
+          error,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
         audioId: { type: string }
-        recordingConsentConfirmedAt: { type: ["string", "null"], format: date-time }
+        recordingConsentConfirmedAt:
+          { type: ["string", "null"], format: date-time }
         status: { type: string, enum: [processing, complete, failed] }
         rawTranscript: { type: string }
-        speakerSeparationStatus: { $ref: "#/components/schemas/SpeakerProcessingStatus" }
+        speakerSeparationStatus:
+          { $ref: "#/components/schemas/SpeakerProcessingStatus" }
         speakerSeparationAttempt: { type: number, minimum: 0 }
         speakerSeparationFailureCode: { type: ["string", "null"] }
         speakerSeparationFailureMessage: { type: ["string", "null"] }
-        calibrationStatus: { $ref: "#/components/schemas/CalibrationApplicationStatus" }
+        calibrationStatus:
+          { $ref: "#/components/schemas/CalibrationApplicationStatus" }
         calibrationStatusMessage: { type: string }
         processingStages:
           type: array
@@ -4278,12 +5914,30 @@ components:
         updatedAt: { type: string, format: date-time }
     Session:
       type: object
-      required: [id, childId, durationSeconds, gestalts, clinicalObservations, nextSteps, note, audioUrl, createdAt, createdBy, role, consent]
+      required:
+        [
+          id,
+          childId,
+          durationSeconds,
+          gestalts,
+          clinicalObservations,
+          nextSteps,
+          note,
+          audioUrl,
+          createdAt,
+          createdBy,
+          role,
+          consent,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
         durationSeconds: { type: number }
-        gestalts: { type: array, items: { $ref: "#/components/schemas/SessionGestalt" } }
+        gestalts:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SessionGestalt" },
+          }
         clinicalObservations: { type: string }
         nextSteps: { type: string }
         note: { type: string }
@@ -4291,29 +5945,62 @@ components:
         createdAt: { type: string, format: date-time }
         createdBy: { type: string }
         role: { type: string }
-        consent: { type: ["object", "null"], $ref: "#/components/schemas/RecordingConsent" }
+        consent:
+          {
+            type: ["object", "null"],
+            $ref: "#/components/schemas/RecordingConsent",
+          }
+        sessionMode: { type: string, enum: [recorded, manual] }
+        sessionDate: { type: string, format: date }
+        startedAt: { type: [string, "null"], format: date-time }
+        endedAt: { type: [string, "null"], format: date-time }
+        durationSource:
+          type: string
+          enum: [recording, timer, manual, timer_edited]
+        durationEdited: { type: boolean }
+        slpName: { type: string }
+        goalProgress:
+          type: array
+          items: { $ref: "#/components/schemas/ManualSessionGoalProgress" }
     SessionReviewQueueWorkflowStatus:
       type: string
-      enum: [child_language_review_not_started, child_language_review_in_progress, child_phrase_inbox, session_summary]
+      enum:
+        [
+          child_language_review_not_started,
+          child_language_review_in_progress,
+          child_phrase_inbox,
+          session_summary,
+        ]
     SessionReviewQueueItem:
       type: object
-      required: [transcriptId, childId, childName, sessionDate, workflowStatus, reviewProgress, activePhraseInboxCount]
+      required:
+        [
+          transcriptId,
+          childId,
+          childName,
+          sessionDate,
+          workflowStatus,
+          reviewProgress,
+          activePhraseInboxCount,
+        ]
       properties:
         transcriptId: { type: number }
         childId: { type: number }
         childName: { type: string }
         sessionDate: { type: string, format: date-time }
-        workflowStatus: { $ref: "#/components/schemas/SessionReviewQueueWorkflowStatus" }
+        workflowStatus:
+          { $ref: "#/components/schemas/SessionReviewQueueWorkflowStatus" }
         reviewProgress: { $ref: "#/components/schemas/SessionReviewProgress" }
         activePhraseInboxCount: { type: number, minimum: 0 }
     SessionsDashboardCompletedSession:
       type: object
-      required: [sessionId, childId, childName, sessionDate]
+      required: [sessionId, childId, childName, sessionDate, sessionMode]
       properties:
         sessionId: { type: number }
         childId: { type: number }
         childName: { type: string }
         sessionDate: { type: string, format: date-time }
+        sessionMode: { type: string, enum: [recorded, manual] }
     SessionsDashboardDraftDocumentation:
       type: object
       required: [id, noteType, childId, childName, title, updatedAt]
@@ -4328,7 +6015,14 @@ components:
         updatedAt: { type: string, format: date-time }
     SessionsDashboardWeeklySnapshot:
       type: object
-      required: [weekStart, sessionsRecorded, awaitingReview, draftNotes, completedNotes]
+      required:
+        [
+          weekStart,
+          sessionsRecorded,
+          awaitingReview,
+          draftNotes,
+          completedNotes,
+        ]
       properties:
         weekStart: { type: string, format: date }
         sessionsRecorded: { type: number, minimum: 0 }
@@ -4337,17 +6031,20 @@ components:
         completedNotes: { type: number, minimum: 0 }
     SessionsDashboard:
       type: object
-      required: [requiresReview, completedSessions, draftDocumentation, weeklySnapshot]
+      required:
+        [requiresReview, completedSessions, draftDocumentation, weeklySnapshot]
       properties:
         requiresReview:
           type: array
           items: { $ref: "#/components/schemas/SessionReviewQueueItem" }
         completedSessions:
           type: array
-          items: { $ref: "#/components/schemas/SessionsDashboardCompletedSession" }
+          items:
+            { $ref: "#/components/schemas/SessionsDashboardCompletedSession" }
         draftDocumentation:
           type: array
-          items: { $ref: "#/components/schemas/SessionsDashboardDraftDocumentation" }
+          items:
+            { $ref: "#/components/schemas/SessionsDashboardDraftDocumentation" }
         weeklySnapshot:
           $ref: "#/components/schemas/SessionsDashboardWeeklySnapshot"
     RecordingConsent:
@@ -4380,7 +6077,17 @@ components:
         sessionDate: { type: string, format: date-time }
     SnapshotPhrase:
       type: object
-      required: [phrase, gestaltId, occurrences, contexts, function, meaning, trend, examples]
+      required:
+        [
+          phrase,
+          gestaltId,
+          occurrences,
+          contexts,
+          function,
+          meaning,
+          trend,
+          examples,
+        ]
       properties:
         phrase: { type: string }
         gestaltId: { type: [number, "null"] }
@@ -4389,7 +6096,11 @@ components:
         function: { type: string }
         meaning: { type: string }
         trend: { $ref: "#/components/schemas/SnapshotTrend" }
-        examples: { type: array, items: { $ref: "#/components/schemas/SnapshotExample" } }
+        examples:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SnapshotExample" },
+          }
     SnapshotFunction:
       type: object
       required: [label, count, percentage]
@@ -4425,10 +6136,15 @@ components:
       required: [label, examples]
       properties:
         label: { type: string }
-        examples: { type: array, items: { $ref: "#/components/schemas/SnapshotChangeExample" } }
+        examples:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SnapshotChangeExample" },
+          }
     SnapshotPossibleMitigation:
       type: object
-      required: [originalPhrase, observedVariation, confidence, context, sessionDate]
+      required:
+        [originalPhrase, observedVariation, confidence, context, sessionDate]
       properties:
         originalPhrase: { type: string }
         observedVariation: { type: string }
@@ -4437,27 +6153,74 @@ components:
         sessionDate: { type: string, format: date-time }
     SnapshotSessionChange:
       type: object
-      required: [clinicalSummary, comparisonState, latestSessionDate, previousSessionDate, newGestalts, newFunctions, possibleMitigations]
+      required:
+        [
+          clinicalSummary,
+          comparisonState,
+          latestSessionDate,
+          previousSessionDate,
+          newGestalts,
+          newFunctions,
+          possibleMitigations,
+        ]
       properties:
         clinicalSummary: { type: string }
-        comparisonState: { type: string, enum: [onboarding, first_session, compared] }
+        comparisonState:
+          { type: string, enum: [onboarding, first_session, compared] }
         latestSessionDate: { type: [string, "null"], format: date-time }
         previousSessionDate: { type: [string, "null"], format: date-time }
-        newGestalts: { type: array, items: { $ref: "#/components/schemas/SnapshotNewGestalt" } }
-        newFunctions: { type: array, items: { $ref: "#/components/schemas/SnapshotNewFunction" } }
-        possibleMitigations: { type: array, items: { $ref: "#/components/schemas/SnapshotPossibleMitigation" } }
+        newGestalts:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SnapshotNewGestalt" },
+          }
+        newFunctions:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SnapshotNewFunction" },
+          }
+        possibleMitigations:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SnapshotPossibleMitigation" },
+          }
     ChildSnapshot:
       type: object
-      required: [totalGestaltsCollected, newGestaltsThisWeek, newGestaltsLastWeek, newGestaltsTrend, totalReviewedChildUtterances, functionDistribution, frequentPhrases, emergingMitigations, hasEnoughData, trendWindowLabel, sessionChange]
+      required:
+        [
+          totalGestaltsCollected,
+          newGestaltsThisWeek,
+          newGestaltsLastWeek,
+          newGestaltsTrend,
+          totalReviewedChildUtterances,
+          functionDistribution,
+          frequentPhrases,
+          emergingMitigations,
+          hasEnoughData,
+          trendWindowLabel,
+          sessionChange,
+        ]
       properties:
         totalGestaltsCollected: { type: number }
         newGestaltsThisWeek: { type: number }
         newGestaltsLastWeek: { type: number }
         newGestaltsTrend: { $ref: "#/components/schemas/SnapshotTrend" }
         totalReviewedChildUtterances: { type: number }
-        functionDistribution: { type: array, items: { $ref: "#/components/schemas/SnapshotFunction" } }
-        frequentPhrases: { type: array, items: { $ref: "#/components/schemas/SnapshotPhrase" } }
-        emergingMitigations: { type: array, items: { $ref: "#/components/schemas/SnapshotMitigation" } }
+        functionDistribution:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SnapshotFunction" },
+          }
+        frequentPhrases:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SnapshotPhrase" },
+          }
+        emergingMitigations:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/SnapshotMitigation" },
+          }
         hasEnoughData: { type: boolean }
         trendWindowLabel: { type: string }
         sessionChange: { $ref: "#/components/schemas/SnapshotSessionChange" }
@@ -4466,14 +6229,30 @@ components:
       required: [child, recentlyAdded, frequent, activity, observations]
       properties:
         child: { $ref: "#/components/schemas/Child" }
-        recentlyAdded: { type: array, items: { $ref: "#/components/schemas/Gestalt" } }
-        frequent: { type: array, items: { $ref: "#/components/schemas/Gestalt" } }
-        activity: { type: array, items: { $ref: "#/components/schemas/Activity" } }
-        observations: { type: array, items: { $ref: "#/components/schemas/Observation" } }
+        recentlyAdded:
+          { type: array, items: { $ref: "#/components/schemas/Gestalt" } }
+        frequent:
+          { type: array, items: { $ref: "#/components/schemas/Gestalt" } }
+        activity:
+          { type: array, items: { $ref: "#/components/schemas/Activity" } }
+        observations:
+          { type: array, items: { $ref: "#/components/schemas/Observation" } }
         snapshot: { $ref: "#/components/schemas/ChildSnapshot" }
     ClinicianOverviewChild:
       type: object
-      required: [childId, childName, school, grade, gestaltCount, newActivityCount, requiresReview, latestActivityAt, latestActivityLabel]
+      required:
+        [
+          childId,
+          childName,
+          school,
+          grade,
+          gestaltCount,
+          newActivityCount,
+          requiresReview,
+          latestActivityAt,
+          latestActivityLabel,
+          serviceRequirements,
+        ]
       properties:
         childId: { type: number }
         childName: { type: string }
@@ -4484,6 +6263,9 @@ components:
         requiresReview: { type: boolean }
         latestActivityAt: { type: ["string", "null"], format: date-time }
         latestActivityLabel: { type: string }
+        serviceRequirements:
+          type: array
+          items: { $ref: "#/components/schemas/IepServiceRequirement" }
     ClinicianOverviewChange:
       type: object
       required: [id, childId, childName, category, label, detail, time, href]
@@ -4493,7 +6275,15 @@ components:
         childName: { type: string }
         category:
           type: string
-          enum: [new_phrase, new_function, possible_mitigation, team_contribution, new_message, ai_insight]
+          enum:
+            [
+              new_phrase,
+              new_function,
+              possible_mitigation,
+              team_contribution,
+              new_message,
+              ai_insight,
+            ]
         label: { type: string }
         detail: { type: string }
         time: { type: string, format: date-time }
@@ -4504,10 +6294,27 @@ components:
       properties:
         childId: { type: number }
         childName: { type: string }
-        changes: { type: array, items: { $ref: "#/components/schemas/ClinicianOverviewChange" } }
+        changes:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/ClinicianOverviewChange" },
+          }
     ClinicianOverview:
       type: object
-      required: [caseloadCount, activeChildren, newPhrasesThisWeek, pendingReviews, newTeamMessages, aiInsightsAwaitingReview, newPhrasesSinceLastSignIn, studentsRequiringReview, changesByChild, children, recentActivity]
+      required:
+        [
+          caseloadCount,
+          activeChildren,
+          newPhrasesThisWeek,
+          pendingReviews,
+          newTeamMessages,
+          aiInsightsAwaitingReview,
+          newPhrasesSinceLastSignIn,
+          studentsRequiringReview,
+          changesByChild,
+          children,
+          recentActivity,
+        ]
       properties:
         caseloadCount: { type: number }
         activeChildren: { type: number }
@@ -4517,9 +6324,19 @@ components:
         newTeamMessages: { type: number }
         aiInsightsAwaitingReview: { type: number }
         studentsRequiringReview: { type: number }
-        changesByChild: { type: array, items: { $ref: "#/components/schemas/ClinicianOverviewChildChanges" } }
-        children: { type: array, items: { $ref: "#/components/schemas/ClinicianOverviewChild" } }
-        recentActivity: { type: array, items: { $ref: "#/components/schemas/Activity" } }
+        changesByChild:
+          {
+            type: array,
+            items:
+              { $ref: "#/components/schemas/ClinicianOverviewChildChanges" },
+          }
+        children:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/ClinicianOverviewChild" },
+          }
+        recentActivity:
+          { type: array, items: { $ref: "#/components/schemas/Activity" } }
     TeacherPhraseLookupResult:
       type: object
       required: [id, childId, childName, phrase, meaning, communicationFunction]
@@ -4532,7 +6349,19 @@ components:
         communicationFunction: { type: string }
     FrequentScript:
       type: object
-      required: [id, phrase, meaning, observations, frequencyRank, firstObservedAt, lastObservedAt, communicationFunctions, contexts, contributors]
+      required:
+        [
+          id,
+          phrase,
+          meaning,
+          observations,
+          frequencyRank,
+          firstObservedAt,
+          lastObservedAt,
+          communicationFunctions,
+          contexts,
+          contributors,
+        ]
       properties:
         id: { type: number }
         phrase: { type: string }
@@ -4546,17 +6375,44 @@ components:
         contributors: { type: array, items: { type: string } }
     FrequentScripts:
       type: object
-      required: [childId, window, reviewedDictionaryPhraseCount, totalObservations, phrases, generatedAt]
+      required:
+        [
+          childId,
+          window,
+          reviewedDictionaryPhraseCount,
+          totalObservations,
+          phrases,
+          generatedAt,
+        ]
       properties:
         childId: { type: number }
         window: { type: string, enum: [all, 30d, 7d] }
         reviewedDictionaryPhraseCount: { type: number }
         totalObservations: { type: number }
-        phrases: { type: array, items: { $ref: "#/components/schemas/FrequentScript" } }
+        phrases:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/FrequentScript" },
+          }
         generatedAt: { type: string, format: date-time }
     RecurringLanguagePattern:
       type: object
-      required: [id, fragment, phraseCount, totalOccurrences, firstObservedAt, lastObservedAt, examplePhrases, settings, reviewedSessionCount, environmentCount, communicationFunctions, communicationFunctionCount, indicators]
+      required:
+        [
+          id,
+          fragment,
+          phraseCount,
+          totalOccurrences,
+          firstObservedAt,
+          lastObservedAt,
+          examplePhrases,
+          settings,
+          reviewedSessionCount,
+          environmentCount,
+          communicationFunctions,
+          communicationFunctionCount,
+          indicators,
+        ]
       properties:
         id: { type: string }
         fragment: { type: string }
@@ -4574,7 +6430,12 @@ components:
           type: array
           items:
             type: string
-            enum: [Repeated Phrase Use, Appears Across Multiple Phrases, Appears Across Multiple Settings]
+            enum:
+              [
+                Repeated Phrase Use,
+                Appears Across Multiple Phrases,
+                Appears Across Multiple Settings,
+              ]
     RecurringLanguagePatterns:
       type: object
       required: [childId, window, totalPatterns, patterns, generatedAt]
@@ -4582,11 +6443,25 @@ components:
         childId: { type: number }
         window: { type: string, enum: [all, 30d, 7d] }
         totalPatterns: { type: number }
-        patterns: { type: array, items: { $ref: "#/components/schemas/RecurringLanguagePattern" } }
+        patterns:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/RecurringLanguagePattern" },
+          }
         generatedAt: { type: string, format: date-time }
     RecurringLanguagePatternPhrase:
       type: object
-      required: [id, phrase, observations, firstObservedAt, lastObservedAt, settings, communicationFunctions, reviewedSessionCount]
+      required:
+        [
+          id,
+          phrase,
+          observations,
+          firstObservedAt,
+          lastObservedAt,
+          settings,
+          communicationFunctions,
+          reviewedSessionCount,
+        ]
       properties:
         id: { type: number }
         phrase: { type: string }
@@ -4598,7 +6473,16 @@ components:
         reviewedSessionCount: { type: number }
     RecurringLanguagePatternObservation:
       type: object
-      required: [phraseId, phrase, observedAt, settings, sessionId, communicationFunction, evidenceType]
+      required:
+        [
+          phraseId,
+          phrase,
+          observedAt,
+          settings,
+          sessionId,
+          communicationFunction,
+          evidenceType,
+        ]
       properties:
         phraseId: { type: number }
         phrase: { type: string }
@@ -4613,25 +6497,187 @@ components:
         - type: object
           required: [phrases, observations]
           properties:
-            phrases: { type: array, items: { $ref: "#/components/schemas/RecurringLanguagePatternPhrase" } }
-            observations: { type: array, items: { $ref: "#/components/schemas/RecurringLanguagePatternObservation" } }
+            phrases:
+              {
+                type: array,
+                items:
+                  {
+                    $ref: "#/components/schemas/RecurringLanguagePatternPhrase",
+                  },
+              }
+            observations:
+              {
+                type: array,
+                items:
+                  {
+                    $ref: "#/components/schemas/RecurringLanguagePatternObservation",
+                  },
+              }
+    CommunicationPassportPhrase:
+      type: object
+      required: [phrase, meaning]
+      properties:
+        phrase: { type: string, maxLength: 300 }
+        meaning: { type: string, maxLength: 600 }
+    CommunicationPassportContent:
+      type: object
+      required:
+        [
+          childName,
+          preferredName,
+          aboutMe,
+          communicationMethods,
+          communicationStrengths,
+          wantsAndNeeds,
+          commonPhrases,
+          gestures,
+          aacInformation,
+          helpfulStrategies,
+          communicationChallenges,
+          frustrationSupports,
+          importantWords,
+          interests,
+          currentGoals,
+          additionalInformation,
+        ]
+      properties:
+        childName: { type: string, minLength: 1, maxLength: 160 }
+        preferredName: { type: string, maxLength: 160 }
+        aboutMe: { type: string, maxLength: 1500 }
+        communicationMethods:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 300 }
+        communicationStrengths:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 500 }
+        wantsAndNeeds: { type: string, maxLength: 1500 }
+        commonPhrases:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/CommunicationPassportPhrase" }
+        gestures:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 500 }
+        aacInformation: { type: string, maxLength: 1500 }
+        helpfulStrategies:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 500 }
+        communicationChallenges:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 500 }
+        frustrationSupports:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 500 }
+        importantWords:
+          type: array
+          maxItems: 20
+          items: { $ref: "#/components/schemas/CommunicationPassportPhrase" }
+        interests:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 500 }
+        currentGoals:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 700 }
+        additionalInformation: { type: string, maxLength: 2000 }
+    CommunicationPassport:
+      type: object
+      required:
+        [
+          exists,
+          childId,
+          canEdit,
+          templateKey,
+          language,
+          content,
+          version,
+          createdAt,
+          updatedAt,
+          updatedBy,
+        ]
+      properties:
+        exists: { type: boolean }
+        childId: { type: number }
+        canEdit: { type: boolean }
+        templateKey: { type: string }
+        language: { type: string }
+        content:
+          oneOf:
+            - { $ref: "#/components/schemas/CommunicationPassportContent" }
+            - { type: "null" }
+        version: { type: [number, "null"] }
+        createdAt: { type: [string, "null"], format: date-time }
+        updatedAt: { type: [string, "null"], format: date-time }
+        updatedBy: { type: [string, "null"] }
+    CommunicationPassportDraft:
+      type: object
+      required: [childId, templateKey, language, content]
+      properties:
+        childId: { type: number }
+        templateKey: { type: string }
+        language: { type: string }
+        content: { $ref: "#/components/schemas/CommunicationPassportContent" }
+    CommunicationPassportGenerateInput:
+      type: object
+      required: [childId]
+      properties:
+        childId: { type: number }
+        templateKey: { type: string, default: general, maxLength: 80 }
+        language: { type: string, default: en, maxLength: 35 }
+    CommunicationPassportSaveInput:
+      type: object
+      required: [childId, templateKey, language, content, version]
+      properties:
+        childId: { type: number }
+        templateKey: { type: string, maxLength: 80 }
+        language: { type: string, maxLength: 35 }
+        content: { $ref: "#/components/schemas/CommunicationPassportContent" }
+        version: { type: [number, "null"], minimum: 1 }
     TeamMessage:
       type: object
-      required: [id, childId, childName, senderName, senderRole, messageType, audience, body, read, createdAt]
+      required:
+        [
+          id,
+          childId,
+          childName,
+          senderName,
+          senderRole,
+          messageType,
+          audience,
+          body,
+          read,
+          createdAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
         childName: { type: string }
         senderName: { type: string }
         senderRole: { type: string }
-        messageType: { type: string, enum: [message, question, update, notification] }
+        messageType:
+          { type: string, enum: [message, question, update, notification] }
         audience: { type: string, enum: [entire_team] }
         body: { type: string }
         read: { type: boolean }
         createdAt: { type: string, format: date-time }
     TeamInboxChild:
       type: object
-      required: [childId, childName, unreadCount, messageCount, latestMessageAt, latestMessagePreview]
+      required:
+        [
+          childId,
+          childName,
+          unreadCount,
+          messageCount,
+          latestMessageAt,
+          latestMessagePreview,
+        ]
       properties:
         childId: { type: number }
         childName: { type: string }
@@ -4644,20 +6690,38 @@ components:
       required: [childId, children, members, messages, totalUnread]
       properties:
         childId: { type: [number, "null"] }
-        children: { type: array, items: { $ref: "#/components/schemas/TeamInboxChild" } }
-        members: { type: array, items: { $ref: "#/components/schemas/TeamMember" } }
-        messages: { type: array, items: { $ref: "#/components/schemas/TeamMessage" } }
+        children:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/TeamInboxChild" },
+          }
+        members:
+          { type: array, items: { $ref: "#/components/schemas/TeamMember" } }
+        messages:
+          { type: array, items: { $ref: "#/components/schemas/TeamMessage" } }
         totalUnread: { type: number }
     AdminTeamConversationMessage:
       type: object
-      required: [id, childId, childName, senderName, senderRole, messageType, audience, body, createdAt]
+      required:
+        [
+          id,
+          childId,
+          childName,
+          senderName,
+          senderRole,
+          messageType,
+          audience,
+          body,
+          createdAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
         childName: { type: string }
         senderName: { type: string }
         senderRole: { type: string }
-        messageType: { type: string, enum: [message, question, update, notification] }
+        messageType:
+          { type: string, enum: [message, question, update, notification] }
         audience: { type: string, enum: [entire_team] }
         body: { type: string }
         createdAt: { type: string, format: date-time }
@@ -4665,7 +6729,12 @@ components:
       type: object
       required: [messages, total]
       properties:
-        messages: { type: array, items: { $ref: "#/components/schemas/AdminTeamConversationMessage" } }
+        messages:
+          {
+            type: array,
+            items:
+              { $ref: "#/components/schemas/AdminTeamConversationMessage" },
+          }
         total: { type: number }
     AdminChildPermission:
       type: object
@@ -4682,7 +6751,11 @@ components:
       properties:
         childId: { type: number }
         childName: { type: string }
-        members: { type: array, items: { $ref: "#/components/schemas/AdminChildPermission" } }
+        members:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/AdminChildPermission" },
+          }
     AdminChildPermissionInput:
       type: object
       required: [childId, assigned]
@@ -4695,12 +6768,18 @@ components:
       properties:
         childId: { type: number }
         body: { type: string, minLength: 1, maxLength: 4000 }
-        messageType: { type: string, enum: [message, question, notification], default: message }
+        messageType:
+          {
+            type: string,
+            enum: [message, question, notification],
+            default: message,
+          }
     TeamMessageReadInput:
       type: object
       required: [messageIds]
       properties:
-        messageIds: { type: array, minItems: 1, maxItems: 200, items: { type: number } }
+        messageIds:
+          { type: array, minItems: 1, maxItems: 200, items: { type: number } }
     TeamMessageReadResponse:
       type: object
       required: [updated]
@@ -4724,24 +6803,62 @@ components:
         failureReason: { type: [string, "null"] }
     DeletionRequest:
       type: object
-      required: [id, childId, requesterUserId, requesterName, requesterRole, categories, reason, status, reviewedAt, reviewedByName, reviewNote, processedAt, processedCategories, retainedCategories, retentionNote, categoryProgress, lastFailureReason, processingAttempts, createdAt, updatedAt]
+      required:
+        [
+          id,
+          childId,
+          requesterUserId,
+          requesterName,
+          requesterRole,
+          categories,
+          reason,
+          status,
+          reviewedAt,
+          reviewedByName,
+          reviewNote,
+          processedAt,
+          processedCategories,
+          retainedCategories,
+          retentionNote,
+          categoryProgress,
+          lastFailureReason,
+          processingAttempts,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id: { type: number }
         childId: { type: number }
         requesterUserId: { type: string }
         requesterName: { type: string }
         requesterRole: { type: string }
-        categories: { type: array, items: { $ref: "#/components/schemas/DeletionCategory" } }
+        categories:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/DeletionCategory" },
+          }
         reason: { type: string }
         status: { $ref: "#/components/schemas/DeletionRequestStatus" }
         reviewedAt: { type: [string, "null"], format: date-time }
         reviewedByName: { type: [string, "null"] }
         reviewNote: { type: [string, "null"] }
         processedAt: { type: [string, "null"], format: date-time }
-        processedCategories: { type: array, items: { $ref: "#/components/schemas/DeletionCategory" } }
-        retainedCategories: { type: array, items: { $ref: "#/components/schemas/DeletionCategory" } }
+        processedCategories:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/DeletionCategory" },
+          }
+        retainedCategories:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/DeletionCategory" },
+          }
         retentionNote: { type: string }
-        categoryProgress: { type: array, items: { $ref: "#/components/schemas/DeletionCategoryProgress" } }
+        categoryProgress:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/DeletionCategoryProgress" },
+          }
         lastFailureReason: { type: [string, "null"] }
         processingAttempts: { type: number }
         createdAt: { type: string, format: date-time }
@@ -4750,7 +6867,13 @@ components:
       type: object
       required: [categories]
       properties:
-        categories: { type: array, minItems: 1, uniqueItems: true, items: { $ref: "#/components/schemas/DeletionCategory" } }
+        categories:
+          {
+            type: array,
+            minItems: 1,
+            uniqueItems: true,
+            items: { $ref: "#/components/schemas/DeletionCategory" },
+          }
         reason: { type: string, maxLength: 2000 }
     DeletionRequestReviewInput:
       type: object
@@ -4779,7 +6902,12 @@ components:
         - type: object
           required: [audit]
           properties:
-            audit: { type: array, items: { $ref: "#/components/schemas/DeletionRequestAuditEvent" } }
+            audit:
+              {
+                type: array,
+                items:
+                  { $ref: "#/components/schemas/DeletionRequestAuditEvent" },
+              }
     ParentLearningSection:
       type: object
       required: [heading]
@@ -4790,7 +6918,8 @@ components:
         callout: { type: [string, "null"] }
     ParentLearningResource:
       type: object
-      required: [resourceKey, title, subtitle, contentVersion, disclaimer, pdfAvailable]
+      required:
+        [resourceKey, title, subtitle, contentVersion, disclaimer, pdfAvailable]
       properties:
         resourceKey: { type: string }
         title: { type: string }
@@ -4801,14 +6930,32 @@ components:
         pdfDownloadUrl: { type: [string, "null"] }
     ParentLearningModule:
       type: object
-      required: [moduleKey, position, title, summary, readingMinutes, sections, tryThisAtHome, bookmarked, completed, lastViewedAt, completedAt, reflection]
+      required:
+        [
+          moduleKey,
+          position,
+          title,
+          summary,
+          readingMinutes,
+          sections,
+          tryThisAtHome,
+          bookmarked,
+          completed,
+          lastViewedAt,
+          completedAt,
+          reflection,
+        ]
       properties:
         moduleKey: { type: string }
         position: { type: number }
         title: { type: string }
         summary: { type: string }
         readingMinutes: { type: number }
-        sections: { type: array, items: { $ref: "#/components/schemas/ParentLearningSection" } }
+        sections:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/ParentLearningSection" },
+          }
         tryThisAtHome: { type: array, items: { type: string } }
         bookmarked: { type: boolean }
         completed: { type: boolean }
@@ -4817,10 +6964,22 @@ components:
         reflection: { type: [string, "null"] }
     ParentLearningCenter:
       type: object
-      required: [resource, modules, completedModules, totalModules, completionPercentage, lastViewedModuleKey]
+      required:
+        [
+          resource,
+          modules,
+          completedModules,
+          totalModules,
+          completionPercentage,
+          lastViewedModuleKey,
+        ]
       properties:
         resource: { $ref: "#/components/schemas/ParentLearningResource" }
-        modules: { type: array, items: { $ref: "#/components/schemas/ParentLearningModule" } }
+        modules:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/ParentLearningModule" },
+          }
         completedModules: { type: number }
         totalModules: { type: number }
         completionPercentage: { type: number }
@@ -4874,7 +7033,21 @@ components:
         callout: { type: [string, "null"] }
     TeacherResourceItem:
       type: object
-      required: [resourceKey, category, position, title, summary, readingMinutes, sections, format, bookmarked, completed, lastViewedAt, completedAt]
+      required:
+        [
+          resourceKey,
+          category,
+          position,
+          title,
+          summary,
+          readingMinutes,
+          sections,
+          format,
+          bookmarked,
+          completed,
+          lastViewedAt,
+          completedAt,
+        ]
       properties:
         resourceKey: { type: string }
         category: { type: string }
@@ -4882,7 +7055,11 @@ components:
         title: { type: string }
         summary: { type: string }
         readingMinutes: { type: number }
-        sections: { type: array, items: { $ref: "#/components/schemas/TeacherResourceSection" } }
+        sections:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/TeacherResourceSection" },
+          }
         format: { type: string }
         bookmarked: { type: boolean }
         completed: { type: boolean }
@@ -4890,7 +7067,17 @@ components:
         completedAt: { type: [string, "null"], format: date-time }
     TeacherResourceCenter:
       type: object
-      required: [title, description, contentVersion, disclaimer, pdfAvailable, items, categories, completionPercentage]
+      required:
+        [
+          title,
+          description,
+          contentVersion,
+          disclaimer,
+          pdfAvailable,
+          items,
+          categories,
+          completionPercentage,
+        ]
       properties:
         title: { type: string }
         description: { type: string }
@@ -4898,7 +7085,11 @@ components:
         disclaimer: { type: string }
         pdfAvailable: { type: boolean }
         pdfDownloadUrl: { type: [string, "null"] }
-        items: { type: array, items: { $ref: "#/components/schemas/TeacherResourceItem" } }
+        items:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/TeacherResourceItem" },
+          }
         categories: { type: array, items: { type: string } }
         completionPercentage: { type: number }
     TeacherResourceProgressInput:
@@ -4954,7 +7145,25 @@ components:
           $ref: "#/components/schemas/ClinicianLearningExample"
     ClinicianLearningModule:
       type: object
-      required: [moduleKey, category, kind, position, title, summary, readingMinutes, tags, workflowContexts, sections, bookmarked, completed, progressPercent, lastSectionKey, lastViewedAt, completedAt]
+      required:
+        [
+          moduleKey,
+          category,
+          kind,
+          position,
+          title,
+          summary,
+          readingMinutes,
+          tags,
+          workflowContexts,
+          sections,
+          bookmarked,
+          completed,
+          progressPercent,
+          lastSectionKey,
+          lastViewedAt,
+          completedAt,
+        ]
       properties:
         moduleKey: { type: string }
         category: { type: string }
@@ -4965,22 +7174,43 @@ components:
         readingMinutes: { type: number }
         tags: { type: array, items: { type: string } }
         workflowContexts: { type: array, items: { type: string } }
-        sections: { type: array, items: { $ref: "#/components/schemas/ClinicianLearningSection" } }
+        sections:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/ClinicianLearningSection" },
+          }
         bookmarked: { type: boolean }
         completed: { type: boolean }
-        progressPercent: { type: number, minimum: 0, maximum: 100, multipleOf: 1 }
+        progressPercent:
+          { type: number, minimum: 0, maximum: 100, multipleOf: 1 }
         lastSectionKey: { type: [string, "null"] }
         lastViewedAt: { type: [string, "null"], format: date-time }
         completedAt: { type: [string, "null"], format: date-time }
     ClinicianLearningCenter:
       type: object
-      required: [title, description, contentVersion, disclaimer, modules, categories, completionPercentage, lastViewedModuleKey, workflowCoachingEnabled, downloadAvailable]
+      required:
+        [
+          title,
+          description,
+          contentVersion,
+          disclaimer,
+          modules,
+          categories,
+          completionPercentage,
+          lastViewedModuleKey,
+          workflowCoachingEnabled,
+          downloadAvailable,
+        ]
       properties:
         title: { type: string }
         description: { type: string }
         contentVersion: { type: string }
         disclaimer: { type: string }
-        modules: { type: array, items: { $ref: "#/components/schemas/ClinicianLearningModule" } }
+        modules:
+          {
+            type: array,
+            items: { $ref: "#/components/schemas/ClinicianLearningModule" },
+          }
         categories: { type: array, items: { type: string } }
         completionPercentage: { type: number }
         lastViewedModuleKey: { type: [string, "null"] }
@@ -4995,15 +7225,26 @@ components:
         completed: { type: boolean }
         markViewed: { type: boolean }
         lastSectionKey: { type: string, minLength: 1, maxLength: 120 }
-        progressPercent: { type: number, minimum: 0, maximum: 100, multipleOf: 1 }
+        progressPercent:
+          { type: number, minimum: 0, maximum: 100, multipleOf: 1 }
     ClinicianLearningProgress:
       type: object
-      required: [moduleKey, bookmarked, completed, progressPercent, lastSectionKey, lastViewedAt, completedAt]
+      required:
+        [
+          moduleKey,
+          bookmarked,
+          completed,
+          progressPercent,
+          lastSectionKey,
+          lastViewedAt,
+          completedAt,
+        ]
       properties:
         moduleKey: { type: string }
         bookmarked: { type: boolean }
         completed: { type: boolean }
-        progressPercent: { type: number, minimum: 0, maximum: 100, multipleOf: 1 }
+        progressPercent:
+          { type: number, minimum: 0, maximum: 100, multipleOf: 1 }
         lastSectionKey: { type: [string, "null"] }
         lastViewedAt: { type: [string, "null"], format: date-time }
         completedAt: { type: [string, "null"], format: date-time }
@@ -5105,7 +7346,12 @@ components:
     BetaNotice:
       type: object
       required: [version, text, acknowledged]
-      properties: { version: { type: string }, text: { type: string }, acknowledged: { type: boolean } }
+      properties:
+        {
+          version: { type: string },
+          text: { type: string },
+          acknowledged: { type: boolean },
+        }
     BetaNoticeAcknowledgement:
       type: object
       required: [acknowledged, version]

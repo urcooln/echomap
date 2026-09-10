@@ -26,6 +26,8 @@ export * from "./phrase-observations";
 export * from "./clinical-soap-notes";
 export * from "./clinical-documentation";
 export * from "./communication-goals";
+export * from "./communication-passports";
+export * from "./manual-session-tracking";
 export * from "./clinical-knowledge";
 export * from "./care-team-invitations";
 export * from "./team-messages";

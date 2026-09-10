@@ -1,0 +1,2 @@
+ALTER TABLE "session_audio_objects" ADD COLUMN "source_transcript_segment_id" integer;--> statement-breakpoint
+CREATE UNIQUE INDEX "session_audio_objects_source_segment_unique" ON "session_audio_objects" USING btree ("source_transcript_segment_id") WHERE "session_audio_objects"."source_transcript_segment_id" IS NOT NULL AND "session_audio_objects"."deleted_at" IS NULL;

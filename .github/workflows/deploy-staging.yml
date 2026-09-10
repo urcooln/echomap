@@ -42,7 +42,7 @@ jobs:
             --build-arg BASE_PATH=/ \
             --build-arg VITE_CLERK_PUBLISHABLE_KEY="${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}" \
             --build-arg VITE_CLERK_PROXY_URL="" \
-            --build-arg VITE_ENABLE_DEVELOPMENT_DEMO=true \
+            --build-arg VITE_ENABLE_DEVELOPMENT_DEMO=false \
             --tag "$IMAGE" \
             .
 
@@ -65,7 +65,7 @@ jobs:
             CHILDLED_AUDIO_STORAGE_DRIVER=gcs
             GCS_PRIVATE_BUCKET=${{ vars.GCS_PRIVATE_BUCKET }}
             GCS_PRIVATE_OBJECT_PREFIX=${{ vars.GCS_PRIVATE_OBJECT_PREFIX }}
-            CHILDLED_ENABLE_DEMO_LOGIN=true
+            CHILDLED_ENABLE_DEMO_LOGIN=false
             CHILDLED_LEGACY_S3_MIGRATION_COMPLETE=true
             CLERK_PUBLISHABLE_KEY=${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
           secrets: |-

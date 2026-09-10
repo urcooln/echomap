@@ -90,7 +90,7 @@ function Button({
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
-      className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 ${styles[variant]} ${className}`}
+      className={`inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50 sm:min-h-0 ${styles[variant]} ${className}`}
     >
       {children}
     </button>
@@ -125,7 +125,7 @@ function SectionHeading({
           </p>
         )}
       </div>
-      {action}
+      {action && <div className="w-full sm:w-auto [&>*]:w-full sm:[&>*]:w-auto">{action}</div>}
     </div>
   );
 }
@@ -323,7 +323,7 @@ export function DocumentationCenter({ childId }: { childId?: number; child?: Chi
       </div>
 
       <div className="grid min-w-0 max-w-full items-start gap-8 lg:grid-cols-[390px_1fr]">
-        <aside className="rounded-2xl border border-border bg-card p-4 soft-shadow">
+        <aside className="max-h-[55dvh] overflow-y-auto overscroll-contain rounded-2xl border border-border bg-card p-4 soft-shadow lg:max-h-none lg:overflow-visible">
           <div className="mb-4">
             <div><h3 className="text-sm font-bold">All session notes</h3><p className="mt-1 text-xs text-muted-foreground">{filteredNotes.length} matching record{filteredNotes.length === 1 ? '' : 's'}</p></div>
             <div className="mt-3 grid grid-cols-3 gap-2">
@@ -403,11 +403,11 @@ function SoapNoteEditor({ summary, childName, onUpdated }: { summary: SessionSoa
   };
   return (
     <section className="rounded-2xl border border-border bg-card soft-shadow">
-      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-6">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border p-4 sm:p-6">
         <div><p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary">SOAP Note · Draft</p><h2 className="mt-2 font-serif text-3xl">{childName}</h2><p className="mt-2 text-xs text-muted-foreground">Session {formatDate(noteQuery.data?.sessionDate ?? summary.createdAt)} · Last edited {formatDate(summary.updatedAt)}</p></div>
         <Button onClick={() => void save()} disabled={updateNote.isPending}>{saved ? <Check size={16} /> : null}{updateNote.isPending ? 'Saving…' : saved ? 'Saved' : 'Save SOAP note'}</Button>
       </div>
-      <div className="space-y-5 p-6">
+      <div className="space-y-5 p-4 sm:p-6">
         {fields.map((field) => <label key={field.key} className="block"><span className="text-sm font-bold">{field.label}</span><textarea value={content[field.key]} onChange={(event) => setContent((current) => current ? { ...current, [field.key]: event.target.value } : current)} rows={field.key === 'objective' || field.key === 'assessment' ? 5 : 3} className="mt-2 w-full rounded-xl border border-border bg-background px-4 py-3 text-sm leading-6 outline-none focus:border-primary/60" /></label>)}
       </div>
     </section>
@@ -489,7 +489,7 @@ function DocumentCreator({
   };
 
   return (
-    <div className="rounded-3xl border border-border bg-card p-6 shadow-sm md:p-8 animate-rise">
+    <div className="rounded-3xl border border-border bg-card p-4 shadow-sm sm:p-6 md:p-8 animate-rise">
       <h2 className="serif text-2xl font-semibold text-primary">
         Start a new draft
       </h2>
@@ -835,7 +835,7 @@ AI-generated draft for clinician review only. ChildLed does not provide diagnose
   ]);
 
   return (
-    <article className="rounded-3xl border border-border bg-card p-6 shadow-sm md:p-9 print:border-none print:p-0 print:shadow-none animate-rise">
+    <article className="rounded-3xl border border-border bg-card p-4 shadow-sm sm:p-6 md:p-9 print:border-none print:p-0 print:shadow-none animate-rise">
       <header className="mb-6 flex flex-wrap items-start justify-between gap-5 border-b border-border pb-6">
         <div className="flex-1">
           <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
@@ -861,8 +861,8 @@ AI-generated draft for clinician review only. ChildLed does not provide diagnose
           </p>
         </div>
 
-        <div className="flex flex-col items-end gap-3 print:hidden">
-          <div className="flex items-center gap-2">
+        <div className="flex w-full flex-col items-stretch gap-3 print:hidden sm:w-auto sm:items-end">
+          <div className="flex flex-wrap items-center gap-2 [&>*]:flex-1 sm:[&>*]:flex-none">
             {isEditable && (
               <Button
                 variant="warm"
@@ -885,7 +885,7 @@ AI-generated draft for clinician review only. ChildLed does not provide diagnose
             )}
           </div>
           {isFinalized ? (
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
               <Button
                 variant="outline"
                 onClick={() =>
@@ -912,13 +912,14 @@ AI-generated draft for clinician review only. ChildLed does not provide diagnose
                     downloadText(noteText(), `childled-doc-${doc.id}.txt`)
                   )
                 }
+                className="col-span-2 sm:col-span-1"
                 data-testid="button-export-doc"
               >
                 <FileText size={16} /> Export txt
               </Button>
             </div>
           ) : (
-            <p className="max-w-xs text-right text-xs leading-5 text-muted-foreground">
+            <p className="max-w-xs text-left text-xs leading-5 text-muted-foreground sm:text-right">
               Finalize this clinician-reviewed document before copying, printing, or exporting it.
             </p>
           )}
@@ -942,7 +943,7 @@ AI-generated draft for clinician review only. ChildLed does not provide diagnose
             key={field.key}
             className={`rounded-2xl border ${
               !isEditable ? 'border-border/50 bg-transparent' : 'border-border bg-background/55'
-            } p-5`}
+            } p-4 sm:p-5`}
           >
             <h3 className="serif text-xl font-semibold text-primary mb-3">
               {field.title}
@@ -968,7 +969,7 @@ AI-generated draft for clinician review only. ChildLed does not provide diagnose
           </section>
         ))}
         {(content.goalConnections?.length || isEditable) ? (
-          <section data-testid="section-goal-connections" className="rounded-2xl border border-primary/20 bg-secondary/25 p-5">
+          <section data-testid="section-goal-connections" className="rounded-2xl border border-primary/20 bg-secondary/25 p-4 sm:p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
                 <h3 className="serif text-xl font-semibold text-primary">Goal Connections</h3>
@@ -997,7 +998,7 @@ AI-generated draft for clinician review only. ChildLed does not provide diagnose
             </div> : <p className="mt-4 text-sm text-muted-foreground">No goal connections were found for this draft.</p>}
           </section>
         ) : null}
-        <details className="rounded-2xl border border-primary/20 bg-secondary/25 p-5" data-testid="session-summary-evidence">
+        <details className="rounded-2xl border border-primary/20 bg-secondary/25 p-4 sm:p-5" data-testid="session-summary-evidence">
           <summary className="cursor-pointer font-semibold text-primary focus-ring">
             Reviewed evidence sources ({content.evidenceReferences.length})
           </summary>

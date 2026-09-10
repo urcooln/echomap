@@ -6,7 +6,7 @@ import type { Viewer } from '@workspace/api-client-react';
 
 export function RequestBetaAccessPage() {
   const [state, setState] = useState<'idle' | 'submitting' | 'success' | 'error'>('idle');
-  const [formData, setFormData] = useState({ fullName: '', email: '', role: '', organization: '', message: '' });
+  const [formData, setFormData] = useState({ fullName: '', email: '', role: 'Clinician', organization: '', message: '' });
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -30,8 +30,8 @@ export function RequestBetaAccessPage() {
 
   if (state === 'success') {
     return (
-      <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background px-5 py-8">
-        <section className="w-full max-w-md rounded-[2rem] border border-border bg-card p-8 text-center soft-shadow">
+      <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background px-3 py-5 sm:px-5 sm:py-8">
+        <section className="w-full max-w-md rounded-2xl border border-border bg-card p-5 text-center soft-shadow sm:rounded-[2rem] sm:p-8">
           <div className="mx-auto grid size-12 place-items-center rounded-full bg-primary/10 text-primary">
             <CheckCircle size={24} />
           </div>
@@ -42,7 +42,7 @@ export function RequestBetaAccessPage() {
             will reach out if we can accommodate your team.
           </p>
           <div className="mt-8">
-            <Link href="/" className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-ring">
+            <Link href="/" className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90 focus-ring sm:w-auto">
               Return to home
             </Link>
           </div>
@@ -52,14 +52,14 @@ export function RequestBetaAccessPage() {
   }
 
   return (
-    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background px-5 py-8">
-      <section className="w-full max-w-xl rounded-[2rem] border border-border bg-card p-7 soft-shadow sm:p-10">
+    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background px-3 py-5 sm:px-5 sm:py-8">
+      <section className="w-full max-w-xl rounded-2xl border border-border bg-card p-5 soft-shadow sm:rounded-[2rem] sm:p-10">
         <div className="text-center">
           <div className="mx-auto grid size-12 place-items-center rounded-xl bg-accent text-primary">
             <Leaf size={24} />
           </div>
-          <h1 className="serif mt-4 text-3xl font-semibold">Request Beta Access</h1>
-          <p className="mt-2 text-sm text-muted-foreground">ChildLed is currently in private beta for selected care teams.</p>
+          <h1 className="serif mt-4 text-3xl font-semibold">Request SLP Pilot Access</h1>
+          <p className="mt-2 text-sm text-muted-foreground">ChildLed is invite-only. Approved SLPs can invite teachers and parents for assigned students.</p>
         </div>
         
         <form onSubmit={submit} className="mt-8 space-y-4">
@@ -83,13 +83,8 @@ export function RequestBetaAccessPage() {
           
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block text-sm font-medium text-foreground">
-              Role
-              <select required value={formData.role} onChange={e => setFormData({...formData, role: e.target.value})} className="mt-1 block w-full rounded-xl border border-input bg-background p-2.5 text-sm outline-none transition focus-ring">
-                <option value="" disabled>Select your role</option>
-                <option value="Clinician">Clinician (SLP, OT, etc.)</option>
-                <option value="Parent">Parent / Caregiver</option>
-                <option value="Teacher">Teacher / Educator</option>
-              </select>
+              Account type
+              <input readOnly value="Speech-language pathologist (SLP)" className="mt-1 block w-full rounded-xl border border-input bg-secondary/40 p-2.5 text-sm text-muted-foreground outline-none" />
             </label>
             <label className="block text-sm font-medium text-foreground">
               Organization / School
@@ -102,7 +97,7 @@ export function RequestBetaAccessPage() {
             <textarea value={formData.message} onChange={e => setFormData({...formData, message: e.target.value})} className="mt-1 block min-h-[100px] w-full rounded-xl border border-input bg-background p-2.5 text-sm outline-none transition focus-ring"></textarea>
           </label>
           
-          <div className="mt-6 flex items-center gap-4 pt-2">
+          <div className="mt-6 flex flex-col items-stretch gap-4 pt-2 sm:flex-row sm:items-center">
             <Button type="submit" disabled={state === 'submitting'} className="w-full sm:w-auto">
               {state === 'submitting' ? 'Submitting...' : 'Request Access'}
             </Button>
@@ -138,8 +133,8 @@ export function BetaNoticeScreen({ notice, onAcknowledge }: { notice: { text: st
   };
 
   return (
-    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background px-5 py-8">
-      <section className="w-full max-w-2xl rounded-[2rem] border border-border bg-card p-8 soft-shadow">
+    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background px-3 py-5 sm:px-5 sm:py-8">
+      <section className="w-full max-w-2xl rounded-2xl border border-border bg-card p-5 soft-shadow sm:rounded-[2rem] sm:p-8">
         <div className="flex items-center gap-3 border-b border-border pb-5">
           <Shield className="text-primary" size={24} />
           <h1 className="serif text-2xl font-semibold">Beta Participation Notice</h1>
@@ -161,7 +156,7 @@ export function BetaNoticeScreen({ notice, onAcknowledge }: { notice: { text: st
           <p className="text-xs text-muted-foreground">
             Review our <Link href="/privacy" className="text-primary underline">Privacy Policy</Link> and <Link href="/terms" className="text-primary underline">Terms of Use</Link>.
           </p>
-          <Button onClick={handleAcknowledge} disabled={submitting}>
+          <Button className="w-full sm:w-auto" onClick={handleAcknowledge} disabled={submitting}>
             {submitting ? 'Acknowledging...' : 'Acknowledge and Continue'}
           </Button>
         </div>
@@ -204,9 +199,8 @@ export function SuperAdminBetaControls() {
       let body: string | undefined;
       if (action === 'approve') {
         const organizationId = window.prompt('Organization ID for this invitation');
-        const childId = window.prompt('Child ID to assign to this invitation');
-        if (!organizationId || !childId) return;
-        body = JSON.stringify({ organizationId: Number(organizationId), childId: Number(childId) });
+        if (!organizationId) return;
+        body = JSON.stringify({ organizationId: Number(organizationId) });
       }
       const response = await fetch(`/api/admin/beta-access-requests/${id}/${action}`, {
         method: 'POST',
@@ -269,11 +263,11 @@ export function SuperAdminBetaControls() {
   };
 
   if (loading) {
-    return <div className="p-8 text-sm text-muted-foreground animate-pulse">Loading Super Admin Controls...</div>;
+    return <div className="p-4 text-sm text-muted-foreground animate-pulse sm:p-8">Loading Super Admin Controls...</div>;
   }
 
   return (
-    <section className="mt-12 rounded-[2rem] border border-destructive/20 bg-card p-8 soft-shadow">
+    <section className="mt-8 rounded-2xl border border-destructive/20 bg-card p-4 soft-shadow sm:mt-12 sm:rounded-[2rem] sm:p-8">
       <div className="flex items-center gap-3 border-b border-border pb-5">
         <Shield className="text-destructive" size={24} />
         <h2 className="serif text-2xl font-semibold text-foreground">Super Admin: Beta Controls</h2>
@@ -293,7 +287,7 @@ export function SuperAdminBetaControls() {
                     <p className="text-xs text-muted-foreground mt-1">{req.role} at {req.organization || 'No organization'}</p>
                     {req.message && <p className="text-xs text-muted-foreground mt-2 italic">"{req.message}"</p>}
                   </div>
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:items-center">
                     <Button size="sm" onClick={() => handleRequestAction(req.id, 'approve')}>Approve</Button>
                     <Button size="sm" variant="outline" onClick={() => handleRequestAction(req.id, 'reject')}>Reject</Button>
                     <Button size="sm" variant="ghost" onClick={() => handleRequestAction(req.id, 'archive')}>Archive</Button>
@@ -327,19 +321,19 @@ export function SuperAdminBetaControls() {
           <div className="rounded-2xl border border-border bg-secondary/20 p-5">
             <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Emergency Access Override</h3>
             <form onSubmit={handleTargetAction} className="mt-4 space-y-3">
-              <div className="flex gap-2">
-                <select value={targetType} onChange={e => setTargetType(e.target.value as any)} className="rounded-lg border border-input bg-background p-2 text-sm outline-none w-1/3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <select value={targetType} onChange={e => setTargetType(e.target.value as any)} className="min-h-11 w-full rounded-lg border border-input bg-background p-2 text-sm outline-none">
                   <option value="users">User ID</option>
                   <option value="organizations">Org ID</option>
                 </select>
-                <input required type="text" placeholder="ID" value={targetId} onChange={e => setTargetId(e.target.value)} className="rounded-lg border border-input bg-background p-2 text-sm outline-none w-2/3" />
+                <input required type="text" placeholder="ID" value={targetId} onChange={e => setTargetId(e.target.value)} className="min-h-11 w-full rounded-lg border border-input bg-background p-2 text-sm outline-none sm:col-span-2" />
               </div>
-              <div className="flex gap-2">
-                <select value={actionType} onChange={e => setActionType(e.target.value as any)} className="rounded-lg border border-input bg-background p-2 text-sm outline-none w-1/3">
+              <div className="grid gap-2 sm:grid-cols-3">
+                <select value={actionType} onChange={e => setActionType(e.target.value as any)} className="min-h-11 w-full rounded-lg border border-input bg-background p-2 text-sm outline-none">
                   <option value="disable">Disable</option>
                   <option value="enable">Enable</option>
                 </select>
-                <Button type="submit" variant={actionType === 'disable' ? 'outline' : 'default'} className="w-2/3">Execute</Button>
+                <Button type="submit" variant={actionType === 'disable' ? 'outline' : 'default'} className="w-full sm:col-span-2">Execute</Button>
               </div>
             </form>
           </div>

@@ -264,6 +264,51 @@ export async function speechToText(
   return response.text;
 }
 
+export type TimedTranscriptionSegment = {
+  text: string;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+export type TimedTranscriptionWord = {
+  text: string;
+  startSeconds: number;
+  endSeconds: number;
+};
+
+/** Speech-to-Text with non-speaker segment timestamps for phrase replay. */
+export async function speechToTextWithTimestamps(
+  audioBuffer: Buffer,
+  format: "wav" | "mp3" | "webm" = "wav",
+  prompt?: string,
+): Promise<{
+  text: string;
+  segments: TimedTranscriptionSegment[];
+  words: TimedTranscriptionWord[];
+}> {
+  const file = await toFile(audioBuffer, `audio.${format}`);
+  const response = await openai.audio.transcriptions.create({
+    file,
+    model: "whisper-1",
+    response_format: "verbose_json",
+    timestamp_granularities: ["segment", "word"],
+    ...(prompt ? { prompt } : {}),
+  });
+  return {
+    text: response.text,
+    segments: (response.segments ?? []).map((segment) => ({
+      text: segment.text,
+      startSeconds: segment.start,
+      endSeconds: segment.end,
+    })),
+    words: (response.words ?? []).map((word) => ({
+      text: word.word,
+      startSeconds: word.start,
+      endSeconds: word.end,
+    })),
+  };
+}
+
 /**
  * Transcribe speaker turns into clinician-reviewable labels. Labels are only
  * placeholders; the application never infers a participant role from them.

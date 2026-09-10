@@ -18,6 +18,10 @@ export type RuntimeConfig = {
   };
   demoLogin: {
     enabled: boolean;
+    accessKey?: string;
+  };
+  clerkInvitations: {
+    enabled: boolean;
   };
   recording: RecordingLimits;
 };
@@ -50,8 +54,14 @@ export const loadRuntimeConfig = (
   const allowedOrigins = readList(env, "ALLOWED_APP_ORIGINS");
   const authMode = (readOptional(env, "CHILDLED_AUTH_MODE") ??
     "clerk") as AuthMode;
+  const productionDemoRequested =
+    isProduction && readOptional(env, "CHILDLED_ENABLE_DEMO_LOGIN") === "true";
   const demoLoginEnabled =
-    !isProduction || readOptional(env, "CHILDLED_ENABLE_DEMO_LOGIN") === "true";
+    !isProduction && readOptional(env, "CHILDLED_ENABLE_DEMO_LOGIN") === "true";
+  const demoLoginAccessKey = readOptional(env, "CHILDLED_DEMO_ACCESS_KEY");
+  const clerkInvitationsEnabled =
+    isProduction ||
+    readOptional(env, "CHILDLED_CLERK_INVITATIONS_ENABLED") === "true";
   const storageDriver = (readOptional(env, "CHILDLED_AUDIO_STORAGE_DRIVER") ??
     (isProduction ? "app-storage" : "local-encrypted")) as AudioStorageDriver;
 
@@ -74,6 +84,21 @@ export const loadRuntimeConfig = (
   }
   if (isProduction && !readOptional(env, "CHILDLED_DATA_ENCRYPTION_KEY")) {
     fail("CHILDLED_DATA_ENCRYPTION_KEY is required in production.");
+  }
+  if (productionDemoRequested) {
+    fail("CHILDLED_ENABLE_DEMO_LOGIN cannot be enabled in production.");
+  }
+  if (demoLoginEnabled && !demoLoginAccessKey) {
+    fail(
+      "CHILDLED_DEMO_ACCESS_KEY is required when development login is enabled.",
+    );
+  }
+  if (
+    clerkInvitationsEnabled &&
+    (!readOptional(env, "CLERK_SECRET_KEY") ||
+      !readOptional(env, "CLERK_PUBLISHABLE_KEY"))
+  ) {
+    fail("Clerk invitation delivery requires Clerk API keys.");
   }
   if (isProduction && storageDriver === "local-encrypted") {
     fail(
@@ -118,6 +143,10 @@ export const loadRuntimeConfig = (
     },
     demoLogin: {
       enabled: demoLoginEnabled,
+      accessKey: demoLoginAccessKey,
+    },
+    clerkInvitations: {
+      enabled: clerkInvitationsEnabled,
     },
     recording: loadRecordingLimits(env),
   };

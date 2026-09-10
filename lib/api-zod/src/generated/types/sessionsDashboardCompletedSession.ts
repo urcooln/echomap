@@ -5,10 +5,12 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { SessionsDashboardCompletedSessionSessionMode } from './sessionsDashboardCompletedSessionSessionMode';
 
 export interface SessionsDashboardCompletedSession {
   sessionId: number;
   childId: number;
   childName: string;
   sessionDate: Date;
+  sessionMode: SessionsDashboardCompletedSessionSessionMode;
 }
