@@ -100,6 +100,7 @@ export const iepServiceRequirementsTable = pgTable(
       table.organizationId,
       table.childId,
       table.normalizedServiceName,
+      table.effectiveFrom,
     ),
     index("iep_service_requirements_child_status_idx").on(
       table.organizationId,

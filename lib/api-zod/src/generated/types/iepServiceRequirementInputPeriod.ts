@@ -12,4 +12,5 @@ export type IepServiceRequirementInputPeriod = typeof IepServiceRequirementInput
 export const IepServiceRequirementInputPeriod = {
   weekly: 'weekly',
   monthly: 'monthly',
+  reporting_period: 'reporting_period',
 } as const;

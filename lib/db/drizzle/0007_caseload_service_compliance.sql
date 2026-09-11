@@ -1,0 +1,3 @@
+DROP INDEX "iep_service_requirements_child_service_unique";--> statement-breakpoint
+ALTER TABLE "child_care_team_memberships" ADD COLUMN "primary_service_delivery_type" text DEFAULT 'individual' NOT NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX "iep_service_requirements_child_service_unique" ON "iep_service_requirements" USING btree ("organization_id","child_id","normalized_service_name","effective_from");

@@ -157,6 +157,9 @@ export const childCareTeamMembershipsTable = pgTable(
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
     role: text("role").notNull(),
+    primaryServiceDeliveryType: text("primary_service_delivery_type")
+      .notNull()
+      .default("individual"),
     active: boolean("active").notNull().default(true),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()

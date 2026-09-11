@@ -50,6 +50,13 @@
       "when": 1789078872402,
       "tag": "0006_freezing_warbound",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789134950708,
+      "tag": "0007_caseload_service_compliance",
+      "breakpoints": true
     }
   ]
 }

@@ -16,12 +16,12 @@ export interface IepServiceRequirement {
   requiredMinutes: number;
   sessionDurationMinutes: number;
   period: IepServiceRequirementPeriod;
-  effectiveFrom: Date;
+  effectiveFrom: string;
   /** @nullable */
-  effectiveTo: Date | null;
+  effectiveTo: string | null;
   periodLabel: string;
-  periodStart: Date;
-  periodEnd: Date;
+  periodStart: string;
+  periodEnd: string;
   /** @minimum 0 */
   sessionsCompleted: number;
   /** @minimum 0 */

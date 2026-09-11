@@ -11,6 +11,7 @@ export type IepServiceRequirementStatus = typeof IepServiceRequirementStatus[key
 
 export const IepServiceRequirementStatus = {
   on_track: 'on_track',
+  needs_attention: 'needs_attention',
   behind: 'behind',
   complete: 'complete',
 } as const;

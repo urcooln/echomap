@@ -68,6 +68,17 @@ const localDate = () => {
   return date.toISOString().slice(0, 10);
 };
 
+const localMonthEnd = () => {
+  const now = new Date();
+  return localDateFor(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+};
+
+const localDateFor = (date: Date) => {
+  const local = new Date(date);
+  local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
+  return local.toISOString().slice(0, 10);
+};
+
 const elapsedFor = (timer: StoredTimer, now = Date.now()) =>
   Math.max(
     0,
@@ -94,7 +105,8 @@ const numberOrNull = (value: string) => {
 
 const statusStyle = {
   on_track: "bg-emerald-100 text-emerald-800",
-  behind: "bg-amber-100 text-amber-900",
+  needs_attention: "bg-amber-100 text-amber-900",
+  behind: "bg-red-100 text-red-800",
   complete: "bg-primary/10 text-primary",
 } as const;
 
@@ -128,7 +140,11 @@ export function ManualSessionTrackingPage({
   const [requiredSessions, setRequiredSessions] = useState("2");
   const [requiredMinutes, setRequiredMinutes] = useState("60");
   const [sessionDurationMinutes, setSessionDurationMinutes] = useState("30");
-  const [period, setPeriod] = useState<"weekly" | "monthly">("weekly");
+  const [period, setPeriod] = useState<
+    "weekly" | "monthly" | "reporting_period"
+  >("weekly");
+  const [effectiveFrom, setEffectiveFrom] = useState(localDate);
+  const [effectiveTo, setEffectiveTo] = useState(localMonthEnd);
 
   const setupQuery = useGetManualSessionSetup(
     { childId },
@@ -203,6 +219,8 @@ export function ManualSessionTrackingPage({
     setRequiredMinutes(String(requirement.requiredMinutes));
     setSessionDurationMinutes(String(requirement.sessionDurationMinutes));
     setPeriod(requirement.period);
+    setEffectiveFrom(requirement.effectiveFrom);
+    setEffectiveTo(requirement.effectiveTo ?? "");
   }, [setupQuery.data?.serviceRequirements]);
 
   const updateTimer = (next: StoredTimer) => {
@@ -289,22 +307,30 @@ export function ManualSessionTrackingPage({
     ];
     if (
       !serviceName.trim() ||
-      requirementValues.some((value) => !Number.isInteger(value) || value < 1)
+      requirementValues.some(
+        (value) => !Number.isInteger(value) || value < 1,
+      ) ||
+      !effectiveFrom ||
+      (period === "reporting_period" && !effectiveTo) ||
+      Boolean(effectiveTo && effectiveTo < effectiveFrom)
     ) {
-      setError("Enter a service name and whole numbers greater than zero.");
+      setError(
+        "Enter a service name, whole numbers greater than zero, and a valid service period.",
+      );
       return;
     }
     try {
       await saveRequirement.mutateAsync({
         params: { childId },
         data: {
+          requirementId: setupQuery.data?.serviceRequirements[0]?.id ?? null,
           serviceName,
           requiredSessions: Number(requiredSessions),
           requiredMinutes: Number(requiredMinutes),
           sessionDurationMinutes: Number(sessionDurationMinutes),
           period,
-          effectiveFrom: localDate(),
-          effectiveTo: null,
+          effectiveFrom,
+          effectiveTo: effectiveTo || null,
         },
       });
       await queryClient.invalidateQueries({
@@ -949,12 +975,38 @@ export function ManualSessionTrackingPage({
                       className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
                       value={period}
                       onChange={(event) =>
-                        setPeriod(event.target.value as "weekly" | "monthly")
+                        setPeriod(
+                          event.target.value as
+                            "weekly" | "monthly" | "reporting_period",
+                        )
                       }
                     >
                       <option value="weekly">Weekly</option>
                       <option value="monthly">Monthly</option>
+                      <option value="reporting_period">
+                        Reporting / IEP period
+                      </option>
                     </select>
+                  </label>
+                  <label>
+                    <span className="mb-1 block text-xs font-semibold">
+                      Period start
+                    </span>
+                    <Input
+                      type="date"
+                      value={effectiveFrom}
+                      onChange={(event) => setEffectiveFrom(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span className="mb-1 block text-xs font-semibold">
+                      Period end
+                    </span>
+                    <Input
+                      type="date"
+                      value={effectiveTo}
+                      onChange={(event) => setEffectiveTo(event.target.value)}
+                    />
                   </label>
                 </div>
                 <Button

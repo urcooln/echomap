@@ -12,4 +12,5 @@ export type IepServiceRequirementPeriod = typeof IepServiceRequirementPeriod[key
 export const IepServiceRequirementPeriod = {
   weekly: 'weekly',
   monthly: 'monthly',
+  reporting_period: 'reporting_period',
 } as const;

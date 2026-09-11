@@ -123,6 +123,14 @@ test("manual sessions persist goal progress and update IEP service delivery tota
       (await request(`/manual-sessions/setup?childId=${child.id}`)).status,
       403,
     );
+    assert.equal(
+      (
+        await json("PUT", `/caseload-service-settings?childId=${child.id}`, {
+          primaryServiceDeliveryType: "consult",
+        })
+      ).status,
+      403,
+    );
 
     actor = { ...actor, role: "SLP" };
     const setup = await request(`/manual-sessions/setup?childId=${child.id}`);
@@ -132,6 +140,14 @@ test("manual sessions persist goal progress and update IEP service delivery tota
       [goal.id],
     );
 
+    const serviceSettings = await json(
+      "PUT",
+      `/caseload-service-settings?childId=${child.id}`,
+      { primaryServiceDeliveryType: "group" },
+    );
+    assert.equal(serviceSettings.status, 200);
+    assert.equal(serviceSettings.body.primaryServiceDeliveryType, "group");
+
     const requirement = await json(
       "PUT",
       `/iep-service-requirements?childId=${child.id}`,
@@ -140,14 +156,34 @@ test("manual sessions persist goal progress and update IEP service delivery tota
         requiredSessions: 2,
         requiredMinutes: 60,
         sessionDurationMinutes: 30,
-        period: "weekly",
+        period: "reporting_period",
         effectiveFrom: "2026-09-01",
-        effectiveTo: null,
+        effectiveTo: "2026-09-30",
       },
     );
     assert.equal(requirement.status, 200);
     assert.equal(requirement.body.sessionsCompleted, 0);
     assert.equal(requirement.body.minutesCompleted, 0);
+
+    const nextPeriod = await json(
+      "PUT",
+      `/iep-service-requirements?childId=${child.id}`,
+      {
+        serviceName: "Speech Therapy",
+        requiredSessions: 8,
+        requiredMinutes: 240,
+        sessionDurationMinutes: 30,
+        period: "reporting_period",
+        effectiveFrom: "2026-10-01",
+        effectiveTo: "2026-10-31",
+      },
+    );
+    assert.equal(nextPeriod.status, 200);
+    const savedPeriods = await db
+      .select({ id: iepServiceRequirementsTable.id })
+      .from(iepServiceRequirementsTable)
+      .where(eq(iepServiceRequirementsTable.childId, child.id));
+    assert.equal(savedPeriods.length, 2);
 
     const invalid = await json("POST", `/manual-sessions?childId=${child.id}`, {
       sessionDate: "2026-09-10",
@@ -227,6 +263,10 @@ test("manual sessions persist goal progress and update IEP service delivery tota
     assert.equal(overviewChild.serviceRequirements[0].sessionsRemaining, 1);
     assert.equal(overviewChild.serviceRequirements[0].minutesCompleted, 30);
     assert.equal(overviewChild.serviceRequirements[0].minutesRemaining, 30);
+    assert.equal(overviewChild.primaryServiceDeliveryType, "group");
+    assert.equal(overviewChild.lastSessionDate, "2026-09-10");
+    assert.deepEqual(overviewChild.teacherNames, []);
+    assert.equal(overviewChild.nextSessionDate, null);
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),

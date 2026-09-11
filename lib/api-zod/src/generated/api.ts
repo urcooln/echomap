@@ -150,17 +150,17 @@ export const GetManualSessionSetupResponse = zod.object({
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly']),
-  "effectiveFrom": zod.coerce.date(),
-  "effectiveTo": zod.coerce.date().nullable(),
+  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "effectiveFrom": zod.string(),
+  "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
-  "periodStart": zod.coerce.date(),
-  "periodEnd": zod.coerce.date(),
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemSessionsCompletedMin),
   "sessionsRemaining": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemSessionsRemainingMin),
   "minutesCompleted": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemMinutesCompletedMin),
   "minutesRemaining": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemMinutesRemainingMin),
-  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
   "updatedAt": zod.coerce.date()
 }))
 })
@@ -292,17 +292,17 @@ export const ListIepServiceRequirementsResponseItem = zod.object({
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly']),
-  "effectiveFrom": zod.coerce.date(),
-  "effectiveTo": zod.coerce.date().nullable(),
+  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "effectiveFrom": zod.string(),
+  "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
-  "periodStart": zod.coerce.date(),
-  "periodEnd": zod.coerce.date(),
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(listIepServiceRequirementsResponseSessionsCompletedMin),
   "sessionsRemaining": zod.number().min(listIepServiceRequirementsResponseSessionsRemainingMin),
   "minutesCompleted": zod.number().min(listIepServiceRequirementsResponseMinutesCompletedMin),
   "minutesRemaining": zod.number().min(listIepServiceRequirementsResponseMinutesRemainingMin),
-  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
   "updatedAt": zod.coerce.date()
 })
 export const ListIepServiceRequirementsResponse = zod.array(ListIepServiceRequirementsResponseItem)
@@ -326,11 +326,12 @@ export const upsertIepServiceRequirementBodySessionDurationMinutesMax = 480;
 
 
 export const UpsertIepServiceRequirementBody = zod.object({
+  "requirementId": zod.number().nullish(),
   "serviceName": zod.string().min(1).max(upsertIepServiceRequirementBodyServiceNameMax),
   "requiredSessions": zod.number().min(1).max(upsertIepServiceRequirementBodyRequiredSessionsMax),
   "requiredMinutes": zod.number().min(1).max(upsertIepServiceRequirementBodyRequiredMinutesMax),
   "sessionDurationMinutes": zod.number().min(1).max(upsertIepServiceRequirementBodySessionDurationMinutesMax),
-  "period": zod.enum(['weekly', 'monthly']),
+  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
   "effectiveFrom": zod.coerce.date(),
   "effectiveTo": zod.coerce.date().nullish()
 })
@@ -352,17 +353,35 @@ export const UpsertIepServiceRequirementResponse = zod.object({
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly']),
-  "effectiveFrom": zod.coerce.date(),
-  "effectiveTo": zod.coerce.date().nullable(),
+  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "effectiveFrom": zod.string(),
+  "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
-  "periodStart": zod.coerce.date(),
-  "periodEnd": zod.coerce.date(),
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(upsertIepServiceRequirementResponseSessionsCompletedMin),
   "sessionsRemaining": zod.number().min(upsertIepServiceRequirementResponseSessionsRemainingMin),
   "minutesCompleted": zod.number().min(upsertIepServiceRequirementResponseMinutesCompletedMin),
   "minutesRemaining": zod.number().min(upsertIepServiceRequirementResponseMinutesRemainingMin),
-  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update the logged-in SLP's settings for an assigned student
+ */
+export const UpdateCaseloadServiceSettingsQueryParams = zod.object({
+  "childId": zod.coerce.number()
+})
+
+export const UpdateCaseloadServiceSettingsBody = zod.object({
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'integrated_group', 'consult'])
+})
+
+export const UpdateCaseloadServiceSettingsResponse = zod.object({
+  "childId": zod.number(),
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'integrated_group', 'consult']),
   "updatedAt": zod.coerce.date()
 })
 
@@ -599,6 +618,10 @@ export const GetClinicianOverviewResponse = zod.object({
   "requiresReview": zod.boolean(),
   "latestActivityAt": zod.coerce.date().nullable(),
   "latestActivityLabel": zod.string(),
+  "teacherNames": zod.array(zod.string()),
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'integrated_group', 'consult']),
+  "lastSessionDate": zod.string().nullable(),
+  "nextSessionDate": zod.string().nullable(),
   "serviceRequirements": zod.array(zod.object({
   "id": zod.number(),
   "childId": zod.number(),
@@ -606,17 +629,17 @@ export const GetClinicianOverviewResponse = zod.object({
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly']),
-  "effectiveFrom": zod.coerce.date(),
-  "effectiveTo": zod.coerce.date().nullable(),
+  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "effectiveFrom": zod.string(),
+  "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
-  "periodStart": zod.coerce.date(),
-  "periodEnd": zod.coerce.date(),
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin),
   "sessionsRemaining": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin),
   "minutesCompleted": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin),
   "minutesRemaining": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin),
-  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
   "updatedAt": zod.coerce.date()
 }))
 })),
@@ -682,6 +705,10 @@ export const GetTeacherOverviewResponse = zod.object({
   "requiresReview": zod.boolean(),
   "latestActivityAt": zod.coerce.date().nullable(),
   "latestActivityLabel": zod.string(),
+  "teacherNames": zod.array(zod.string()),
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'integrated_group', 'consult']),
+  "lastSessionDate": zod.string().nullable(),
+  "nextSessionDate": zod.string().nullable(),
   "serviceRequirements": zod.array(zod.object({
   "id": zod.number(),
   "childId": zod.number(),
@@ -689,17 +716,17 @@ export const GetTeacherOverviewResponse = zod.object({
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly']),
-  "effectiveFrom": zod.coerce.date(),
-  "effectiveTo": zod.coerce.date().nullable(),
+  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "effectiveFrom": zod.string(),
+  "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
-  "periodStart": zod.coerce.date(),
-  "periodEnd": zod.coerce.date(),
+  "periodStart": zod.string(),
+  "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin),
   "sessionsRemaining": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin),
   "minutesCompleted": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin),
   "minutesRemaining": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin),
-  "status": zod.enum(['on_track', 'behind', 'complete']),
+  "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
   "updatedAt": zod.coerce.date()
 }))
 })),

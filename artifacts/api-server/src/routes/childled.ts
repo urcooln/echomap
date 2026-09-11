@@ -371,6 +371,9 @@ import {
   UpsertIepServiceRequirementQueryParams,
   UpsertIepServiceRequirementBody,
   UpsertIepServiceRequirementResponse,
+  UpdateCaseloadServiceSettingsQueryParams,
+  UpdateCaseloadServiceSettingsBody,
+  UpdateCaseloadServiceSettingsResponse,
   GetSessionsDashboardResponse,
   ListUnclearVocalizationsQueryParams,
   ListChildInterestsQueryParams,
@@ -4790,7 +4793,10 @@ const serviceRequirementResponseFromSessions = (
   requirement: typeof iepServiceRequirementsTable.$inferSelect,
   sessions: ServiceSessionDelivery[],
 ) => {
-  const window = servicePeriodWindow(requirement.period);
+  const window = servicePeriodWindow(requirement.period, new Date(), {
+    effectiveFrom: requirement.effectiveFrom,
+    effectiveTo: requirement.effectiveTo,
+  });
   const completedSessions = sessions.filter(
     (session) =>
       session.childId === requirement.childId &&
@@ -4838,7 +4844,10 @@ const serviceRequirementResponseFromSessions = (
 const serviceRequirementResponse = async (
   requirement: typeof iepServiceRequirementsTable.$inferSelect,
 ) => {
-  const window = servicePeriodWindow(requirement.period);
+  const window = servicePeriodWindow(requirement.period, new Date(), {
+    effectiveFrom: requirement.effectiveFrom,
+    effectiveTo: requirement.effectiveTo,
+  });
   const sessions = await db
     .select({
       childId: therapySessionsTable.childId,
@@ -4891,7 +4900,10 @@ const activeServiceRequirementsForChildren = async (
 
   if (!requirements.length) return byChild;
   const windows = requirements.map((requirement) =>
-    servicePeriodWindow(requirement.period),
+    servicePeriodWindow(requirement.period, new Date(), {
+      effectiveFrom: requirement.effectiveFrom,
+      effectiveTo: requirement.effectiveTo,
+    }),
   );
   const earliestStart = windows.reduce(
     (earliest, window) => (window.start < earliest ? window.start : earliest),
@@ -10343,6 +10355,8 @@ router.get("/clinician-overview", async (req, res) => {
     insights,
     sessionRows,
     serviceRequirementsByChild,
+    caseloadSettings,
+    assignedTeachers,
   ] = await Promise.all([
     db
       .select()
@@ -10429,6 +10443,7 @@ router.get("/clinician-overview", async (req, res) => {
       .select({
         id: therapySessionsTable.id,
         childId: therapySessionsTable.childId,
+        sessionDate: therapySessionsTable.sessionDate,
         createdAt: therapySessionsTable.createdAt,
       })
       .from(therapySessionsTable)
@@ -10441,6 +10456,42 @@ router.get("/clinician-overview", async (req, res) => {
       )
       .orderBy(desc(therapySessionsTable.createdAt)),
     activeServiceRequirementsForChildren(actor.organizationId, childIds),
+    db
+      .select({
+        childId: childCareTeamMembershipsTable.childId,
+        primaryServiceDeliveryType:
+          childCareTeamMembershipsTable.primaryServiceDeliveryType,
+      })
+      .from(childCareTeamMembershipsTable)
+      .where(
+        and(
+          eq(childCareTeamMembershipsTable.userId, actor.userId),
+          eq(childCareTeamMembershipsTable.active, true),
+          inArray(childCareTeamMembershipsTable.childId, scopedChildIds),
+        ),
+      ),
+    db
+      .select({
+        childId: childCareTeamMembershipsTable.childId,
+        teacherName: usersTable.displayName,
+      })
+      .from(childCareTeamMembershipsTable)
+      .innerJoin(
+        usersTable,
+        eq(usersTable.id, childCareTeamMembershipsTable.userId),
+      )
+      .where(
+        and(
+          eq(childCareTeamMembershipsTable.active, true),
+          inArray(childCareTeamMembershipsTable.childId, scopedChildIds),
+          eq(
+            sql<string>`lower(${childCareTeamMembershipsTable.role})`,
+            "teacher",
+          ),
+          isNull(usersTable.archivedAt),
+          isNull(usersTable.disabledAt),
+        ),
+      ),
   ]);
   const reviewedGestalts = gestalts.filter(
     (item) =>
@@ -10714,6 +10765,26 @@ router.get("/clinician-overview", async (req, res) => {
       });
     }
   }
+  const serviceDeliveryByChild = new Map(
+    caseloadSettings.map((setting) => [
+      setting.childId,
+      setting.primaryServiceDeliveryType,
+    ]),
+  );
+  const teachersByChild = new Map<number, string[]>();
+  for (const assignment of assignedTeachers) {
+    const names = teachersByChild.get(assignment.childId) ?? [];
+    if (!names.includes(assignment.teacherName))
+      names.push(assignment.teacherName);
+    teachersByChild.set(assignment.childId, names);
+  }
+  const lastSessionByChild = new Map<number, string>();
+  for (const session of sessionRows) {
+    const previous = lastSessionByChild.get(session.childId);
+    if (!previous || session.sessionDate > previous) {
+      lastSessionByChild.set(session.childId, session.sessionDate);
+    }
+  }
   return res.json(
     GetClinicianOverviewResponse.parse({
       caseloadCount: profiles.length,
@@ -10743,6 +10814,11 @@ router.get("/clinician-overview", async (req, res) => {
         latestActivityAt: latestByChild.get(profile.id)?.time ?? null,
         latestActivityLabel:
           latestByChild.get(profile.id)?.label ?? "No new activity",
+        teacherNames: teachersByChild.get(profile.id) ?? [],
+        primaryServiceDeliveryType:
+          serviceDeliveryByChild.get(profile.id) ?? "individual",
+        lastSessionDate: lastSessionByChild.get(profile.id) ?? null,
+        nextSessionDate: null,
         serviceRequirements: serviceRequirementsByChild.get(profile.id) ?? [],
       })),
       recentActivity: activity,
@@ -10943,6 +11019,10 @@ router.get("/teacher-overview", async (req, res) => {
       latestActivityLabel: latest
         ? `${latest.activity.action} ${latest.activity.target}`
         : "No new classroom activity",
+      teacherNames: [actor.author],
+      primaryServiceDeliveryType: "individual",
+      lastSessionDate: null,
+      nextSessionDate: null,
       serviceRequirements: [],
     };
   });
@@ -16116,6 +16196,8 @@ router.put("/iep-service-requirements", async (req, res) => {
     : null;
   if (effectiveTo && effectiveTo < effectiveFrom)
     return fail(res, "The service end date cannot be before its start date.");
+  if (body.data.period === "reporting_period" && !effectiveTo)
+    return fail(res, "A reporting period requires an end date.");
   const serviceName = body.data.serviceName.trim();
   if (
     !Number.isInteger(body.data.requiredSessions) ||
@@ -16127,43 +16209,52 @@ router.put("/iep-service-requirements", async (req, res) => {
       "Service requirements must use whole sessions and minutes.",
     );
   const normalizedServiceName = serviceName.toLocaleLowerCase();
-  const [requirement] = await db
-    .insert(iepServiceRequirementsTable)
-    .values({
-      organizationId: actor.organizationId,
-      childId: query.data.childId,
-      serviceName,
-      normalizedServiceName,
-      requiredSessions: Math.round(body.data.requiredSessions),
-      requiredMinutes: Math.round(body.data.requiredMinutes),
-      sessionDurationMinutes: Math.round(body.data.sessionDurationMinutes),
-      period: body.data.period,
-      effectiveFrom,
-      effectiveTo,
-      createdByUserId: actor.userId,
-      updatedByUserId: actor.userId,
-      updatedAt: new Date(),
-    })
-    .onConflictDoUpdate({
-      target: [
-        iepServiceRequirementsTable.organizationId,
-        iepServiceRequirementsTable.childId,
-        iepServiceRequirementsTable.normalizedServiceName,
-      ],
-      set: {
-        serviceName,
-        requiredSessions: Math.round(body.data.requiredSessions),
-        requiredMinutes: Math.round(body.data.requiredMinutes),
-        sessionDurationMinutes: Math.round(body.data.sessionDurationMinutes),
-        period: body.data.period,
-        effectiveFrom,
-        effectiveTo,
-        status: "active",
-        updatedByUserId: actor.userId,
-        updatedAt: new Date(),
-      },
-    })
-    .returning();
+  const requirementValues = {
+    serviceName,
+    normalizedServiceName,
+    requiredSessions: Math.round(body.data.requiredSessions),
+    requiredMinutes: Math.round(body.data.requiredMinutes),
+    sessionDurationMinutes: Math.round(body.data.sessionDurationMinutes),
+    period: body.data.period,
+    effectiveFrom,
+    effectiveTo,
+    status: "active",
+    updatedByUserId: actor.userId,
+    updatedAt: new Date(),
+  };
+  const [requirement] = body.data.requirementId
+    ? await db
+        .update(iepServiceRequirementsTable)
+        .set(requirementValues)
+        .where(
+          and(
+            eq(iepServiceRequirementsTable.id, body.data.requirementId),
+            eq(
+              iepServiceRequirementsTable.organizationId,
+              actor.organizationId,
+            ),
+            eq(iepServiceRequirementsTable.childId, query.data.childId),
+          ),
+        )
+        .returning()
+    : await db
+        .insert(iepServiceRequirementsTable)
+        .values({
+          organizationId: actor.organizationId,
+          childId: query.data.childId,
+          ...requirementValues,
+          createdByUserId: actor.userId,
+        })
+        .onConflictDoUpdate({
+          target: [
+            iepServiceRequirementsTable.organizationId,
+            iepServiceRequirementsTable.childId,
+            iepServiceRequirementsTable.normalizedServiceName,
+            iepServiceRequirementsTable.effectiveFrom,
+          ],
+          set: requirementValues,
+        })
+        .returning();
   if (!requirement)
     return res
       .status(500)
@@ -16179,6 +16270,50 @@ router.put("/iep-service-requirements", async (req, res) => {
     UpsertIepServiceRequirementResponse.parse(
       await serviceRequirementResponse(requirement),
     ),
+  );
+});
+
+router.put("/caseload-service-settings", async (req, res) => {
+  const query = UpdateCaseloadServiceSettingsQueryParams.safeParse(req.query);
+  const body = UpdateCaseloadServiceSettingsBody.safeParse(req.body);
+  if (!query.success || !body.success)
+    return fail(res, "Choose a valid service delivery type.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+
+  const [membership] = await db
+    .update(childCareTeamMembershipsTable)
+    .set({
+      primaryServiceDeliveryType: body.data.primaryServiceDeliveryType,
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(childCareTeamMembershipsTable.childId, query.data.childId),
+        eq(childCareTeamMembershipsTable.userId, actor.userId),
+        eq(childCareTeamMembershipsTable.active, true),
+      ),
+    )
+    .returning();
+  if (!membership)
+    return res.status(404).json({
+      error: "An active caseload assignment was not found for this student.",
+    });
+
+  await writeSecurityAudit({
+    actor,
+    action: "CASELOAD_SERVICE_SETTINGS_UPDATED",
+    targetType: "child_care_team_membership",
+    targetId: membership.id,
+    childId: query.data.childId,
+  });
+  return res.json(
+    UpdateCaseloadServiceSettingsResponse.parse({
+      childId: query.data.childId,
+      primaryServiceDeliveryType: membership.primaryServiceDeliveryType,
+      updatedAt: membership.updatedAt.toISOString(),
+    }),
   );
 });
 

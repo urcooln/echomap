@@ -1524,9 +1524,12 @@ export type IepServiceRequirementInputPeriod = typeof IepServiceRequirementInput
 export const IepServiceRequirementInputPeriod = {
   weekly: 'weekly',
   monthly: 'monthly',
+  reporting_period: 'reporting_period',
 } as const;
 
 export interface IepServiceRequirementInput {
+  /** @nullable */
+  requirementId?: number | null;
   /**
      * @minLength 1
      * @maxLength 160
@@ -1559,6 +1562,7 @@ export type IepServiceRequirementPeriod = typeof IepServiceRequirementPeriod[key
 export const IepServiceRequirementPeriod = {
   weekly: 'weekly',
   monthly: 'monthly',
+  reporting_period: 'reporting_period',
 } as const;
 
 export type IepServiceRequirementStatus = typeof IepServiceRequirementStatus[keyof typeof IepServiceRequirementStatus];
@@ -1566,6 +1570,7 @@ export type IepServiceRequirementStatus = typeof IepServiceRequirementStatus[key
 
 export const IepServiceRequirementStatus = {
   on_track: 'on_track',
+  needs_attention: 'needs_attention',
   behind: 'behind',
   complete: 'complete',
 } as const;
@@ -1593,6 +1598,27 @@ export interface IepServiceRequirement {
   /** @minimum 0 */
   minutesRemaining: number;
   status: IepServiceRequirementStatus;
+  updatedAt: string;
+}
+
+export type CaseloadServiceDeliveryType = typeof CaseloadServiceDeliveryType[keyof typeof CaseloadServiceDeliveryType];
+
+
+export const CaseloadServiceDeliveryType = {
+  individual: 'individual',
+  group: 'group',
+  co_treat: 'co_treat',
+  integrated_group: 'integrated_group',
+  consult: 'consult',
+} as const;
+
+export interface CaseloadServiceSettingsInput {
+  primaryServiceDeliveryType: CaseloadServiceDeliveryType;
+}
+
+export interface CaseloadServiceSettings {
+  childId: number;
+  primaryServiceDeliveryType: CaseloadServiceDeliveryType;
   updatedAt: string;
 }
 
@@ -3137,6 +3163,12 @@ export interface ClinicianOverviewChild {
   /** @nullable */
   latestActivityAt: string | null;
   latestActivityLabel: string;
+  teacherNames: string[];
+  primaryServiceDeliveryType: CaseloadServiceDeliveryType;
+  /** @nullable */
+  lastSessionDate: string | null;
+  /** @nullable */
+  nextSessionDate: string | null;
   serviceRequirements: IepServiceRequirement[];
 }
 
@@ -4114,6 +4146,10 @@ childId: number;
 };
 
 export type UpsertIepServiceRequirementParams = {
+childId: number;
+};
+
+export type UpdateCaseloadServiceSettingsParams = {
 childId: number;
 };
 

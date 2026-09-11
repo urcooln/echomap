@@ -46,6 +46,8 @@ import type {
   BetaNoticeAcknowledgement,
   CareTeamInvitation,
   CareTeamInvitationInput,
+  CaseloadServiceSettings,
+  CaseloadServiceSettingsInput,
   Child,
   ChildInput,
   ChildInterest,
@@ -219,6 +221,7 @@ import type {
   UnclearVocalizationLabelInput,
   UnclearVocalizationReview,
   UpdateAacProfileParams,
+  UpdateCaseloadServiceSettingsParams,
   UpdateChildProfileInput,
   UpdateChildProfileParams,
   UpdateChildSensoryParams,
@@ -810,6 +813,85 @@ export const useUpsertIepServiceRequirement = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getUpsertIepServiceRequirementMutationOptions(options));
+    }
+
+export const getUpdateCaseloadServiceSettingsUrl = (params: UpdateCaseloadServiceSettingsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/caseload-service-settings?${stringifiedParams}` : `/api/caseload-service-settings`
+}
+
+/**
+ * @summary Update the logged-in SLP's settings for an assigned student
+ */
+export const updateCaseloadServiceSettings = async (caseloadServiceSettingsInput: CaseloadServiceSettingsInput,
+    params: UpdateCaseloadServiceSettingsParams, options?: Parameters<typeof customFetch>[1]): Promise<CaseloadServiceSettings> => {
+
+  return customFetch<CaseloadServiceSettings>(getUpdateCaseloadServiceSettingsUrl(params),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(caseloadServiceSettingsInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateCaseloadServiceSettingsMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCaseloadServiceSettings>>, TError,{data: BodyType<CaseloadServiceSettingsInput>;params: UpdateCaseloadServiceSettingsParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateCaseloadServiceSettings>>, TError,{data: BodyType<CaseloadServiceSettingsInput>;params: UpdateCaseloadServiceSettingsParams}, TContext> => {
+
+const mutationKey = ['updateCaseloadServiceSettings'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateCaseloadServiceSettings>>, {data: BodyType<CaseloadServiceSettingsInput>;params: UpdateCaseloadServiceSettingsParams}> = (props) => {
+          const {data,params} = props ?? {};
+
+          return  updateCaseloadServiceSettings(data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateCaseloadServiceSettingsMutationResult = NonNullable<Awaited<ReturnType<typeof updateCaseloadServiceSettings>>>
+    export type UpdateCaseloadServiceSettingsMutationBody = BodyType<CaseloadServiceSettingsInput>
+    export type UpdateCaseloadServiceSettingsMutationError = ErrorType<void>
+
+    /**
+ * @summary Update the logged-in SLP's settings for an assigned student
+ */
+export const useUpdateCaseloadServiceSettings = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateCaseloadServiceSettings>>, TError,{data: BodyType<CaseloadServiceSettingsInput>;params: UpdateCaseloadServiceSettingsParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateCaseloadServiceSettings>>,
+        TError,
+        {data: BodyType<CaseloadServiceSettingsInput>;params: UpdateCaseloadServiceSettingsParams},
+        TContext
+      > => {
+      return useMutation(getUpdateCaseloadServiceSettingsMutationOptions(options));
     }
 
 export const getHealthCheckUrl = () => {

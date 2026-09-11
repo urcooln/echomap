@@ -8,6 +8,8 @@
 import type { IepServiceRequirementInputPeriod } from './iepServiceRequirementInputPeriod';
 
 export interface IepServiceRequirementInput {
+  /** @nullable */
+  requirementId?: number | null;
   /**
      * @minLength 1
      * @maxLength 160
