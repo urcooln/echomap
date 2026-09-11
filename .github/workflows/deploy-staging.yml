@@ -42,7 +42,7 @@ jobs:
             --build-arg BASE_PATH=/ \
             --build-arg VITE_CLERK_PUBLISHABLE_KEY="${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}" \
             --build-arg VITE_CLERK_PROXY_URL="" \
-            --build-arg VITE_ENABLE_DEVELOPMENT_DEMO=false \
+            --build-arg VITE_ENABLE_DEVELOPMENT_DEMO=true \
             --tag "$IMAGE" \
             .
 
@@ -59,13 +59,14 @@ jobs:
           image: ${{ env.IMAGE }}
           env_vars: |-
             NODE_ENV=production
+            CHILDLED_DEPLOYMENT_ENVIRONMENT=staging
             PUBLIC_APP_ORIGIN=${{ vars.PUBLIC_APP_ORIGIN }}
             ALLOWED_APP_ORIGINS=${{ vars.ALLOWED_APP_ORIGINS }}
             CHILDLED_AUTH_MODE=clerk
             CHILDLED_AUDIO_STORAGE_DRIVER=gcs
             GCS_PRIVATE_BUCKET=${{ vars.GCS_PRIVATE_BUCKET }}
             GCS_PRIVATE_OBJECT_PREFIX=${{ vars.GCS_PRIVATE_OBJECT_PREFIX }}
-            CHILDLED_ENABLE_DEMO_LOGIN=false
+            CHILDLED_ENABLE_DEMO_LOGIN=true
             CHILDLED_LEGACY_S3_MIGRATION_COMPLETE=true
             CLERK_PUBLISHABLE_KEY=${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
           secrets: |-
@@ -75,6 +76,7 @@ jobs:
             CLERK_SECRET_KEY=${{ vars.SECRET_CLERK_SECRET_KEY }}:latest
             AI_INTEGRATIONS_OPENAI_BASE_URL=${{ vars.SECRET_OPENAI_BASE_URL }}:latest
             AI_INTEGRATIONS_OPENAI_API_KEY=${{ vars.SECRET_OPENAI_API_KEY }}:latest
+            CHILDLED_DEMO_ACCESS_KEY=${{ vars.SECRET_DEMO_ACCESS_KEY }}:latest
           flags: >-
             --allow-unauthenticated
             --port=8080

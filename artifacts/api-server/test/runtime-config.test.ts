@@ -124,3 +124,44 @@ test("production refuses the development login bypass", () => {
     /cannot be enabled in production/,
   );
 });
+
+test("explicit staging deployment accepts a strong development access key", () => {
+  const config = loadRuntimeConfig({
+    NODE_ENV: "production",
+    CHILDLED_DEPLOYMENT_ENVIRONMENT: "staging",
+    DATABASE_URL: "postgres://example",
+    PUBLIC_APP_ORIGIN: "https://staging.example.test",
+    CHILDLED_DATA_ENCRYPTION_KEY: "a".repeat(44),
+    CHILDLED_AUDIO_STORAGE_DRIVER: "gcs",
+    GCS_PRIVATE_BUCKET: "childled-staging-private",
+    CHILDLED_LEGACY_S3_MIGRATION_COMPLETE: "true",
+    CHILDLED_ENABLE_DEMO_LOGIN: "true",
+    CHILDLED_DEMO_ACCESS_KEY: "s".repeat(48),
+    CLERK_SECRET_KEY: "sk_test_example",
+    CLERK_PUBLISHABLE_KEY: "pk_test_example",
+  });
+
+  assert.equal(config.demoLogin.enabled, true);
+  assert.equal(config.demoLogin.accessKey, "s".repeat(48));
+});
+
+test("staging development login refuses a short access key", () => {
+  assert.throws(
+    () =>
+      loadRuntimeConfig({
+        NODE_ENV: "production",
+        CHILDLED_DEPLOYMENT_ENVIRONMENT: "staging",
+        DATABASE_URL: "postgres://example",
+        PUBLIC_APP_ORIGIN: "https://staging.example.test",
+        CHILDLED_DATA_ENCRYPTION_KEY: "a".repeat(44),
+        CHILDLED_AUDIO_STORAGE_DRIVER: "gcs",
+        GCS_PRIVATE_BUCKET: "childled-staging-private",
+        CHILDLED_LEGACY_S3_MIGRATION_COMPLETE: "true",
+        CHILDLED_ENABLE_DEMO_LOGIN: "true",
+        CHILDLED_DEMO_ACCESS_KEY: "too-short",
+        CLERK_SECRET_KEY: "sk_test_example",
+        CLERK_PUBLISHABLE_KEY: "pk_test_example",
+      }),
+    /at least 32 characters/,
+  );
+});

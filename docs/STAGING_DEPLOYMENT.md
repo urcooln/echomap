@@ -53,11 +53,13 @@ as product branding. New production resources should use `childled` IDs.
 | `SECRET_CLERK_SECRET_KEY`           | `echomap-staging-clerk-secret-key`                                                   |
 | `SECRET_OPENAI_BASE_URL`            | `echomap-staging-openai-base-url`                                                    |
 | `SECRET_OPENAI_API_KEY`             | `echomap-staging-openai-api-key`                                                     |
+| `SECRET_DEMO_ACCESS_KEY`            | `childled-staging-demo-access-key`                                                   |
 
-For early pilot testing, use fake/synthetic data and keep
-`CHILDLED_ENABLE_DEMO_LOGIN=false` in every deployed environment. The demo login
-is local-development-only; authenticated Super Admin role preview remains
-available for controlled testing.
+The staging workflow enables the owner-only synthetic demo at
+`/development-login`. It requires the separate `CHILDLED_DEMO_ACCESS_KEY`
+secret, throttles failed attempts, and only starts when the runtime is explicitly
+marked as staging. Use synthetic data in this workspace and disable the route
+before staging is shared beyond the internal team.
 
 In the Clerk Dashboard for the staging instance, open **Configure > Restrictions**
 and set **Access mode** to **Invite-only**. ChildLed then creates Clerk application
@@ -99,6 +101,7 @@ variables above. Generate fresh values for:
 ```bash
 openssl rand -base64 48 # SESSION_SECRET
 openssl rand -base64 32 # CHILDLED_DATA_ENCRYPTION_KEY
+openssl rand -base64 32 # CHILDLED_DEMO_ACCESS_KEY (staging only)
 ```
 
 For the first staging database, the lowest-friction option is a managed
@@ -152,6 +155,7 @@ Before real production data:
 - keep staging and production in separate projects or at least separate
   service accounts, databases, buckets, and Clerk instances,
 - disable `CHILDLED_ENABLE_DEMO_LOGIN`,
+- build the frontend with `VITE_ENABLE_DEVELOPMENT_DEMO=false`,
 - add backups, monitoring, error tracking, audit review, and uptime alerts,
 - review HIPAA/BAA requirements for every vendor before storing protected
   health information.

@@ -54,10 +54,14 @@ export const loadRuntimeConfig = (
   const allowedOrigins = readList(env, "ALLOWED_APP_ORIGINS");
   const authMode = (readOptional(env, "CHILDLED_AUTH_MODE") ??
     "clerk") as AuthMode;
+  const deploymentEnvironment =
+    readOptional(env, "CHILDLED_DEPLOYMENT_ENVIRONMENT") ??
+    (isProduction ? "production" : "development");
   const productionDemoRequested =
     isProduction && readOptional(env, "CHILDLED_ENABLE_DEMO_LOGIN") === "true";
   const demoLoginEnabled =
-    !isProduction && readOptional(env, "CHILDLED_ENABLE_DEMO_LOGIN") === "true";
+    readOptional(env, "CHILDLED_ENABLE_DEMO_LOGIN") === "true" &&
+    (!isProduction || deploymentEnvironment === "staging");
   const demoLoginAccessKey = readOptional(env, "CHILDLED_DEMO_ACCESS_KEY");
   const clerkInvitationsEnabled =
     isProduction ||
@@ -85,12 +89,19 @@ export const loadRuntimeConfig = (
   if (isProduction && !readOptional(env, "CHILDLED_DATA_ENCRYPTION_KEY")) {
     fail("CHILDLED_DATA_ENCRYPTION_KEY is required in production.");
   }
-  if (productionDemoRequested) {
-    fail("CHILDLED_ENABLE_DEMO_LOGIN cannot be enabled in production.");
+  if (productionDemoRequested && deploymentEnvironment !== "staging") {
+    fail(
+      "CHILDLED_ENABLE_DEMO_LOGIN cannot be enabled in production unless CHILDLED_DEPLOYMENT_ENVIRONMENT=staging.",
+    );
   }
   if (demoLoginEnabled && !demoLoginAccessKey) {
     fail(
       "CHILDLED_DEMO_ACCESS_KEY is required when development login is enabled.",
+    );
+  }
+  if (isProduction && demoLoginEnabled && demoLoginAccessKey!.length < 32) {
+    fail(
+      "CHILDLED_DEMO_ACCESS_KEY must contain at least 32 characters when staging development login is enabled.",
     );
   }
   if (

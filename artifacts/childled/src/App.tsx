@@ -3373,8 +3373,349 @@ const caseloadStatusPresentation = {
   },
 } as const;
 
+const overviewChangePresentation = {
+  new_phrase: {
+    label: "Phrase",
+    icon: BookOpen,
+    className: "bg-accent/20 text-primary",
+  },
+  new_function: {
+    label: "Communication",
+    icon: Sparkles,
+    className: "bg-secondary text-primary",
+  },
+  possible_mitigation: {
+    label: "Review",
+    icon: AlertCircle,
+    className: "bg-amber-100 text-amber-900",
+  },
+  team_contribution: {
+    label: "Care team",
+    icon: Users,
+    className: "bg-secondary text-primary",
+  },
+  new_message: {
+    label: "Inbox",
+    icon: MessageCircle,
+    className: "bg-primary/10 text-primary",
+  },
+  ai_insight: {
+    label: "Insight",
+    icon: Lightbulb,
+    className: "bg-accent/20 text-primary",
+  },
+} as const;
+
+function ClinicianQuickActions({
+  onRecordSession,
+  onManualSession,
+  onAddStudent,
+  onAddPhrase,
+  onOpenInbox,
+  unreadMessageCount = 0,
+}: {
+  onRecordSession: () => void;
+  onManualSession: () => void;
+  onAddStudent: () => void;
+  onAddPhrase: () => void;
+  onOpenInbox: () => void;
+  unreadMessageCount?: number;
+}) {
+  const actions = [
+    {
+      label: "Record Session",
+      detail: "Capture and review audio",
+      icon: Mic,
+      onClick: onRecordSession,
+      testId: "button-overview-record-session",
+    },
+    {
+      label: "Track Manually",
+      detail: "Log goals without audio",
+      icon: ClipboardList,
+      onClick: onManualSession,
+      testId: "button-overview-manual-session",
+    },
+    {
+      label: "Add Student",
+      detail: "Create a student profile",
+      icon: UserPlus,
+      onClick: onAddStudent,
+      testId: "button-overview-quick-add-student",
+    },
+    {
+      label: "Add Phrase",
+      detail: "Add language to a profile",
+      icon: Plus,
+      onClick: onAddPhrase,
+      testId: "button-overview-add-phrase",
+    },
+    {
+      label: "Inbox",
+      detail: "Open care-team updates",
+      icon: MessageCircle,
+      onClick: onOpenInbox,
+      testId: "button-overview-messages",
+      unreadCount: unreadMessageCount,
+    },
+  ];
+
+  return (
+    <section
+      aria-labelledby="quick-actions-heading"
+      data-testid="clinician-overview-quick-actions"
+      className="border-y border-border py-5"
+    >
+      <div>
+        <p className="text-xs font-semibold text-muted-foreground">
+          Common tasks
+        </p>
+        <h2
+          id="quick-actions-heading"
+          className="serif mt-1 text-2xl font-semibold"
+        >
+          Quick Actions
+        </h2>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+        {actions.map((action) => {
+          const Icon = action.icon;
+          return (
+            <button
+              key={action.label}
+              type="button"
+              data-testid={action.testId}
+              onClick={action.onClick}
+              className="focus-ring min-h-28 min-w-0 rounded-lg border border-border bg-card p-4 text-left transition hover:border-primary/35 hover:bg-secondary/25"
+            >
+              <span className="flex items-start justify-between gap-2">
+                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
+                  <Icon size={18} />
+                </span>
+                {action.unreadCount ? (
+                  <span
+                    data-testid="badge-overview-unread-messages"
+                    className="inline-flex min-w-6 items-center justify-center rounded-full bg-primary px-2 py-1 text-[10px] font-bold text-primary-foreground"
+                    aria-label={`${action.unreadCount} unread notifications`}
+                  >
+                    {action.unreadCount > 99 ? "99+" : action.unreadCount}
+                  </span>
+                ) : null}
+              </span>
+              <span className="mt-3 block text-sm font-bold text-foreground">
+                {action.label}
+              </span>
+              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                {action.detail}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function ClinicianRecentUpdates({
+  overview,
+  teamInbox,
+  loading,
+  error,
+  onOpenInbox,
+  onRetry,
+}: {
+  overview?: ClinicianOverview;
+  teamInbox?: ApiTeamInbox;
+  loading: boolean;
+  error?: string;
+  onOpenInbox: () => void;
+  onRetry: () => void;
+}) {
+  const inboxMessagesById = new Map(
+    (teamInbox?.messages ?? []).map((message) => [
+      `message-${message.id}`,
+      message,
+    ]),
+  );
+  const overviewItems = (overview?.changesByChild ?? []).flatMap((group) =>
+    group.changes.map((change) => {
+      const inboxMessage = inboxMessagesById.get(change.id);
+      const notificationLines = inboxMessage?.body
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      return {
+        ...change,
+        label:
+          inboxMessage?.messageType === "notification" &&
+          notificationLines?.length
+            ? notificationLines[0]
+            : inboxMessage
+              ? `${inboxMessage.senderName} shared a ${inboxMessage.messageType}`
+              : change.label,
+        detail:
+          inboxMessage?.messageType === "notification" &&
+          notificationLines?.length
+            ? notificationLines.slice(1).join(" ") || change.detail
+            : inboxMessage?.body || change.detail,
+        unread: inboxMessage ? !inboxMessage.read : false,
+      };
+    }),
+  );
+  const includedIds = new Set(overviewItems.map((item) => item.id));
+  const unreadInboxItems = (teamInbox?.messages ?? [])
+    .filter(
+      (message) => !message.read && !includedIds.has(`message-${message.id}`),
+    )
+    .map((message) => {
+      const notificationLines = message.body
+        .split(/\n+/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      return {
+        id: `message-${message.id}`,
+        childId: message.childId,
+        childName: message.childName,
+        category: "new_message" as const,
+        label:
+          message.messageType === "notification" && notificationLines.length
+            ? notificationLines[0]
+            : `${message.senderName} shared a ${message.messageType}`,
+        detail:
+          message.messageType === "notification" && notificationLines.length
+            ? notificationLines.slice(1).join(" ")
+            : message.body,
+        time: message.createdAt,
+        href: `/team-communication?childId=${message.childId}`,
+        unread: true,
+      };
+    });
+  const recentItems = [...overviewItems, ...unreadInboxItems]
+    .sort(
+      (left, right) =>
+        new Date(right.time).getTime() - new Date(left.time).getTime(),
+    )
+    .slice(0, 8);
+
+  return (
+    <section
+      aria-labelledby="recent-updates-heading"
+      data-testid="clinician-overview-whats-new"
+      className="rounded-lg border border-border bg-card p-4 soft-shadow sm:p-5"
+    >
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold text-muted-foreground">
+            Recent activity
+          </p>
+          <h2
+            id="recent-updates-heading"
+            className="serif mt-1 text-2xl font-semibold"
+          >
+            While You've Been Gone
+          </h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            New activity across your assigned students and care teams.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onOpenInbox}
+          className="w-full shrink-0 sm:w-auto"
+        >
+          <MessageCircle size={16} /> Open Inbox
+          {teamInbox?.totalUnread ? (
+            <span className="rounded-full bg-primary px-2 py-0.5 text-[10px] font-bold text-primary-foreground">
+              {teamInbox.totalUnread > 99 ? "99+" : teamInbox.totalUnread}
+            </span>
+          ) : null}
+        </Button>
+      </div>
+
+      {error ? (
+        <div className="mt-4 flex flex-col gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p>{error}</p>
+          <Button type="button" variant="outline" onClick={onRetry}>
+            Retry
+          </Button>
+        </div>
+      ) : null}
+
+      {recentItems.length ? (
+        <div className="mt-4 divide-y divide-border border-y border-border">
+          {recentItems.map((item) => {
+            const presentation = overviewChangePresentation[item.category];
+            const Icon = presentation.icon;
+            return (
+              <Link
+                key={item.id}
+                href={item.href}
+                data-testid={`clinician-change-${item.id}`}
+                className={`focus-ring flex min-w-0 items-start gap-3 px-1 py-4 transition hover:bg-secondary/25 sm:px-2 ${item.unread ? "bg-primary/[0.04]" : ""}`}
+              >
+                <span
+                  className={`grid size-9 shrink-0 place-items-center rounded-lg ${presentation.className}`}
+                >
+                  <Icon size={17} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+                    <span className="font-semibold text-foreground">
+                      {item.label}
+                    </span>
+                    {item.unread ? (
+                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-primary">
+                        <span className="size-1.5 rounded-full bg-primary" />
+                        Unread
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="mt-1 block text-xs font-semibold text-primary">
+                    {item.childName} · {presentation.label}
+                  </span>
+                  <span className="mt-1 line-clamp-2 block text-sm leading-5 text-muted-foreground">
+                    {item.detail}
+                  </span>
+                </span>
+                <span className="shrink-0 pt-0.5 text-[11px] text-muted-foreground">
+                  {timeAgo(item.time)}
+                </span>
+              </Link>
+            );
+          })}
+        </div>
+      ) : loading ? (
+        <div
+          className="mt-4 divide-y divide-border border-y border-border"
+          aria-label="Loading recent activity"
+        >
+          {[0, 1, 2].map((item) => (
+            <div
+              key={item}
+              className="flex animate-pulse items-center gap-3 py-4"
+            >
+              <span className="size-9 shrink-0 rounded-lg bg-muted" />
+              <span className="min-w-0 flex-1 space-y-2">
+                <span className="block h-3 w-2/5 rounded bg-muted" />
+                <span className="block h-3 w-4/5 rounded bg-muted" />
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-lg border border-dashed border-border bg-muted/20 p-4 text-sm leading-6 text-muted-foreground">
+          You're caught up. New parent logs, teacher updates, messages, and
+          reviewed clinical activity will appear here.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function CaseloadOverviewPage({
   overview,
+  teamInbox,
   loading,
   preparing,
   overviewError,
@@ -3384,9 +3725,14 @@ function CaseloadOverviewPage({
   onStartRecordedSession,
   onStartManualSession,
   onViewGoals,
+  onRecordSession,
+  onManualSession,
+  onAddPhrase,
+  onOpenInbox,
   onRetryOverview,
 }: {
   overview?: ClinicianOverview;
+  teamInbox?: ApiTeamInbox;
   loading: boolean;
   preparing: boolean;
   overviewError?: string;
@@ -3396,6 +3742,10 @@ function CaseloadOverviewPage({
   onStartRecordedSession: (childId: number) => void;
   onStartManualSession: (childId: number) => void;
   onViewGoals: (childId: number) => void;
+  onRecordSession: () => void;
+  onManualSession: () => void;
+  onAddPhrase: () => void;
+  onOpenInbox: () => void;
   onRetryOverview: () => void;
 }) {
   const students = (
@@ -3514,6 +3864,24 @@ function CaseloadOverviewPage({
           </Button>
         </div>
       )}
+
+      <ClinicianQuickActions
+        onRecordSession={onRecordSession}
+        onManualSession={onManualSession}
+        onAddStudent={onAddStudent}
+        onAddPhrase={onAddPhrase}
+        onOpenInbox={onOpenInbox}
+        unreadMessageCount={teamInbox?.totalUnread}
+      />
+
+      <ClinicianRecentUpdates
+        overview={overview}
+        teamInbox={teamInbox}
+        loading={loading || preparing}
+        error={overviewError}
+        onOpenInbox={onOpenInbox}
+        onRetry={onRetryOverview}
+      />
 
       {(loading || preparing) && !students.length ? (
         <LoadingBlocks />
@@ -18316,6 +18684,7 @@ function Workspace() {
   ) : (
     <CaseloadOverviewPage
       overview={clinicianOverviewQuery.data}
+      teamInbox={globalTeamInboxQuery.data}
       loading={clinicianOverviewQuery.isLoading}
       preparing={
         clinicianOverviewSince === null || clinicianOverviewQuery.isLoading
@@ -18340,8 +18709,13 @@ function Workspace() {
         setSelectedId(childId);
         setLocation(`/children?childId=${childId}#child-communication-goals`);
       }}
+      onRecordSession={() => setChildAction("record-session")}
+      onManualSession={() => setLocation("/manual-session")}
+      onAddPhrase={() => setChildAction("add-phrase")}
+      onOpenInbox={() => setLocation("/team-communication")}
       onRetryOverview={() => {
         void clinicianOverviewQuery.refetch();
+        void globalTeamInboxQuery.refetch();
       }}
     />
   );

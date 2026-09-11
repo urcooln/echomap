@@ -263,7 +263,12 @@ import {
   seedDevelopmentSpeakerReviewFixture,
   seedDevelopmentDemo,
 } from "../lib/development-demo";
-import { hasValidDevelopmentAccessKey } from "../lib/development-login-access";
+import {
+  clearDevelopmentLoginFailures,
+  developmentLoginRetryAfterSeconds,
+  hasValidDevelopmentAccessKey,
+  recordDevelopmentLoginFailure,
+} from "../lib/development-login-access";
 import {
   isManagedObjectStorageDriver,
   runtimeConfig,
@@ -7137,15 +7142,26 @@ router.post("/development/login", async (req, res): Promise<void> => {
     res.sendStatus(404);
     return;
   }
+  const clientId = req.ip || req.socket.remoteAddress || "unknown";
+  const retryAfterSeconds = developmentLoginRetryAfterSeconds(clientId);
+  if (retryAfterSeconds) {
+    res.setHeader("Retry-After", String(retryAfterSeconds));
+    res.status(429).json({
+      error: "Too many development login attempts. Try again later.",
+    });
+    return;
+  }
   if (
     !hasValidDevelopmentAccessKey(
       runtimeConfig.demoLogin.accessKey,
       req.body?.accessKey,
     )
   ) {
+    recordDevelopmentLoginFailure(clientId);
     res.status(403).json({ error: "Development access was not authorized." });
     return;
   }
+  clearDevelopmentLoginFailures(clientId);
   try {
     await seedDevelopmentDemo();
     res.cookie(DEVELOPMENT_DEMO_COOKIE, "active", {
