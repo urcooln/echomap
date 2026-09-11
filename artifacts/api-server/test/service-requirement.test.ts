@@ -29,9 +29,9 @@ test("uses the calendar month for monthly service periods", () => {
   assert.equal(window.label, "September 2026");
 });
 
-test("uses explicit dates for reporting and IEP service periods", () => {
+test("uses explicit dates for custom service periods", () => {
   const window = servicePeriodWindow(
-    "reporting_period",
+    "custom",
     new Date("2026-09-15T12:00:00.000Z"),
     { effectiveFrom: "2026-09-01", effectiveTo: "2026-10-31" },
   );
@@ -41,6 +41,19 @@ test("uses explicit dates for reporting and IEP service periods", () => {
   assert.equal(window.endExclusive, "2026-11-01");
   assert.equal(window.label, "Sep 1, 2026 - Oct 31, 2026");
   assert.ok(window.progress > 0 && window.progress < 1);
+});
+
+test("uses calendar quarters and years for longer service periods", () => {
+  const current = new Date("2026-09-10T12:00:00.000Z");
+  const quarter = servicePeriodWindow("quarterly", current);
+  const year = servicePeriodWindow("yearly", current);
+
+  assert.equal(quarter.start, "2026-07-01");
+  assert.equal(quarter.end, "2026-09-30");
+  assert.equal(quarter.label, "Q3 2026");
+  assert.equal(year.start, "2026-01-01");
+  assert.equal(year.end, "2026-12-31");
+  assert.equal(year.label, "2026");
 });
 
 test("marks service delivery complete only when sessions and minutes are met", () => {

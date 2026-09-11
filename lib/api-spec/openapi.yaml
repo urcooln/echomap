@@ -177,6 +177,10 @@ paths:
           name: childId
           required: true
           schema: { type: number }
+        - in: query
+          name: includeInactive
+          required: false
+          schema: { type: boolean, default: false }
       responses:
         "200":
           description: Current service requirement status
@@ -4594,6 +4598,7 @@ components:
       type: object
       required:
         [
+          serviceRequirementId,
           sessionDate,
           durationSeconds,
           timerElapsedSeconds,
@@ -4603,6 +4608,7 @@ components:
           note,
         ]
       properties:
+        serviceRequirementId: { type: number }
         sessionDate: { type: string, format: date }
         startedAt: { type: [string, "null"], format: date-time }
         endedAt: { type: [string, "null"], format: date-time }
@@ -4648,33 +4654,38 @@ components:
       type: object
       required:
         [
-          serviceName,
+          serviceType,
           requiredSessions,
           requiredMinutes,
           sessionDurationMinutes,
           period,
           effectiveFrom,
+          effectiveTo,
         ]
       properties:
         requirementId: { type: [number, "null"] }
-        serviceName: { type: string, minLength: 1, maxLength: 160 }
+        serviceType:
+          { $ref: "#/components/schemas/CaseloadServiceDeliveryType" }
         requiredSessions: { type: number, minimum: 1, maximum: 100 }
         requiredMinutes: { type: number, minimum: 1, maximum: 10000 }
         sessionDurationMinutes: { type: number, minimum: 1, maximum: 480 }
-        period: { type: string, enum: [weekly, monthly, reporting_period] }
+        period: { $ref: "#/components/schemas/ServiceFrequencyPeriod" }
+        customFrequencyDescription: { type: [string, "null"], maxLength: 500 }
         effectiveFrom: { type: string, format: date }
-        effectiveTo: { type: [string, "null"], format: date }
+        effectiveTo: { type: string, format: date }
     IepServiceRequirement:
       type: object
       required:
         [
           id,
           childId,
+          serviceType,
           serviceName,
           requiredSessions,
           requiredMinutes,
           sessionDurationMinutes,
           period,
+          customFrequencyDescription,
           effectiveFrom,
           effectiveTo,
           periodLabel,
@@ -4690,11 +4701,14 @@ components:
       properties:
         id: { type: number }
         childId: { type: number }
+        serviceType:
+          { $ref: "#/components/schemas/CaseloadServiceDeliveryType" }
         serviceName: { type: string }
         requiredSessions: { type: number }
         requiredMinutes: { type: number }
         sessionDurationMinutes: { type: number }
-        period: { type: string, enum: [weekly, monthly, reporting_period] }
+        period: { $ref: "#/components/schemas/ServiceFrequencyPeriod" }
+        customFrequencyDescription: { type: [string, "null"] }
         effectiveFrom: { type: string }
         effectiveTo: { type: [string, "null"] }
         periodLabel: { type: string }
@@ -4709,7 +4723,20 @@ components:
         updatedAt: { type: string, format: date-time }
     CaseloadServiceDeliveryType:
       type: string
-      enum: [individual, group, co_treat, integrated_group, consult]
+      enum:
+        [
+          individual,
+          group,
+          co_treat,
+          co_treat_ot,
+          co_treat_pt,
+          integrated_group,
+          consult,
+          assistive_technology,
+        ]
+    ServiceFrequencyPeriod:
+      type: string
+      enum: [weekly, monthly, quarterly, yearly, custom]
     CaseloadServiceSettingsInput:
       type: object
       required: [primaryServiceDeliveryType]
@@ -5086,6 +5113,7 @@ components:
       type: object
       required:
         [
+          serviceRequirementId,
           durationSeconds,
           gestalts,
           clinicalObservations,
@@ -5095,6 +5123,7 @@ components:
           consentConfirmedAt,
         ]
       properties:
+        serviceRequirementId: { type: number }
         durationSeconds: { type: number, minimum: 0 }
         gestalts:
           {
@@ -5961,6 +5990,9 @@ components:
         [
           id,
           childId,
+          serviceRequirementId,
+          serviceName,
+          serviceType,
           durationSeconds,
           gestalts,
           clinicalObservations,
@@ -5975,6 +6007,9 @@ components:
       properties:
         id: { type: number }
         childId: { type: number }
+        serviceRequirementId: { type: [number, "null"] }
+        serviceName: { type: [string, "null"] }
+        serviceType: { type: [string, "null"] }
         durationSeconds: { type: number }
         gestalts:
           {

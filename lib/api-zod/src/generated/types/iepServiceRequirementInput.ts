@@ -5,16 +5,13 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
-import type { IepServiceRequirementInputPeriod } from './iepServiceRequirementInputPeriod';
+import type { CaseloadServiceDeliveryType } from './caseloadServiceDeliveryType';
+import type { ServiceFrequencyPeriod } from './serviceFrequencyPeriod';
 
 export interface IepServiceRequirementInput {
   /** @nullable */
   requirementId?: number | null;
-  /**
-     * @minLength 1
-     * @maxLength 160
-     */
-  serviceName: string;
+  serviceType: CaseloadServiceDeliveryType;
   /**
      * @minimum 1
      * @maximum 100
@@ -30,8 +27,12 @@ export interface IepServiceRequirementInput {
      * @maximum 480
      */
   sessionDurationMinutes: number;
-  period: IepServiceRequirementInputPeriod;
+  period: ServiceFrequencyPeriod;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  customFrequencyDescription?: string | null;
   effectiveFrom: Date;
-  /** @nullable */
-  effectiveTo?: Date | null;
+  effectiveTo: Date;
 }

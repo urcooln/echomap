@@ -8,7 +8,6 @@ import {
   getListSessionsQueryKey,
   useCreateManualSession,
   useGetManualSessionSetup,
-  useUpsertIepServiceRequirement,
   type Child,
   type ManualSessionGoalProgressInput,
   type Session,
@@ -29,11 +28,13 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { serviceTypeLabel } from "@/components/service-requirement-form";
 
 type TimerStatus = "idle" | "running" | "paused" | "ended";
 
 type StoredTimer = {
   childId: number;
+  serviceRequirementId: number | null;
   status: TimerStatus;
   accumulatedSeconds: number;
   runningSince: number | null;
@@ -50,8 +51,12 @@ type GoalEntry = {
   progressNote: string;
 };
 
-const emptyTimer = (childId: number): StoredTimer => ({
+const emptyTimer = (
+  childId: number,
+  serviceRequirementId: number | null = null,
+): StoredTimer => ({
   childId,
+  serviceRequirementId,
   status: "idle",
   accumulatedSeconds: 0,
   runningSince: null,
@@ -66,17 +71,6 @@ const localDate = () => {
   const date = new Date();
   date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
   return date.toISOString().slice(0, 10);
-};
-
-const localMonthEnd = () => {
-  const now = new Date();
-  return localDateFor(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-};
-
-const localDateFor = (date: Date) => {
-  const local = new Date(date);
-  local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
-  return local.toISOString().slice(0, 10);
 };
 
 const elapsedFor = (timer: StoredTimer, now = Date.now()) =>
@@ -113,10 +107,12 @@ const statusStyle = {
 export function ManualSessionTrackingPage({
   children,
   initialChildId,
+  initialServiceId,
   onSaved,
 }: {
   children: Child[];
   initialChildId?: number;
+  initialServiceId?: number;
   onSaved?: (session: Session) => void;
 }) {
   const [, setLocation] = useLocation();
@@ -124,8 +120,13 @@ export function ManualSessionTrackingPage({
   const [childId, setChildId] = useState(
     initialChildId ?? children[0]?.id ?? 0,
   );
+  const [serviceRequirementId, setServiceRequirementId] = useState<
+    number | undefined
+  >(initialServiceId);
   const child = children.find((item) => item.id === childId);
-  const [timer, setTimer] = useState<StoredTimer>(() => emptyTimer(childId));
+  const [timer, setTimer] = useState<StoredTimer>(() =>
+    emptyTimer(childId, initialServiceId ?? null),
+  );
   const [hydratedTimerChildId, setHydratedTimerChildId] = useState(0);
   const [clock, setClock] = useState(Date.now());
   const [sessionDate, setSessionDate] = useState(localDate);
@@ -135,16 +136,6 @@ export function ManualSessionTrackingPage({
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [savedSession, setSavedSession] = useState<Session>();
-  const [showRequirementForm, setShowRequirementForm] = useState(false);
-  const [serviceName, setServiceName] = useState("Speech Therapy");
-  const [requiredSessions, setRequiredSessions] = useState("2");
-  const [requiredMinutes, setRequiredMinutes] = useState("60");
-  const [sessionDurationMinutes, setSessionDurationMinutes] = useState("30");
-  const [period, setPeriod] = useState<
-    "weekly" | "monthly" | "reporting_period"
-  >("weekly");
-  const [effectiveFrom, setEffectiveFrom] = useState(localDate);
-  const [effectiveTo, setEffectiveTo] = useState(localMonthEnd);
 
   const setupQuery = useGetManualSessionSetup(
     { childId },
@@ -158,7 +149,13 @@ export function ManualSessionTrackingPage({
     },
   );
   const saveSession = useCreateManualSession();
-  const saveRequirement = useUpsertIepServiceRequirement();
+  const services = useMemo(
+    () => setupQuery.data?.serviceRequirements ?? [],
+    [setupQuery.data?.serviceRequirements],
+  );
+  const selectedService = services.find(
+    (service) => service.id === serviceRequirementId,
+  );
   const elapsedSeconds = elapsedFor(timer, clock);
   const selectedGoals = useMemo(
     () =>
@@ -176,7 +173,7 @@ export function ManualSessionTrackingPage({
     if (!childId) return;
     const stored = window.localStorage.getItem(timerStorageKey(childId));
     if (!stored) {
-      setTimer(emptyTimer(childId));
+      setTimer(emptyTimer(childId, serviceRequirementId ?? null));
       setDurationSeconds(0);
       setDurationEdited(false);
       setHydratedTimerChildId(childId);
@@ -185,6 +182,8 @@ export function ManualSessionTrackingPage({
     try {
       const parsed = JSON.parse(stored) as StoredTimer;
       if (parsed.childId !== childId) throw new Error("Timer child mismatch");
+      if (parsed.serviceRequirementId)
+        setServiceRequirementId(parsed.serviceRequirementId);
       setTimer(parsed);
       const elapsed = elapsedFor(parsed);
       setDurationSeconds(elapsed);
@@ -192,7 +191,7 @@ export function ManualSessionTrackingPage({
       setHydratedTimerChildId(childId);
     } catch {
       window.localStorage.removeItem(timerStorageKey(childId));
-      setTimer(emptyTimer(childId));
+      setTimer(emptyTimer(childId, serviceRequirementId ?? null));
       setHydratedTimerChildId(childId);
     }
   }, [childId]);
@@ -212,16 +211,27 @@ export function ManualSessionTrackingPage({
   }, [timer.status]);
 
   useEffect(() => {
-    if (!setupQuery.data?.serviceRequirements[0]) return;
-    const requirement = setupQuery.data.serviceRequirements[0];
-    setServiceName(requirement.serviceName);
-    setRequiredSessions(String(requirement.requiredSessions));
-    setRequiredMinutes(String(requirement.requiredMinutes));
-    setSessionDurationMinutes(String(requirement.sessionDurationMinutes));
-    setPeriod(requirement.period);
-    setEffectiveFrom(requirement.effectiveFrom);
-    setEffectiveTo(requirement.effectiveTo ?? "");
-  }, [setupQuery.data?.serviceRequirements]);
+    if (setupQuery.isLoading) return;
+    if (!services.length) {
+      setServiceRequirementId(undefined);
+      return;
+    }
+    if (serviceRequirementId && selectedService) return;
+    if (
+      timer.serviceRequirementId &&
+      services.some((service) => service.id === timer.serviceRequirementId)
+    ) {
+      setServiceRequirementId(timer.serviceRequirementId);
+      return;
+    }
+    setServiceRequirementId(services.length === 1 ? services[0].id : undefined);
+  }, [
+    selectedService,
+    serviceRequirementId,
+    services,
+    setupQuery.isLoading,
+    timer.serviceRequirementId,
+  ]);
 
   const updateTimer = (next: StoredTimer) => {
     setTimer(next);
@@ -229,9 +239,13 @@ export function ManualSessionTrackingPage({
   };
 
   const startTimer = () => {
+    if (!serviceRequirementId) {
+      setError("Select the service this session should count toward.");
+      return;
+    }
     const now = new Date();
     updateTimer({
-      ...emptyTimer(childId),
+      ...emptyTimer(childId, serviceRequirementId),
       status: "running",
       runningSince: now.getTime(),
       startedAt: now.toISOString(),
@@ -274,7 +288,7 @@ export function ManualSessionTrackingPage({
   };
 
   const resetTimer = () => {
-    updateTimer(emptyTimer(childId));
+    updateTimer(emptyTimer(childId, serviceRequirementId ?? null));
     setDurationSeconds(0);
     setDurationEdited(false);
   };
@@ -298,61 +312,14 @@ export function ManualSessionTrackingPage({
       };
     });
 
-  const saveServiceRequirement = async () => {
-    setError("");
-    const requirementValues = [
-      Number(requiredSessions),
-      Number(requiredMinutes),
-      Number(sessionDurationMinutes),
-    ];
-    if (
-      !serviceName.trim() ||
-      requirementValues.some(
-        (value) => !Number.isInteger(value) || value < 1,
-      ) ||
-      !effectiveFrom ||
-      (period === "reporting_period" && !effectiveTo) ||
-      Boolean(effectiveTo && effectiveTo < effectiveFrom)
-    ) {
-      setError(
-        "Enter a service name, whole numbers greater than zero, and a valid service period.",
-      );
-      return;
-    }
-    try {
-      await saveRequirement.mutateAsync({
-        params: { childId },
-        data: {
-          requirementId: setupQuery.data?.serviceRequirements[0]?.id ?? null,
-          serviceName,
-          requiredSessions: Number(requiredSessions),
-          requiredMinutes: Number(requiredMinutes),
-          sessionDurationMinutes: Number(sessionDurationMinutes),
-          period,
-          effectiveFrom,
-          effectiveTo: effectiveTo || null,
-        },
-      });
-      await queryClient.invalidateQueries({
-        queryKey: getGetManualSessionSetupQueryKey({ childId }),
-      });
-      await queryClient.invalidateQueries({
-        queryKey: getGetClinicianOverviewQueryKey(),
-      });
-      setShowRequirementForm(false);
-    } catch (requestError: any) {
-      setError(
-        requestError?.data?.error ??
-          requestError?.message ??
-          "The IEP service requirement could not be saved.",
-      );
-    }
-  };
-
   const completeSession = async () => {
     setError("");
     if (timer.status === "running" || timer.status === "paused") {
       setError("End the timer before saving the completed session.");
+      return;
+    }
+    if (!serviceRequirementId || !selectedService) {
+      setError("Select the service this session should count toward.");
       return;
     }
     if (!selectedGoals.length) {
@@ -415,6 +382,7 @@ export function ManualSessionTrackingPage({
       const session = await saveSession.mutateAsync({
         params: { childId },
         data: {
+          serviceRequirementId,
           sessionDate,
           startedAt: timer.startedAt,
           endedAt: timer.endedAt,
@@ -495,29 +463,55 @@ export function ManualSessionTrackingPage({
             Document IEP goal progress without recording audio.
           </p>
         </div>
-        <label className="w-full sm:w-72">
-          <span className="mb-2 block text-xs font-bold uppercase text-muted-foreground">
-            Student
-          </span>
-          <select
-            className="h-12 w-full rounded-md border border-input bg-card px-3 text-sm font-semibold"
-            value={childId || ""}
-            disabled={timer.status === "running" || timer.status === "paused"}
-            onChange={(event) => {
-              const nextChildId = Number(event.target.value);
-              setChildId(nextChildId);
-              setGoalEntries({});
-              setError("");
-            }}
-          >
-            <option value="">Select a student</option>
-            {children.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="grid w-full gap-3 sm:w-80">
+          <label>
+            <span className="mb-2 block text-xs font-bold uppercase text-muted-foreground">
+              Student
+            </span>
+            <select
+              className="h-12 w-full rounded-md border border-input bg-card px-3 text-sm font-semibold"
+              value={childId || ""}
+              disabled={timer.status === "running" || timer.status === "paused"}
+              onChange={(event) => {
+                const nextChildId = Number(event.target.value);
+                setChildId(nextChildId);
+                setServiceRequirementId(undefined);
+                setGoalEntries({});
+                setError("");
+              }}
+            >
+              <option value="">Select a student</option>
+              {children.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label>
+            <span className="mb-2 block text-xs font-bold uppercase text-muted-foreground">
+              Service
+            </span>
+            <select
+              className="h-12 w-full rounded-md border border-input bg-card px-3 text-sm font-semibold"
+              value={serviceRequirementId ?? ""}
+              disabled={timer.status === "running" || timer.status === "paused"}
+              onChange={(event) => {
+                setServiceRequirementId(
+                  Number(event.target.value) || undefined,
+                );
+                setError("");
+              }}
+            >
+              <option value="">Select a service</option>
+              {services.map((service) => (
+                <option key={service.id} value={service.id}>
+                  {serviceTypeLabel(service.serviceType)} · {service.period}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
       </header>
 
       {error && (
@@ -845,184 +839,85 @@ export function ManualSessionTrackingPage({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-bold uppercase text-muted-foreground">
-                  IEP services
+                  Selected service
                 </p>
-                <h2 className="mt-1 font-semibold">Current status</h2>
+                <h2 className="mt-1 font-semibold">
+                  {selectedService
+                    ? serviceTypeLabel(selectedService.serviceType)
+                    : "Choose a service"}
+                </h2>
               </div>
               <Button
                 variant="ghost"
                 className="size-9 p-0"
-                title="Configure service requirement"
-                onClick={() => setShowRequirementForm((current) => !current)}
+                title="Manage services"
+                onClick={() => setLocation(`/service-setup?childId=${childId}`)}
               >
                 <Settings size={16} />
               </Button>
             </div>
-            {setupQuery.data?.serviceRequirements.map((requirement) => (
-              <div
-                key={requirement.id}
-                className="mt-4 border-t border-border pt-4"
-              >
+            {selectedService ? (
+              <div className="mt-4 border-t border-border pt-4">
                 <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-semibold">
-                    {requirement.serviceName}
+                  <p className="text-xs text-muted-foreground">
+                    {selectedService.periodLabel}
                   </p>
                   <span
-                    className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${statusStyle[requirement.status]}`}
+                    className={`rounded-full px-2 py-1 text-[10px] font-bold uppercase ${statusStyle[selectedService.status]}`}
                   >
-                    {requirement.status.replace("_", " ")}
+                    {selectedService.status.replace("_", " ")}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {requirement.periodLabel}
-                </p>
                 <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
                   <div>
                     <dt className="text-xs text-muted-foreground">Sessions</dt>
                     <dd className="font-bold">
-                      {requirement.sessionsCompleted} /{" "}
-                      {requirement.requiredSessions}
+                      {selectedService.sessionsCompleted} /{" "}
+                      {selectedService.requiredSessions}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-muted-foreground">Remaining</dt>
                     <dd className="font-bold">
-                      {requirement.sessionsRemaining}
+                      {selectedService.sessionsRemaining}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-muted-foreground">Minutes</dt>
                     <dd className="font-bold">
-                      {requirement.minutesCompleted} /{" "}
-                      {requirement.requiredMinutes}
+                      {selectedService.minutesCompleted} /{" "}
+                      {selectedService.requiredMinutes}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-muted-foreground">Remaining</dt>
                     <dd className="font-bold">
-                      {requirement.minutesRemaining}
+                      {selectedService.minutesRemaining}
                     </dd>
                   </div>
                 </dl>
               </div>
-            ))}
-            {!setupQuery.data?.serviceRequirements.length &&
-              !showRequirementForm && (
-                <Button
-                  variant="outline"
-                  className="mt-4 w-full"
-                  onClick={() => setShowRequirementForm(true)}
-                >
-                  <Target size={16} /> Configure requirement
-                </Button>
-              )}
-            {showRequirementForm && (
-              <div className="mt-4 space-y-3 border-t border-border pt-4">
-                <label className="block">
-                  <span className="mb-1 block text-xs font-semibold">
-                    Service
-                  </span>
-                  <Input
-                    value={serviceName}
-                    onChange={(event) => setServiceName(event.target.value)}
-                  />
-                </label>
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <label>
-                    <span className="mb-1 block text-xs font-semibold">
-                      Sessions
-                    </span>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={requiredSessions}
-                      onChange={(event) =>
-                        setRequiredSessions(event.target.value)
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span className="mb-1 block text-xs font-semibold">
-                      Minutes
-                    </span>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={requiredMinutes}
-                      onChange={(event) =>
-                        setRequiredMinutes(event.target.value)
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span className="mb-1 block text-xs font-semibold">
-                      Session min
-                    </span>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={sessionDurationMinutes}
-                      onChange={(event) =>
-                        setSessionDurationMinutes(event.target.value)
-                      }
-                    />
-                  </label>
-                  <label>
-                    <span className="mb-1 block text-xs font-semibold">
-                      Period
-                    </span>
-                    <select
-                      className="h-10 w-full rounded-md border border-input bg-background px-2 text-sm"
-                      value={period}
-                      onChange={(event) =>
-                        setPeriod(
-                          event.target.value as
-                            "weekly" | "monthly" | "reporting_period",
-                        )
-                      }
-                    >
-                      <option value="weekly">Weekly</option>
-                      <option value="monthly">Monthly</option>
-                      <option value="reporting_period">
-                        Reporting / IEP period
-                      </option>
-                    </select>
-                  </label>
-                  <label>
-                    <span className="mb-1 block text-xs font-semibold">
-                      Period start
-                    </span>
-                    <Input
-                      type="date"
-                      value={effectiveFrom}
-                      onChange={(event) => setEffectiveFrom(event.target.value)}
-                    />
-                  </label>
-                  <label>
-                    <span className="mb-1 block text-xs font-semibold">
-                      Period end
-                    </span>
-                    <Input
-                      type="date"
-                      value={effectiveTo}
-                      onChange={(event) => setEffectiveTo(event.target.value)}
-                    />
-                  </label>
-                </div>
-                <Button
-                  className="w-full"
-                  disabled={saveRequirement.isPending}
-                  onClick={() => void saveServiceRequirement()}
-                >
-                  {saveRequirement.isPending ? "Saving…" : "Save requirement"}
-                </Button>
-              </div>
+            ) : (
+              <Button
+                variant="outline"
+                className="mt-4 w-full"
+                onClick={() =>
+                  services.length
+                    ? setError("Choose a service from the selector above.")
+                    : setLocation(`/service-setup?childId=${childId}`)
+                }
+              >
+                <Target size={16} />
+                {services.length ? "Select service" : "Add service"}
+              </Button>
             )}
           </section>
 
           <Button
             className="order-3 min-h-14 w-full text-base lg:order-none"
-            disabled={saveSession.isPending || !childId}
+            disabled={
+              saveSession.isPending || !childId || !serviceRequirementId
+            }
             onClick={() => void completeSession()}
           >
             <Check size={18} />{" "}

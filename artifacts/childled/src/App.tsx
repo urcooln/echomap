@@ -2,6 +2,7 @@ import { LineChart, Line, ResponsiveContainer, YAxis } from "recharts";
 import {
   type ButtonHTMLAttributes,
   type FormEvent,
+  Fragment,
   type ReactNode,
   useEffect,
   useMemo,
@@ -184,8 +185,6 @@ import {
   useCreateCommunicationGoal,
   useUpdateCommunicationGoal,
   useGetManualSessionSetup,
-  useUpsertIepServiceRequirement,
-  useUpdateCaseloadServiceSettings,
 } from "@workspace/api-client-react";
 import type {
   Activity as ActivityType,
@@ -214,7 +213,6 @@ import type {
   Viewer,
   CommunicationGoal,
   TeamInbox as ApiTeamInbox,
-  CaseloadServiceDeliveryType,
   IepServiceRequirement,
 } from "@workspace/api-client-react";
 import {
@@ -240,7 +238,12 @@ import NotFound from "@/pages/not-found";
 import { ClinicianUnclearSpeechPage } from "@/pages/unclear-speech";
 import { ClinicianLearningPage } from "@/pages/clinician-learning";
 import { ManualSessionTrackingPage } from "@/pages/manual-session";
+import { ServiceSetupPage } from "@/pages/service-setup";
 import { CommunicationPassportPage } from "@/pages/communication-passport";
+import {
+  ServiceRequirementForm,
+  serviceTypeLabel,
+} from "@/components/service-requirement-form";
 import {
   ClinicianQuickReferencePanel,
   openClinicianQuickReferences,
@@ -3725,40 +3728,6 @@ function ClinicianRecentUpdates({
   );
 }
 
-const serviceDeliveryOptions: Array<{
-  value: CaseloadServiceDeliveryType;
-  label: string;
-}> = [
-  { value: "individual", label: "Individual" },
-  { value: "group", label: "Group" },
-  { value: "co_treat", label: "Co-Treat" },
-  { value: "integrated_group", label: "Integrated Group" },
-  { value: "consult", label: "Consult" },
-];
-
-const dateInputValue = (date = new Date()) => {
-  const local = new Date(date);
-  local.setMinutes(local.getMinutes() - local.getTimezoneOffset());
-  return local.toISOString().slice(0, 10);
-};
-
-const currentMonthBounds = () => {
-  const now = new Date();
-  return {
-    start: dateInputValue(new Date(now.getFullYear(), now.getMonth(), 1)),
-    end: dateInputValue(new Date(now.getFullYear(), now.getMonth() + 1, 0)),
-  };
-};
-
-const formatServiceDate = (date?: string | null) =>
-  date
-    ? new Date(`${date}T12:00:00`).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-      })
-    : "Not available";
-
 function CaseloadRequirementDialog({
   childId,
   childName,
@@ -3772,193 +3741,21 @@ function CaseloadRequirementDialog({
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const month = currentMonthBounds();
-  const [serviceName, setServiceName] = useState(
-    requirement?.serviceName ?? "Speech Therapy",
-  );
-  const [requiredSessions, setRequiredSessions] = useState(
-    String(requirement?.requiredSessions ?? 8),
-  );
-  const [sessionDurationMinutes, setSessionDurationMinutes] = useState(
-    String(requirement?.sessionDurationMinutes ?? 30),
-  );
-  const [period, setPeriod] = useState<
-    "weekly" | "monthly" | "reporting_period"
-  >(requirement?.period ?? "reporting_period");
-  const [effectiveFrom, setEffectiveFrom] = useState(
-    requirement?.effectiveFrom ?? month.start,
-  );
-  const [effectiveTo, setEffectiveTo] = useState(
-    requirement?.effectiveTo ?? month.end,
-  );
-  const [error, setError] = useState("");
-  const saveRequirement = useUpsertIepServiceRequirement();
-
-  const submit = async (event: FormEvent) => {
-    event.preventDefault();
-    setError("");
-    const sessions = Number(requiredSessions);
-    const duration = Number(sessionDurationMinutes);
-    if (
-      !serviceName.trim() ||
-      !Number.isInteger(sessions) ||
-      sessions < 1 ||
-      !Number.isInteger(duration) ||
-      duration < 1 ||
-      !effectiveFrom ||
-      (period === "reporting_period" && !effectiveTo) ||
-      (effectiveTo && effectiveTo < effectiveFrom)
-    ) {
-      setError(
-        "Enter valid service details, whole-number sessions, and a valid date range.",
-      );
-      return;
-    }
-    try {
-      await saveRequirement.mutateAsync({
-        params: { childId },
-        data: {
-          requirementId: requirement?.id ?? null,
-          serviceName: serviceName.trim(),
-          requiredSessions: sessions,
-          requiredMinutes: sessions * duration,
-          sessionDurationMinutes: duration,
-          period,
-          effectiveFrom,
-          effectiveTo: effectiveTo || null,
-        },
-      });
-      onSaved();
-    } catch (requestError: any) {
-      setError(
-        requestError?.data?.error ??
-          requestError?.message ??
-          "The service requirement could not be saved.",
-      );
-    }
-  };
-
   return (
     <Modal
-      title={`${requirement ? "Edit" : "Set up"} service requirement for ${childName}`}
+      title={`${requirement ? "Edit" : "Add"} service for ${childName}`}
       onClose={onClose}
     >
-      <form onSubmit={submit} className="space-y-5">
-        <div>
-          <h2 className="serif text-2xl font-semibold">Service requirement</h2>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            Session totals are calculated from saved session records inside this
-            period. Prior periods and session history are retained.
-          </p>
-        </div>
-        {error ? (
-          <p
-            role="alert"
-            className="rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive"
-          >
-            {error}
-          </p>
-        ) : null}
-        <label className="block">
-          <span className="mb-1.5 block text-sm font-semibold">Service</span>
-          <input
-            data-autofocus
-            value={serviceName}
-            onChange={(event) => setServiceName(event.target.value)}
-            className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
-          />
-        </label>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <label>
-            <span className="mb-1.5 block text-sm font-semibold">
-              Required sessions
-            </span>
-            <input
-              type="number"
-              min="1"
-              max="100"
-              value={requiredSessions}
-              onChange={(event) => setRequiredSessions(event.target.value)}
-              className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
-            />
-          </label>
-          <label>
-            <span className="mb-1.5 block text-sm font-semibold">
-              Typical session length
-            </span>
-            <span className="flex items-center gap-2">
-              <input
-                type="number"
-                min="1"
-                max="480"
-                value={sessionDurationMinutes}
-                onChange={(event) =>
-                  setSessionDurationMinutes(event.target.value)
-                }
-                className="h-11 min-w-0 flex-1 rounded-md border border-input bg-background px-3 text-sm"
-              />
-              <span className="text-sm text-muted-foreground">min</span>
-            </span>
-          </label>
-          <label>
-            <span className="mb-1.5 block text-sm font-semibold">
-              Tracking frequency
-            </span>
-            <select
-              value={period}
-              onChange={(event) =>
-                setPeriod(
-                  event.target.value as
-                    "weekly" | "monthly" | "reporting_period",
-                )
-              }
-              className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
-            >
-              <option value="reporting_period">Reporting / IEP period</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-            </select>
-          </label>
-          <div className="rounded-md bg-muted/45 p-3">
-            <p className="text-xs text-muted-foreground">Planned minutes</p>
-            <p className="mt-1 font-semibold">
-              {(Number(requiredSessions) || 0) *
-                (Number(sessionDurationMinutes) || 0)}{" "}
-              minutes
-            </p>
-          </div>
-          <label>
-            <span className="mb-1.5 block text-sm font-semibold">
-              Period start
-            </span>
-            <input
-              type="date"
-              value={effectiveFrom}
-              onChange={(event) => setEffectiveFrom(event.target.value)}
-              className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
-            />
-          </label>
-          <label>
-            <span className="mb-1.5 block text-sm font-semibold">
-              Period end{period === "reporting_period" ? "" : " (optional)"}
-            </span>
-            <input
-              type="date"
-              value={effectiveTo}
-              onChange={(event) => setEffectiveTo(event.target.value)}
-              className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
-            />
-          </label>
-        </div>
-        <div className="flex flex-col-reverse gap-2 border-t border-border pt-4 sm:flex-row sm:justify-end">
-          <Button type="button" variant="quiet" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button type="submit" disabled={saveRequirement.isPending}>
-            {saveRequirement.isPending ? "Saving..." : "Save requirement"}
-          </Button>
-        </div>
-      </form>
+      <p className="mb-5 text-sm leading-6 text-muted-foreground">
+        Session totals are calculated only from records linked to this service.
+        Prior periods and session history are retained.
+      </p>
+      <ServiceRequirementForm
+        childId={childId}
+        requirement={requirement}
+        onCancel={onClose}
+        onSaved={onSaved}
+      />
     </Modal>
   );
 }
@@ -3990,8 +3787,8 @@ function CaseloadOverviewPage({
   caseloadChildren: Child[];
   onOpenChild: (childId: number) => void;
   onAddStudent: () => void;
-  onStartRecordedSession: (childId: number) => void;
-  onStartManualSession: (childId: number) => void;
+  onStartRecordedSession: (childId: number, serviceId?: number) => void;
+  onStartManualSession: (childId: number, serviceId?: number) => void;
   onViewGoals: (childId: number) => void;
   onViewHistory: (childId: number) => void;
   onRecordSession: () => void;
@@ -4001,17 +3798,14 @@ function CaseloadOverviewPage({
   onRetryOverview: () => void;
 }) {
   const queryClient = useQueryClient();
-  const updateServiceSettings = useUpdateCaseloadServiceSettings();
-  const [editingStudent, setEditingStudent] = useState<
-    | (ClinicianOverview["children"][number] & {
-        primaryRequirement?: IepServiceRequirement;
-      })
-    | null
-  >(null);
-  const [deliveryDrafts, setDeliveryDrafts] = useState<
-    Record<number, CaseloadServiceDeliveryType>
-  >({});
-  const [settingsError, setSettingsError] = useState("");
+  const [editingStudent, setEditingStudent] = useState<{
+    childId: number;
+    childName: string;
+    requirement?: IepServiceRequirement;
+  } | null>(null);
+  const [collapsedStudents, setCollapsedStudents] = useState<Set<number>>(
+    () => new Set(),
+  );
   const [studentSearch, setStudentSearch] = useState("");
   const students = (
     overview?.children ??
@@ -4042,12 +3836,9 @@ function CaseloadOverviewPage({
       return {
         ...student,
         teacherNames,
-        primaryServiceDeliveryType:
-          student.primaryServiceDeliveryType ?? "individual",
         lastSessionDate: student.lastSessionDate ?? null,
         nextSessionDate: student.nextSessionDate ?? null,
         serviceRequirements,
-        primaryRequirement: serviceRequirements[0],
         serviceStatus: caseloadServiceStatus(serviceRequirements),
       };
     })
@@ -4067,16 +3858,16 @@ function CaseloadOverviewPage({
   const normalizedStudentSearch = studentSearch.trim().toLocaleLowerCase();
   const filteredStudents = normalizedStudentSearch
     ? students.filter((student) => {
-        const deliveryLabel = serviceDeliveryOptions.find(
-          (option) => option.value === student.primaryServiceDeliveryType,
-        )?.label;
         return [
           student.childName,
           student.school,
           student.grade,
           ...student.teacherNames,
-          student.primaryRequirement?.serviceName,
-          deliveryLabel,
+          ...student.serviceRequirements.flatMap((service) => [
+            service.serviceName,
+            serviceTypeLabel(service.serviceType),
+            service.period,
+          ]),
         ].some((value) =>
           value?.toLocaleLowerCase().includes(normalizedStudentSearch),
         );
@@ -4113,31 +3904,6 @@ function CaseloadOverviewPage({
     },
   ];
 
-  const saveDeliveryType = async (
-    childId: number,
-    previous: CaseloadServiceDeliveryType,
-    next: CaseloadServiceDeliveryType,
-  ) => {
-    setSettingsError("");
-    setDeliveryDrafts((current) => ({ ...current, [childId]: next }));
-    try {
-      await updateServiceSettings.mutateAsync({
-        params: { childId },
-        data: { primaryServiceDeliveryType: next },
-      });
-      await queryClient.invalidateQueries({
-        queryKey: getGetClinicianOverviewQueryKey(),
-      });
-    } catch (requestError: any) {
-      setDeliveryDrafts((current) => ({ ...current, [childId]: previous }));
-      setSettingsError(
-        requestError?.data?.error ??
-          requestError?.message ??
-          "The service delivery type could not be saved.",
-      );
-    }
-  };
-
   const statusBadge = (serviceStatus: CaseloadServiceStatus) => {
     const status = caseloadStatusPresentation[serviceStatus];
     const StatusIcon = status.icon;
@@ -4160,31 +3926,13 @@ function CaseloadOverviewPage({
         )
       : 0;
 
-  const deliverySelect = (
-    student: (typeof students)[number],
-    compact = false,
-  ) => (
-    <select
-      aria-label={`Service delivery type for ${student.childName}`}
-      value={
-        deliveryDrafts[student.childId] ?? student.primaryServiceDeliveryType
-      }
-      onChange={(event) =>
-        void saveDeliveryType(
-          student.childId,
-          student.primaryServiceDeliveryType,
-          event.target.value as CaseloadServiceDeliveryType,
-        )
-      }
-      className={`${compact ? "h-10" : "h-9"} w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2 text-xs font-semibold`}
-    >
-      {serviceDeliveryOptions.map((option) => (
-        <option key={option.value} value={option.value}>
-          {option.label}
-        </option>
-      ))}
-    </select>
-  );
+  const toggleStudent = (childId: number) =>
+    setCollapsedStudents((current) => {
+      const next = new Set(current);
+      if (next.has(childId)) next.delete(childId);
+      else next.add(childId);
+      return next;
+    });
 
   return (
     <div className="space-y-6 animate-rise">
@@ -4223,15 +3971,6 @@ function CaseloadOverviewPage({
           </Button>
         </div>
       )}
-
-      {settingsError ? (
-        <p
-          role="alert"
-          className="rounded-lg border border-destructive/25 bg-destructive/5 p-4 text-sm text-destructive"
-        >
-          {settingsError}
-        </p>
-      ) : null}
 
       {(loading || preparing) && !students.length ? (
         <LoadingBlocks />
@@ -4288,169 +4027,268 @@ function CaseloadOverviewPage({
             </label>
           </div>
 
-          <div className="hidden xl:block">
+          <div className="hidden lg:block">
             <table className="w-full table-fixed border-collapse text-left text-xs">
               <colgroup>
-                <col className="w-[15%]" />
-                <col className="w-[17%]" />
-                <col className="w-[15%]" />
-                <col className="w-[17%]" />
+                <col className="w-[24%]" />
+                <col className="w-[20%]" />
+                <col className="w-[20%]" />
+                <col className="w-[12%]" />
                 <col className="w-[10%]" />
-                <col className="w-[8%]" />
-                <col className="w-[18%]" />
+                <col className="w-[14%]" />
               </colgroup>
               <thead className="bg-muted/45 text-[11px] font-bold uppercase text-muted-foreground">
                 <tr>
-                  <th className="px-3 py-3">Student</th>
-                  <th className="px-2 py-3">Classroom / teacher</th>
-                  <th className="px-2 py-3">Delivery</th>
+                  <th className="px-3 py-3">Student / classroom</th>
+                  <th className="px-2 py-3">Service</th>
                   <th className="px-2 py-3">Frequency / required</th>
                   <th className="px-2 py-3 text-center">Completed</th>
                   <th className="px-2 py-3 text-center">Remaining</th>
                   <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y-2 divide-border">
-                {filteredStudents.map((student) => {
-                  const requirement = student.primaryRequirement;
-                  const progress = requirementProgress(requirement);
+              <tbody>
+                {filteredStudents.map((student, studentIndex) => {
+                  const collapsed = collapsedStudents.has(student.childId);
+                  const studentTone =
+                    studentIndex % 2 === 0 ? "bg-card" : "bg-secondary/30";
+                  const totalRequired = student.serviceRequirements.reduce(
+                    (total, service) => total + service.requiredSessions,
+                    0,
+                  );
+                  const totalCompleted = student.serviceRequirements.reduce(
+                    (total, service) => total + service.sessionsCompleted,
+                    0,
+                  );
+                  const totalRemaining = student.serviceRequirements.reduce(
+                    (total, service) => total + service.sessionsRemaining,
+                    0,
+                  );
                   return (
-                    <tr
-                      key={student.childId}
-                      data-testid={`overview-student-${student.childId}`}
-                      className="align-middle transition even:bg-secondary/45 hover:bg-secondary/60"
-                    >
-                      <td className="min-w-0 px-3 py-4">
-                        <button
-                          type="button"
-                          onClick={() => onOpenChild(student.childId)}
-                          className="block max-w-full truncate rounded-sm text-left font-bold text-primary focus-ring"
-                        >
-                          {student.childName}
-                        </button>
-                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                          {student.school || "School not added"}
-                        </span>
-                      </td>
-                      <td className="min-w-0 px-2 py-4">
-                        <span className="block truncate font-semibold">
-                          {student.teacherNames.length
-                            ? student.teacherNames.join(", ")
-                            : "Not assigned"}
-                        </span>
-                        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                          {student.grade || "Classroom not added"}
-                        </span>
-                      </td>
-                      <td className="min-w-0 px-2 py-4">
-                        {deliverySelect(student)}
-                      </td>
-                      <td className="min-w-0 px-2 py-4">
-                        {requirement ? (
+                    <Fragment key={student.childId}>
+                      <tr
+                        data-testid={`overview-student-${student.childId}`}
+                        className={`${studentTone} border-t-4 border-muted align-middle`}
+                      >
+                        <td className="px-3 py-3">
                           <button
                             type="button"
-                            onClick={() => setEditingStudent(student)}
-                            className="block w-full rounded-sm text-left focus-ring"
-                            title="Edit service requirement"
+                            onClick={() => toggleStudent(student.childId)}
+                            aria-expanded={!collapsed}
+                            className="flex max-w-full items-center gap-2 rounded-sm text-left focus-ring"
                           >
-                            <span className="block font-bold text-primary">
-                              {requirement.requiredSessions} sessions
-                            </span>
-                            <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                              {requirement.periodLabel}
-                            </span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => setEditingStudent(student)}
-                            className="font-bold text-primary underline-offset-4 hover:underline"
-                          >
-                            Set requirement
-                          </button>
-                        )}
-                      </td>
-                      <td className="px-2 py-4 text-center">
-                        <span className="font-bold">
-                          {requirement?.sessionsCompleted ?? "-"}
-                        </span>
-                        {requirement ? (
-                          <div className="mx-auto mt-1.5 h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full rounded-full bg-primary"
-                              style={{ width: `${progress}%` }}
+                            <ChevronDown
+                              size={16}
+                              className={`shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`}
                             />
+                            <span className="min-w-0">
+                              <span className="block truncate font-bold text-primary">
+                                {student.childName}
+                              </span>
+                              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                                {student.teacherNames.length
+                                  ? student.teacherNames.join(", ")
+                                  : "Teacher not assigned"}
+                                {student.grade ? ` · ${student.grade}` : ""}
+                              </span>
+                              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                                {student.school || "School not added"}
+                              </span>
+                            </span>
+                          </button>
+                        </td>
+                        <td className="px-2 py-3">
+                          <span className="block font-semibold">
+                            {student.serviceRequirements.length} service
+                            {student.serviceRequirements.length === 1
+                              ? ""
+                              : "s"}
+                          </span>
+                          <span className="mt-1 inline-flex">
+                            {statusBadge(student.serviceStatus)}
+                          </span>
+                        </td>
+                        <td className="px-2 py-3 text-muted-foreground">
+                          {student.serviceRequirements.length
+                            ? "Details below"
+                            : "Setup required"}
+                        </td>
+                        <td className="px-2 py-3 text-center font-semibold">
+                          {totalRequired
+                            ? `${totalCompleted} / ${totalRequired}`
+                            : "-"}
+                        </td>
+                        <td className="px-2 py-3 text-center font-semibold">
+                          {totalRequired ? totalRemaining : "-"}
+                        </td>
+                        <td className="px-3 py-3 text-right">
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="outline"
+                              className="h-8 min-h-8 px-2 text-[11px]"
+                              onClick={() =>
+                                setEditingStudent({
+                                  childId: student.childId,
+                                  childName: student.childName,
+                                })
+                              }
+                            >
+                              <Plus size={13} /> Service
+                            </Button>
+                            <Button
+                              variant="outline"
+                              className="size-8 min-h-8 p-0"
+                              onClick={() => onOpenChild(student.childId)}
+                              title={`View ${student.childName}`}
+                              aria-label={`View ${student.childName}`}
+                            >
+                              <UserRound size={14} />
+                            </Button>
                           </div>
-                        ) : null}
-                      </td>
-                      <td className="px-2 py-4 text-center font-bold text-primary">
-                        {requirement?.sessionsRemaining ?? "-"}
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            className="h-8 min-h-8 px-2 text-[11px]"
-                            onClick={() =>
-                              onStartManualSession(student.childId)
-                            }
-                            title={`Log a session for ${student.childName}`}
+                        </td>
+                      </tr>
+                      {!collapsed && student.serviceRequirements.length
+                        ? student.serviceRequirements.map(
+                            (service, serviceIndex) => {
+                              const progress = requirementProgress(service);
+                              return (
+                                <tr
+                                  key={service.id}
+                                  className={`${studentTone} border-t border-border/70 align-middle hover:bg-secondary/55`}
+                                  data-testid={`overview-service-${service.id}`}
+                                >
+                                  <td className="px-3 py-3 pl-9">
+                                    <span className="block font-semibold text-primary">
+                                      {student.childName}
+                                    </span>
+                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                      Service {serviceIndex + 1}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <span className="block font-bold text-primary">
+                                      {serviceTypeLabel(service.serviceType)}
+                                    </span>
+                                    <span className="mt-1 inline-flex">
+                                      {statusBadge(service.status)}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-3">
+                                    <span className="block font-semibold capitalize">
+                                      {service.period}
+                                    </span>
+                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                      {service.requiredSessions} ×{" "}
+                                      {service.sessionDurationMinutes} min
+                                    </span>
+                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                      {service.periodLabel}
+                                    </span>
+                                  </td>
+                                  <td className="px-2 py-3 text-center">
+                                    <span className="font-bold">
+                                      {service.sessionsCompleted} /{" "}
+                                      {service.requiredSessions}
+                                    </span>
+                                    <div className="mx-auto mt-1.5 h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-muted">
+                                      <div
+                                        className="h-full rounded-full bg-primary"
+                                        style={{ width: `${progress}%` }}
+                                      />
+                                    </div>
+                                  </td>
+                                  <td className="px-2 py-3 text-center font-bold text-primary">
+                                    {service.sessionsRemaining}
+                                  </td>
+                                  <td className="px-3 py-3">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <Button
+                                        className="h-8 min-h-8 px-2 text-[11px]"
+                                        onClick={() =>
+                                          onStartManualSession(
+                                            student.childId,
+                                            service.id,
+                                          )
+                                        }
+                                      >
+                                        <ClipboardList size={13} /> Log
+                                      </Button>
+                                      <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                          <Button
+                                            variant="outline"
+                                            className="size-8 min-h-8 p-0"
+                                            aria-label={`More actions for ${service.serviceName}`}
+                                          >
+                                            <ChevronDown size={15} />
+                                          </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent
+                                          align="end"
+                                          className="w-52"
+                                        >
+                                          <DropdownMenuItem
+                                            onSelect={() =>
+                                              onStartRecordedSession(
+                                                student.childId,
+                                                service.id,
+                                              )
+                                            }
+                                          >
+                                            <Mic /> Record Session
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onSelect={() =>
+                                              setEditingStudent({
+                                                childId: student.childId,
+                                                childName: student.childName,
+                                                requirement: service,
+                                              })
+                                            }
+                                          >
+                                            <Settings /> Edit Service
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onSelect={() =>
+                                              onViewHistory(student.childId)
+                                            }
+                                          >
+                                            <Clock3 /> Session History
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onSelect={() =>
+                                              onViewGoals(student.childId)
+                                            }
+                                          >
+                                            <Target /> View IEP Goals
+                                          </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                      </DropdownMenu>
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            },
+                          )
+                        : null}
+                      {!collapsed && !student.serviceRequirements.length ? (
+                        <tr className={`${studentTone} border-t border-border`}>
+                          <td
+                            colSpan={6}
+                            className="px-9 py-4 text-sm text-muted-foreground"
                           >
-                            <ClipboardList size={13} /> Log
-                          </Button>
-                          <Button
-                            variant="outline"
-                            className="h-8 min-h-8 shrink-0 px-2 text-[11px]"
-                            onClick={() => onOpenChild(student.childId)}
-                            aria-label={`View ${student.childName}`}
-                            title={`View ${student.childName}`}
-                          >
-                            <UserRound size={13} /> View
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button
-                                variant="outline"
-                                className="size-8 min-h-8 shrink-0 p-0"
-                                aria-label={`More actions for ${student.childName}`}
-                                title={`More actions for ${student.childName}`}
-                              >
-                                <ChevronDown size={16} />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end" className="w-52">
-                              <DropdownMenuItem
-                                onSelect={() => onOpenChild(student.childId)}
-                              >
-                                <UserRound /> View Student
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() => onViewHistory(student.childId)}
-                              >
-                                <Clock3 /> Session History
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() =>
-                                  onStartRecordedSession(student.childId)
-                                }
-                              >
-                                <Mic /> Record Session
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onSelect={() => onViewGoals(student.childId)}
-                              >
-                                <Target /> View IEP Goals
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
-                      </td>
-                    </tr>
+                            No active services. Add a service before logging a
+                            session.
+                          </td>
+                        </tr>
+                      ) : null}
+                    </Fragment>
                   );
                 })}
                 {!filteredStudents.length ? (
                   <tr>
                     <td
-                      colSpan={7}
+                      colSpan={6}
                       className="px-4 py-8 text-center text-sm text-muted-foreground"
                     >
                       No students match “{studentSearch.trim()}”.
@@ -4461,141 +4299,140 @@ function CaseloadOverviewPage({
             </table>
           </div>
 
-          <div className="xl:hidden">
-            {filteredStudents.map((student) => {
-              const requirement = student.primaryRequirement;
-              const progress = requirementProgress(requirement);
+          <div className="divide-y-[10px] divide-muted/80 lg:hidden">
+            {filteredStudents.map((student, studentIndex) => {
+              const collapsed = collapsedStudents.has(student.childId);
               return (
                 <article
                   key={student.childId}
                   data-testid={`overview-student-mobile-${student.childId}`}
-                  className="border-b-[10px] border-muted/80 bg-card p-4 last:border-b-0 even:bg-secondary/45"
+                  className={`p-4 ${studentIndex % 2 ? "bg-secondary/30" : "bg-card"}`}
                 >
                   <div className="flex min-w-0 items-start justify-between gap-3">
                     <button
                       type="button"
-                      onClick={() => onOpenChild(student.childId)}
-                      className="min-w-0 rounded-sm text-left focus-ring"
+                      onClick={() => toggleStudent(student.childId)}
+                      aria-expanded={!collapsed}
+                      className="flex min-w-0 items-start gap-2 rounded-sm text-left focus-ring"
                     >
-                      <span className="block truncate font-bold text-primary">
-                        {student.childName}
-                      </span>
-                      <span className="mt-1 block text-xs text-muted-foreground">
-                        {student.teacherNames.length
-                          ? student.teacherNames.join(", ")
-                          : student.grade ||
-                            student.school ||
-                            "Student profile"}
+                      <ChevronDown
+                        size={17}
+                        className={`mt-0.5 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-bold text-primary">
+                          {student.childName}
+                        </span>
+                        <span className="mt-1 block text-xs text-muted-foreground">
+                          {student.teacherNames.length
+                            ? student.teacherNames.join(", ")
+                            : student.grade ||
+                              student.school ||
+                              "Student profile"}
+                        </span>
                       </span>
                     </button>
                     {statusBadge(student.serviceStatus)}
                   </div>
-                  <div className="mt-4">
-                    <span className="mb-1.5 block text-[11px] font-bold uppercase text-muted-foreground">
-                      Service delivery
-                    </span>
-                    {deliverySelect(student, true)}
-                  </div>
-                  {requirement ? (
-                    <div className="mt-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <button
-                          type="button"
-                          onClick={() => setEditingStudent(student)}
-                          className="rounded-sm text-left focus-ring"
-                        >
-                          <span className="text-sm font-bold">
-                            {requirement.serviceName}
-                          </span>
-                          <span className="mt-0.5 block text-xs text-muted-foreground">
-                            {requirement.periodLabel}
-                          </span>
-                        </button>
-                        <span className="shrink-0 text-sm font-bold text-primary">
-                          {requirement.sessionsCompleted} /{" "}
-                          {requirement.requiredSessions}
-                        </span>
-                      </div>
-                      <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                        <div
-                          className="h-full rounded-full bg-primary"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-                      <dl className="mt-3 grid grid-cols-3 gap-3 text-xs">
-                        <div>
-                          <dt className="text-muted-foreground">Remaining</dt>
-                          <dd className="mt-1 font-bold text-primary">
-                            {requirement.sessionsRemaining}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-muted-foreground">
-                            Last session
-                          </dt>
-                          <dd className="mt-1 font-semibold">
-                            {student.lastSessionDate
-                              ? formatServiceDate(student.lastSessionDate)
-                              : "None"}
-                          </dd>
-                        </div>
-                        <div>
-                          <dt className="text-muted-foreground">Upcoming</dt>
-                          <dd className="mt-1 font-semibold">
-                            {student.nextSessionDate
-                              ? formatServiceDate(student.nextSessionDate)
-                              : "Not set"}
-                          </dd>
-                        </div>
-                      </dl>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setEditingStudent(student)}
-                      className="mt-4 flex min-h-11 w-full items-center justify-center rounded-md border border-dashed border-primary/30 text-sm font-bold text-primary"
-                    >
-                      <Settings size={16} /> Set service requirement
-                    </button>
-                  )}
-                  <div className="mt-4 grid grid-cols-2 gap-2">
-                    <Button
-                      onClick={() => onStartManualSession(student.childId)}
-                    >
-                      <ClipboardList size={15} /> Log Session
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="outline">
-                          More <ChevronDown size={15} />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-56">
-                        <DropdownMenuItem
-                          onSelect={() => onOpenChild(student.childId)}
-                        >
-                          <UserRound /> View Student
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => onViewHistory(student.childId)}
-                        >
-                          <Clock3 /> Session History
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() =>
-                            onStartRecordedSession(student.childId)
+
+                  {!collapsed ? (
+                    <div className="mt-4 space-y-3">
+                      {student.serviceRequirements.map((service) => {
+                        const progress = requirementProgress(service);
+                        return (
+                          <section
+                            key={service.id}
+                            className="rounded-md border border-border bg-background p-3"
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setEditingStudent({
+                                    childId: student.childId,
+                                    childName: student.childName,
+                                    requirement: service,
+                                  })
+                                }
+                                className="min-w-0 rounded-sm text-left focus-ring"
+                              >
+                                <span className="block font-bold">
+                                  {serviceTypeLabel(service.serviceType)}
+                                </span>
+                                <span className="mt-0.5 block text-xs capitalize text-muted-foreground">
+                                  {service.period} · {service.periodLabel}
+                                </span>
+                              </button>
+                              <span className="shrink-0 text-sm font-bold text-primary">
+                                {service.sessionsCompleted} /{" "}
+                                {service.requiredSessions}
+                              </span>
+                            </div>
+                            <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                              <div
+                                className="h-full rounded-full bg-primary"
+                                style={{ width: `${progress}%` }}
+                              />
+                            </div>
+                            <div className="mt-3 flex items-center justify-between gap-3 text-xs">
+                              <span>
+                                <strong>{service.sessionsRemaining}</strong>{" "}
+                                remaining · {service.sessionDurationMinutes} min
+                              </span>
+                              {statusBadge(service.status)}
+                            </div>
+                            <div className="mt-3 grid grid-cols-2 gap-2">
+                              <Button
+                                onClick={() =>
+                                  onStartManualSession(
+                                    student.childId,
+                                    service.id,
+                                  )
+                                }
+                              >
+                                <ClipboardList size={15} /> Log Session
+                              </Button>
+                              <Button
+                                variant="outline"
+                                onClick={() =>
+                                  onStartRecordedSession(
+                                    student.childId,
+                                    service.id,
+                                  )
+                                }
+                              >
+                                <Mic size={15} /> Record
+                              </Button>
+                            </div>
+                          </section>
+                        );
+                      })}
+                      {!student.serviceRequirements.length ? (
+                        <p className="rounded-md border border-dashed border-border p-3 text-sm text-muted-foreground">
+                          No active services. Add one before logging a session.
+                        </p>
+                      ) : null}
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          variant="outline"
+                          onClick={() =>
+                            setEditingStudent({
+                              childId: student.childId,
+                              childName: student.childName,
+                            })
                           }
                         >
-                          <Mic /> Record Session
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => onViewGoals(student.childId)}
+                          <Plus size={15} /> Add Service
+                        </Button>
+                        <Button
+                          variant="outline"
+                          onClick={() => onOpenChild(student.childId)}
                         >
-                          <Target /> View IEP Goals
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </div>
+                          <UserRound size={15} /> View Student
+                        </Button>
+                      </div>
+                    </div>
+                  ) : null}
                 </article>
               );
             })}
@@ -4654,7 +4491,7 @@ function CaseloadOverviewPage({
         <CaseloadRequirementDialog
           childId={editingStudent.childId}
           childName={editingStudent.childName}
-          requirement={editingStudent.primaryRequirement}
+          requirement={editingStudent.requirement}
           onClose={() => setEditingStudent(null)}
           onSaved={() => {
             setEditingStudent(null);
@@ -9936,6 +9773,7 @@ const transcriptGuidanceFor = (
 function SessionRecorderPage({
   childId,
   child,
+  serviceRequirementId,
   resumeTranscriptId,
   startRequestToken = 0,
   onSessionActivityChange,
@@ -9944,6 +9782,7 @@ function SessionRecorderPage({
 }: {
   childId: number;
   child?: Child;
+  serviceRequirementId?: number;
   resumeTranscriptId?: number;
   startRequestToken?: number;
   onSessionActivityChange?: (active: boolean) => void;
@@ -11752,6 +11591,12 @@ function SessionRecorderPage({
   const saveSession = async () => {
     if (sessionSaveInFlight.current) return;
     setSaveError("");
+    if (!serviceRequirementId) {
+      setSaveError(
+        "Select the service this session should count toward before saving.",
+      );
+      return;
+    }
     if (
       !captured.length &&
       !hasPreservedUnclearSpeech &&
@@ -11776,6 +11621,7 @@ function SessionRecorderPage({
       const session = await createSession.mutateAsync({
         params: { childId },
         data: {
+          serviceRequirementId,
           durationSeconds: elapsed,
           gestalts: captured.map(
             ({
@@ -17569,19 +17415,25 @@ function CareTeamInvitationForm({
 function SessionsLandingPage({
   children,
   initialChildId,
+  initialServiceId,
   onSaved,
 }: {
   children: Child[];
   initialChildId?: number;
+  initialServiceId?: number;
   onSaved: (session: Session) => void;
 }) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const deleteQueuedSessionDraft = useDeleteSessionTranscriptionDraft();
   const childSelectRef = useRef<HTMLSelectElement | null>(null);
+  const serviceSelectRef = useRef<HTMLSelectElement | null>(null);
   const [selectedChildId, setSelectedChildId] = useState<number | undefined>(
     initialChildId,
   );
+  const [selectedServiceId, setSelectedServiceId] = useState<
+    number | undefined
+  >(initialServiceId);
   const [resumeTranscriptId, setResumeTranscriptId] = useState<
     number | undefined
   >();
@@ -17639,12 +17491,28 @@ function SessionsLandingPage({
   );
   useEffect(() => {
     setSelectedChildId(initialChildId);
+    setSelectedServiceId(initialServiceId);
     setResumeTranscriptId(undefined);
     setOpenedRecording(undefined);
     setSessionActive(false);
     setStartRequestToken(0);
     setPendingChildSelection(null);
-  }, [initialChildId]);
+  }, [initialChildId, initialServiceId]);
+  const activeServices =
+    manualSessionSetupQuery.data?.serviceRequirements ?? [];
+  const selectedService = activeServices.find(
+    (service) => service.id === selectedServiceId,
+  );
+  useEffect(() => {
+    if (!activeServices.length) {
+      setSelectedServiceId(undefined);
+      return;
+    }
+    if (selectedServiceId && selectedService) return;
+    setSelectedServiceId(
+      activeServices.length === 1 ? activeServices[0].id : undefined,
+    );
+  }, [activeServices, selectedService, selectedServiceId]);
   const reviewStatusLabel = (
     status: NonNullable<
       typeof sessionsDashboardQuery.data
@@ -17689,6 +17557,7 @@ function SessionsLandingPage({
   const weeklySnapshot = sessionsDashboardQuery.data?.weeklySnapshot;
   const applyChildSelection = (childId?: number) => {
     setSelectedChildId(childId);
+    setSelectedServiceId(undefined);
     setResumeTranscriptId(undefined);
     setOpenedRecording(undefined);
     setSessionActive(false);
@@ -17709,6 +17578,10 @@ function SessionsLandingPage({
       childSelectRef.current?.focus();
       return;
     }
+    if (!selectedServiceId) {
+      serviceSelectRef.current?.focus();
+      return;
+    }
     setResumeTranscriptId(undefined);
     setOpenedRecording(undefined);
     setStartRequestToken((current) => current + 1);
@@ -17719,7 +17592,13 @@ function SessionsLandingPage({
       childSelectRef.current?.focus();
       return;
     }
-    setLocation(`/manual-session?childId=${selectedChildId}`);
+    if (!selectedServiceId) {
+      serviceSelectRef.current?.focus();
+      return;
+    }
+    setLocation(
+      `/manual-session?childId=${selectedChildId}&serviceId=${selectedServiceId}`,
+    );
   };
   const permanentlyDeleteQueuedDraft = async () => {
     if (!draftDeletionTarget || deleteQueuedSessionDraft.isPending) return;
@@ -18024,6 +17903,46 @@ function SessionsLandingPage({
             {/* Right Column: Dominant Action & Readiness */}
             <div className="flex w-full flex-col gap-4 lg:w-80 lg:shrink-0">
               <div className="flex flex-col justify-center rounded-3xl border border-primary/15 bg-secondary/30 p-5 pt-6 text-center">
+                {selectedChild ? (
+                  <label className="mb-4 block text-left">
+                    <span className="mb-1.5 block text-xs font-bold uppercase text-muted-foreground">
+                      Service
+                    </span>
+                    <select
+                      ref={serviceSelectRef}
+                      value={selectedServiceId ?? ""}
+                      onChange={(event) =>
+                        setSelectedServiceId(
+                          Number(event.target.value) || undefined,
+                        )
+                      }
+                      className="h-12 w-full rounded-md border border-input bg-card px-3 text-sm font-semibold outline-none focus-ring"
+                      data-testid="select-session-service"
+                    >
+                      <option value="">Select a service</option>
+                      {activeServices.map((service) => (
+                        <option key={service.id} value={service.id}>
+                          {serviceTypeLabel(service.serviceType)} ·{" "}
+                          {service.period}
+                        </option>
+                      ))}
+                    </select>
+                    {!manualSessionSetupQuery.isLoading &&
+                    !activeServices.length ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setLocation(
+                            `/service-setup?childId=${selectedChild.id}`,
+                          )
+                        }
+                        className="mt-2 text-xs font-bold text-primary underline underline-offset-2"
+                      >
+                        Add a service first
+                      </button>
+                    ) : null}
+                  </label>
+                ) : null}
                 <div className="grid gap-3">
                   <Button
                     variant="primary"
@@ -18031,6 +17950,7 @@ function SessionsLandingPage({
                     onClick={requestNewRecording}
                     disabled={
                       !selectedChild ||
+                      !selectedServiceId ||
                       sessionActive ||
                       Boolean(resumeTranscriptId)
                     }
@@ -18049,6 +17969,7 @@ function SessionsLandingPage({
                     onClick={requestManualSession}
                     disabled={
                       !selectedChild ||
+                      !selectedServiceId ||
                       sessionActive ||
                       Boolean(resumeTranscriptId)
                     }
@@ -18076,7 +17997,9 @@ function SessionsLandingPage({
                     </h3>
                     <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
                       {selectedChild
-                        ? "Choose recording or manual IEP goal tracking for this therapy session."
+                        ? selectedService
+                          ? `${serviceTypeLabel(selectedService.serviceType)} is selected for this session.`
+                          : "Select the service this session should count toward."
                         : "Select a child to prepare the session options."}
                     </p>
                   </div>
@@ -18088,9 +18011,10 @@ function SessionsLandingPage({
       </section>
       {selectedChild && (
         <SessionRecorderPage
-          key={`${selectedChild.id}-${resumeTranscriptId ?? "new"}`}
+          key={`${selectedChild.id}-${selectedServiceId ?? "service"}-${resumeTranscriptId ?? "new"}`}
           childId={selectedChild.id}
           child={selectedChild}
+          serviceRequirementId={selectedServiceId}
           resumeTranscriptId={resumeTranscriptId}
           startRequestToken={startRequestToken}
           onSessionActivityChange={setSessionActive}
@@ -18279,6 +18203,9 @@ function SessionsLandingPage({
                     ·{" "}
                     {Math.max(1, Math.ceil(openedSession.durationSeconds / 60))}{" "}
                     min
+                    {openedSession.serviceName
+                      ? ` · ${openedSession.serviceName}`
+                      : " · Legacy session (service not assigned)"}
                   </p>
                 </div>
                 <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
@@ -18718,6 +18645,7 @@ function Workspace() {
     "/unclear-speech",
     "/activity",
     "/manual-session",
+    "/service-setup",
     "/communication-passport",
   ]);
   const teacherChildRoutes = new Set([
@@ -18739,6 +18667,13 @@ function Workspace() {
   const validRequestedChildId =
     Number.isInteger(requestedChildId) && requestedChildId > 0
       ? requestedChildId
+      : undefined;
+  const requestedServiceId = Number(
+    new URLSearchParams(window.location.search).get("serviceId"),
+  );
+  const validRequestedServiceId =
+    Number.isInteger(requestedServiceId) && requestedServiceId > 0
+      ? requestedServiceId
       : undefined;
   const activeId = needsActiveChild
     ? (validRequestedChildId ??
@@ -19015,6 +18950,7 @@ function Workspace() {
       [
         "/session",
         "/manual-session",
+        "/service-setup",
         "/reports",
         "/clinical-knowledge",
         "/aac-planning",
@@ -19278,13 +19214,17 @@ function Workspace() {
       caseloadChildren={children}
       onOpenChild={openChildWorkspace}
       onAddStudent={() => setModal("child")}
-      onStartRecordedSession={(childId) => {
+      onStartRecordedSession={(childId, serviceId) => {
         setSelectedId(childId);
-        setLocation(`/session?childId=${childId}`);
+        setLocation(
+          `/session?childId=${childId}${serviceId ? `&serviceId=${serviceId}` : ""}`,
+        );
       }}
-      onStartManualSession={(childId) => {
+      onStartManualSession={(childId, serviceId) => {
         setSelectedId(childId);
-        setLocation(`/manual-session?childId=${childId}`);
+        setLocation(
+          `/manual-session?childId=${childId}${serviceId ? `&serviceId=${serviceId}` : ""}`,
+        );
       }}
       onViewGoals={(childId) => {
         setSelectedId(childId);
@@ -19429,6 +19369,12 @@ function Workspace() {
     <ManualSessionTrackingPage
       children={children}
       initialChildId={validRequestedChildId ?? selectedId}
+      initialServiceId={validRequestedServiceId}
+    />
+  ) : routePath === "/service-setup" && activeChild ? (
+    <ServiceSetupPage
+      child={activeChild}
+      onFinish={() => setLocation("/overview")}
     />
   ) : routePath === "/communication-passport" ? (
     <CommunicationPassportPage childId={activeId} />
@@ -19436,6 +19382,7 @@ function Workspace() {
     <SessionsLandingPage
       children={children}
       initialChildId={validRequestedChildId ?? selectedId}
+      initialServiceId={validRequestedServiceId}
       onSaved={(session) => {
         const savedChildId = session.childId;
         queryClient.invalidateQueries({
@@ -19639,8 +19586,16 @@ function Workspace() {
           onClose={() => setModal(null)}
           onCreated={(child) => {
             setSelectedId(child.id);
+            queryClient.setQueryData<Child[]>(
+              getListChildrenQueryKey(),
+              (current = []) =>
+                current.some((item) => item.id === child.id)
+                  ? current
+                  : [...current, child],
+            );
             refreshChildren();
             setModal(null);
+            setLocation(`/service-setup?childId=${child.id}`);
           }}
         />
       )}
@@ -19834,6 +19789,7 @@ function Router() {
           "/aac-planning",
           "/session",
           "/manual-session",
+          "/service-setup",
           "/communication-passport",
           "/children",
           "/communication-profile",

@@ -9,6 +9,7 @@ import type { ManualSessionGoalProgressInput } from './manualSessionGoalProgress
 import type { ManualSessionInputDurationSource } from './manualSessionInputDurationSource';
 
 export interface ManualSessionInput {
+  serviceRequirementId: number;
   sessionDate: Date;
   /** @nullable */
   startedAt?: Date | null;

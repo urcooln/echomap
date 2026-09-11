@@ -152,11 +152,12 @@ test("manual sessions persist goal progress and update IEP service delivery tota
       "PUT",
       `/iep-service-requirements?childId=${child.id}`,
       {
-        serviceName: "Speech Therapy",
+        serviceType: "individual",
         requiredSessions: 2,
         requiredMinutes: 60,
         sessionDurationMinutes: 30,
-        period: "reporting_period",
+        period: "custom",
+        customFrequencyDescription: "September reporting period",
         effectiveFrom: "2026-09-01",
         effectiveTo: "2026-09-30",
       },
@@ -165,15 +166,32 @@ test("manual sessions persist goal progress and update IEP service delivery tota
     assert.equal(requirement.body.sessionsCompleted, 0);
     assert.equal(requirement.body.minutesCompleted, 0);
 
+    const coTreatRequirement = await json(
+      "PUT",
+      `/iep-service-requirements?childId=${child.id}`,
+      {
+        serviceType: "co_treat_ot",
+        requiredSessions: 1,
+        requiredMinutes: 30,
+        sessionDurationMinutes: 30,
+        period: "custom",
+        customFrequencyDescription: "September OT co-treatment",
+        effectiveFrom: "2026-09-01",
+        effectiveTo: "2026-09-30",
+      },
+    );
+    assert.equal(coTreatRequirement.status, 200);
+
     const nextPeriod = await json(
       "PUT",
       `/iep-service-requirements?childId=${child.id}`,
       {
-        serviceName: "Speech Therapy",
+        serviceType: "individual",
         requiredSessions: 8,
         requiredMinutes: 240,
         sessionDurationMinutes: 30,
-        period: "reporting_period",
+        period: "custom",
+        customFrequencyDescription: "October reporting period",
         effectiveFrom: "2026-10-01",
         effectiveTo: "2026-10-31",
       },
@@ -183,9 +201,37 @@ test("manual sessions persist goal progress and update IEP service delivery tota
       .select({ id: iepServiceRequirementsTable.id })
       .from(iepServiceRequirementsTable)
       .where(eq(iepServiceRequirementsTable.childId, child.id));
-    assert.equal(savedPeriods.length, 2);
+    assert.equal(savedPeriods.length, 3);
+
+    const wrongPeriod = await json(
+      "POST",
+      `/manual-sessions?childId=${child.id}`,
+      {
+        serviceRequirementId: nextPeriod.body.id,
+        sessionDate: "2026-09-10",
+        startedAt: null,
+        endedAt: null,
+        durationSeconds: 1_800,
+        timerElapsedSeconds: 0,
+        durationSource: "manual",
+        durationEdited: false,
+        goals: [
+          {
+            goalId: goal.id,
+            accuracyPercent: 80,
+            successfulAttempts: null,
+            totalAttempts: null,
+            promptingLevel: null,
+            progressNote: "Valid progress for the wrong service period.",
+          },
+        ],
+        note: "This should not be saved outside the service date range.",
+      },
+    );
+    assert.equal(wrongPeriod.status, 400);
 
     const invalid = await json("POST", `/manual-sessions?childId=${child.id}`, {
+      serviceRequirementId: requirement.body.id,
       sessionDate: "2026-09-10",
       startedAt: null,
       endedAt: null,
@@ -208,6 +254,7 @@ test("manual sessions persist goal progress and update IEP service delivery tota
     assert.equal(invalid.status, 400);
 
     const saved = await json("POST", `/manual-sessions?childId=${child.id}`, {
+      serviceRequirementId: requirement.body.id,
       sessionDate: "2026-09-10",
       startedAt: "2026-09-10T14:00:00.000Z",
       endedAt: "2026-09-10T14:27:00.000Z",
@@ -230,6 +277,7 @@ test("manual sessions persist goal progress and update IEP service delivery tota
     assert.equal(saved.status, 201);
     ids.sessions.push(saved.body.id);
     assert.equal(saved.body.sessionMode, "manual");
+    assert.equal(saved.body.serviceRequirementId, requirement.body.id);
     assert.equal(saved.body.durationSource, "timer_edited");
     assert.equal(saved.body.durationEdited, true);
     assert.equal(saved.body.goalProgress[0].goalTitle, goal.title);
@@ -247,10 +295,18 @@ test("manual sessions persist goal progress and update IEP service delivery tota
       `/manual-sessions/setup?childId=${child.id}`,
     );
     assert.equal(updatedSetup.status, 200);
-    assert.equal(updatedSetup.body.serviceRequirements[0].sessionsCompleted, 1);
-    assert.equal(updatedSetup.body.serviceRequirements[0].sessionsRemaining, 1);
-    assert.equal(updatedSetup.body.serviceRequirements[0].minutesCompleted, 30);
-    assert.equal(updatedSetup.body.serviceRequirements[0].minutesRemaining, 30);
+    const updatedIndividual = updatedSetup.body.serviceRequirements.find(
+      (service: { id: number }) => service.id === requirement.body.id,
+    );
+    const updatedCoTreat = updatedSetup.body.serviceRequirements.find(
+      (service: { id: number }) => service.id === coTreatRequirement.body.id,
+    );
+    assert.equal(updatedIndividual.sessionsCompleted, 1);
+    assert.equal(updatedIndividual.sessionsRemaining, 1);
+    assert.equal(updatedIndividual.minutesCompleted, 30);
+    assert.equal(updatedIndividual.minutesRemaining, 30);
+    assert.equal(updatedCoTreat.sessionsCompleted, 0);
+    assert.equal(updatedCoTreat.sessionsRemaining, 1);
 
     const overview = await request("/clinician-overview");
     assert.equal(overview.status, 200);
@@ -258,11 +314,18 @@ test("manual sessions persist goal progress and update IEP service delivery tota
       (item: { childId: number }) => item.childId === child.id,
     );
     assert.ok(overviewChild);
-    assert.equal(overviewChild.serviceRequirements.length, 1);
-    assert.equal(overviewChild.serviceRequirements[0].sessionsCompleted, 1);
-    assert.equal(overviewChild.serviceRequirements[0].sessionsRemaining, 1);
-    assert.equal(overviewChild.serviceRequirements[0].minutesCompleted, 30);
-    assert.equal(overviewChild.serviceRequirements[0].minutesRemaining, 30);
+    assert.equal(overviewChild.serviceRequirements.length, 2);
+    const overviewIndividual = overviewChild.serviceRequirements.find(
+      (service: { id: number }) => service.id === requirement.body.id,
+    );
+    const overviewCoTreat = overviewChild.serviceRequirements.find(
+      (service: { id: number }) => service.id === coTreatRequirement.body.id,
+    );
+    assert.equal(overviewIndividual.sessionsCompleted, 1);
+    assert.equal(overviewIndividual.sessionsRemaining, 1);
+    assert.equal(overviewIndividual.minutesCompleted, 30);
+    assert.equal(overviewIndividual.minutesRemaining, 30);
+    assert.equal(overviewCoTreat.sessionsCompleted, 0);
     assert.equal(overviewChild.primaryServiceDeliveryType, "group");
     assert.equal(overviewChild.lastSessionDate, "2026-09-10");
     assert.deepEqual(overviewChild.teacherNames, []);

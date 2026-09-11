@@ -146,11 +146,13 @@ export const GetManualSessionSetupResponse = zod.object({
   "serviceRequirements": zod.array(zod.object({
   "id": zod.number(),
   "childId": zod.number(),
+  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "period": zod.enum(['weekly', 'monthly', 'quarterly', 'yearly', 'custom']),
+  "customFrequencyDescription": zod.string().nullable(),
   "effectiveFrom": zod.string(),
   "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
@@ -195,6 +197,7 @@ export const createManualSessionBodyNoteMax = 10000;
 
 
 export const CreateManualSessionBody = zod.object({
+  "serviceRequirementId": zod.number(),
   "sessionDate": zod.coerce.date(),
   "startedAt": zod.coerce.date().nullish(),
   "endedAt": zod.coerce.date().nullish(),
@@ -220,6 +223,9 @@ export const CreateManualSessionBody = zod.object({
 export const CreateManualSessionResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
+  "serviceRequirementId": zod.number().nullable(),
+  "serviceName": zod.string().nullable(),
+  "serviceType": zod.string().nullable(),
   "durationSeconds": zod.number(),
   "gestalts": zod.array(zod.object({
   "phrase": zod.string().min(1),
@@ -271,8 +277,11 @@ export const CreateManualSessionResponse = zod.object({
 /**
  * @summary List IEP therapy service requirements and current-period completion
  */
+export const listIepServiceRequirementsQueryIncludeInactiveDefault = false;
+
 export const ListIepServiceRequirementsQueryParams = zod.object({
-  "childId": zod.coerce.number()
+  "childId": zod.coerce.number(),
+  "includeInactive": zod.coerce.boolean().default(listIepServiceRequirementsQueryIncludeInactiveDefault)
 })
 
 export const listIepServiceRequirementsResponseSessionsCompletedMin = 0;
@@ -288,11 +297,13 @@ export const listIepServiceRequirementsResponseMinutesRemainingMin = 0;
 export const ListIepServiceRequirementsResponseItem = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
+  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "period": zod.enum(['weekly', 'monthly', 'quarterly', 'yearly', 'custom']),
+  "customFrequencyDescription": zod.string().nullable(),
   "effectiveFrom": zod.string(),
   "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
@@ -315,25 +326,26 @@ export const UpsertIepServiceRequirementQueryParams = zod.object({
   "childId": zod.coerce.number()
 })
 
-export const upsertIepServiceRequirementBodyServiceNameMax = 160;
-
 export const upsertIepServiceRequirementBodyRequiredSessionsMax = 100;
 
 export const upsertIepServiceRequirementBodyRequiredMinutesMax = 10000;
 
 export const upsertIepServiceRequirementBodySessionDurationMinutesMax = 480;
 
+export const upsertIepServiceRequirementBodyCustomFrequencyDescriptionMax = 500;
+
 
 
 export const UpsertIepServiceRequirementBody = zod.object({
   "requirementId": zod.number().nullish(),
-  "serviceName": zod.string().min(1).max(upsertIepServiceRequirementBodyServiceNameMax),
+  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "requiredSessions": zod.number().min(1).max(upsertIepServiceRequirementBodyRequiredSessionsMax),
   "requiredMinutes": zod.number().min(1).max(upsertIepServiceRequirementBodyRequiredMinutesMax),
   "sessionDurationMinutes": zod.number().min(1).max(upsertIepServiceRequirementBodySessionDurationMinutesMax),
-  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "period": zod.enum(['weekly', 'monthly', 'quarterly', 'yearly', 'custom']),
+  "customFrequencyDescription": zod.string().max(upsertIepServiceRequirementBodyCustomFrequencyDescriptionMax).nullish(),
   "effectiveFrom": zod.coerce.date(),
-  "effectiveTo": zod.coerce.date().nullish()
+  "effectiveTo": zod.coerce.date()
 })
 
 export const upsertIepServiceRequirementResponseSessionsCompletedMin = 0;
@@ -349,11 +361,13 @@ export const upsertIepServiceRequirementResponseMinutesRemainingMin = 0;
 export const UpsertIepServiceRequirementResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
+  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "period": zod.enum(['weekly', 'monthly', 'quarterly', 'yearly', 'custom']),
+  "customFrequencyDescription": zod.string().nullable(),
   "effectiveFrom": zod.string(),
   "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
@@ -376,12 +390,12 @@ export const UpdateCaseloadServiceSettingsQueryParams = zod.object({
 })
 
 export const UpdateCaseloadServiceSettingsBody = zod.object({
-  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'integrated_group', 'consult'])
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology'])
 })
 
 export const UpdateCaseloadServiceSettingsResponse = zod.object({
   "childId": zod.number(),
-  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'integrated_group', 'consult']),
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "updatedAt": zod.coerce.date()
 })
 
@@ -619,17 +633,19 @@ export const GetClinicianOverviewResponse = zod.object({
   "latestActivityAt": zod.coerce.date().nullable(),
   "latestActivityLabel": zod.string(),
   "teacherNames": zod.array(zod.string()),
-  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'integrated_group', 'consult']),
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "lastSessionDate": zod.string().nullable(),
   "nextSessionDate": zod.string().nullable(),
   "serviceRequirements": zod.array(zod.object({
   "id": zod.number(),
   "childId": zod.number(),
+  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "period": zod.enum(['weekly', 'monthly', 'quarterly', 'yearly', 'custom']),
+  "customFrequencyDescription": zod.string().nullable(),
   "effectiveFrom": zod.string(),
   "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
@@ -706,17 +722,19 @@ export const GetTeacherOverviewResponse = zod.object({
   "latestActivityAt": zod.coerce.date().nullable(),
   "latestActivityLabel": zod.string(),
   "teacherNames": zod.array(zod.string()),
-  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'integrated_group', 'consult']),
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "lastSessionDate": zod.string().nullable(),
   "nextSessionDate": zod.string().nullable(),
   "serviceRequirements": zod.array(zod.object({
   "id": zod.number(),
   "childId": zod.number(),
+  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
   "sessionDurationMinutes": zod.number(),
-  "period": zod.enum(['weekly', 'monthly', 'reporting_period']),
+  "period": zod.enum(['weekly', 'monthly', 'quarterly', 'yearly', 'custom']),
+  "customFrequencyDescription": zod.string().nullable(),
   "effectiveFrom": zod.string(),
   "effectiveTo": zod.string().nullable(),
   "periodLabel": zod.string(),
@@ -4123,6 +4141,9 @@ export const ListSessionsQueryParams = zod.object({
 export const ListSessionsResponseItem = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
+  "serviceRequirementId": zod.number().nullable(),
+  "serviceName": zod.string().nullable(),
+  "serviceType": zod.string().nullable(),
   "durationSeconds": zod.number(),
   "gestalts": zod.array(zod.object({
   "phrase": zod.string().min(1),
@@ -4190,6 +4211,7 @@ export const createSessionBodyCalibrationAudioIdsMax = 2;
 
 
 export const CreateSessionBody = zod.object({
+  "serviceRequirementId": zod.number(),
   "durationSeconds": zod.number().min(createSessionBodyDurationSecondsMin),
   "gestalts": zod.array(zod.object({
   "phrase": zod.string().min(1),
@@ -4220,6 +4242,9 @@ export const CreateSessionBody = zod.object({
 export const CreateSessionResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
+  "serviceRequirementId": zod.number().nullable(),
+  "serviceName": zod.string().nullable(),
+  "serviceType": zod.string().nullable(),
   "durationSeconds": zod.number(),
   "gestalts": zod.array(zod.object({
   "phrase": zod.string().min(1),

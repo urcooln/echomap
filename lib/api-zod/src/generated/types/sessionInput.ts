@@ -8,6 +8,7 @@
 import type { SessionGestalt } from './sessionGestalt';
 
 export interface SessionInput {
+  serviceRequirementId: number;
   /** @minimum 0 */
   durationSeconds: number;
   gestalts: SessionGestalt[];

@@ -1472,6 +1472,7 @@ export const ManualSessionInputDurationSource = {
 } as const;
 
 export interface ManualSessionInput {
+  serviceRequirementId: number;
   sessionDate: string;
   /** @nullable */
   startedAt?: string | null;
@@ -1518,23 +1519,35 @@ export interface ManualSessionGoalProgress {
   progressNote: string;
 }
 
-export type IepServiceRequirementInputPeriod = typeof IepServiceRequirementInputPeriod[keyof typeof IepServiceRequirementInputPeriod];
+export type CaseloadServiceDeliveryType = typeof CaseloadServiceDeliveryType[keyof typeof CaseloadServiceDeliveryType];
 
 
-export const IepServiceRequirementInputPeriod = {
+export const CaseloadServiceDeliveryType = {
+  individual: 'individual',
+  group: 'group',
+  co_treat: 'co_treat',
+  co_treat_ot: 'co_treat_ot',
+  co_treat_pt: 'co_treat_pt',
+  integrated_group: 'integrated_group',
+  consult: 'consult',
+  assistive_technology: 'assistive_technology',
+} as const;
+
+export type ServiceFrequencyPeriod = typeof ServiceFrequencyPeriod[keyof typeof ServiceFrequencyPeriod];
+
+
+export const ServiceFrequencyPeriod = {
   weekly: 'weekly',
   monthly: 'monthly',
-  reporting_period: 'reporting_period',
+  quarterly: 'quarterly',
+  yearly: 'yearly',
+  custom: 'custom',
 } as const;
 
 export interface IepServiceRequirementInput {
   /** @nullable */
   requirementId?: number | null;
-  /**
-     * @minLength 1
-     * @maxLength 160
-     */
-  serviceName: string;
+  serviceType: CaseloadServiceDeliveryType;
   /**
      * @minimum 1
      * @maximum 100
@@ -1550,20 +1563,15 @@ export interface IepServiceRequirementInput {
      * @maximum 480
      */
   sessionDurationMinutes: number;
-  period: IepServiceRequirementInputPeriod;
+  period: ServiceFrequencyPeriod;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  customFrequencyDescription?: string | null;
   effectiveFrom: string;
-  /** @nullable */
-  effectiveTo?: string | null;
+  effectiveTo: string;
 }
-
-export type IepServiceRequirementPeriod = typeof IepServiceRequirementPeriod[keyof typeof IepServiceRequirementPeriod];
-
-
-export const IepServiceRequirementPeriod = {
-  weekly: 'weekly',
-  monthly: 'monthly',
-  reporting_period: 'reporting_period',
-} as const;
 
 export type IepServiceRequirementStatus = typeof IepServiceRequirementStatus[keyof typeof IepServiceRequirementStatus];
 
@@ -1578,11 +1586,14 @@ export const IepServiceRequirementStatus = {
 export interface IepServiceRequirement {
   id: number;
   childId: number;
+  serviceType: CaseloadServiceDeliveryType;
   serviceName: string;
   requiredSessions: number;
   requiredMinutes: number;
   sessionDurationMinutes: number;
-  period: IepServiceRequirementPeriod;
+  period: ServiceFrequencyPeriod;
+  /** @nullable */
+  customFrequencyDescription: string | null;
   effectiveFrom: string;
   /** @nullable */
   effectiveTo: string | null;
@@ -1600,17 +1611,6 @@ export interface IepServiceRequirement {
   status: IepServiceRequirementStatus;
   updatedAt: string;
 }
-
-export type CaseloadServiceDeliveryType = typeof CaseloadServiceDeliveryType[keyof typeof CaseloadServiceDeliveryType];
-
-
-export const CaseloadServiceDeliveryType = {
-  individual: 'individual',
-  group: 'group',
-  co_treat: 'co_treat',
-  integrated_group: 'integrated_group',
-  consult: 'consult',
-} as const;
 
 export interface CaseloadServiceSettingsInput {
   primaryServiceDeliveryType: CaseloadServiceDeliveryType;
@@ -1924,6 +1924,7 @@ export interface SessionGestalt {
 }
 
 export interface SessionInput {
+  serviceRequirementId: number;
   /** @minimum 0 */
   durationSeconds: number;
   gestalts: SessionGestalt[];
@@ -2928,6 +2929,12 @@ export interface RecordingConsent {
 export interface Session {
   id: number;
   childId: number;
+  /** @nullable */
+  serviceRequirementId: number | null;
+  /** @nullable */
+  serviceName: string | null;
+  /** @nullable */
+  serviceType: string | null;
   durationSeconds: number;
   gestalts: SessionGestalt[];
   clinicalObservations: string;
@@ -4143,6 +4150,7 @@ childId: number;
 
 export type ListIepServiceRequirementsParams = {
 childId: number;
+includeInactive?: boolean;
 };
 
 export type UpsertIepServiceRequirementParams = {

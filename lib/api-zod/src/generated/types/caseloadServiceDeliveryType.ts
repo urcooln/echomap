@@ -13,6 +13,9 @@ export const CaseloadServiceDeliveryType = {
   individual: 'individual',
   group: 'group',
   co_treat: 'co_treat',
+  co_treat_ot: 'co_treat_ot',
+  co_treat_pt: 'co_treat_pt',
   integrated_group: 'integrated_group',
   consult: 'consult',
+  assistive_technology: 'assistive_technology',
 } as const;

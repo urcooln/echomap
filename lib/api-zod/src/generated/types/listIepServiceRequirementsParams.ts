@@ -8,4 +8,5 @@
 
 export type ListIepServiceRequirementsParams = {
 childId: number;
+includeInactive?: boolean;
 };

@@ -1,4 +1,5 @@
-export type ServicePeriod = "weekly" | "monthly" | "reporting_period";
+export type ServicePeriod =
+  "weekly" | "monthly" | "quarterly" | "yearly" | "custom";
 
 type ServicePeriodBounds = {
   effectiveFrom?: string | null;
@@ -22,10 +23,10 @@ export const servicePeriodWindow = (
   let start: Date;
   let endExclusive: Date;
   let label: string;
-  if (period === "reporting_period") {
+  if (period === "custom" || period === "reporting_period") {
     if (!bounds.effectiveFrom || !bounds.effectiveTo) {
       throw new Error(
-        "Reporting periods require both an effective start and end date.",
+        "Custom periods require an effective start and end date.",
       );
     }
     start = new Date(`${bounds.effectiveFrom}T00:00:00.000Z`);
@@ -51,7 +52,7 @@ export const servicePeriodWindow = (
       day: "numeric",
       timeZone: "UTC",
     })}`;
-  } else {
+  } else if (period === "monthly") {
     start = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), 1));
     endExclusive = new Date(
       Date.UTC(day.getUTCFullYear(), day.getUTCMonth() + 1, 1),
@@ -61,8 +62,21 @@ export const servicePeriodWindow = (
       year: "numeric",
       timeZone: "UTC",
     });
+  } else if (period === "quarterly") {
+    const quarterStartMonth = Math.floor(day.getUTCMonth() / 3) * 3;
+    start = new Date(Date.UTC(day.getUTCFullYear(), quarterStartMonth, 1));
+    endExclusive = new Date(
+      Date.UTC(day.getUTCFullYear(), quarterStartMonth + 3, 1),
+    );
+    label = `Q${Math.floor(quarterStartMonth / 3) + 1} ${day.getUTCFullYear()}`;
+  } else if (period === "yearly") {
+    start = new Date(Date.UTC(day.getUTCFullYear(), 0, 1));
+    endExclusive = new Date(Date.UTC(day.getUTCFullYear() + 1, 0, 1));
+    label = String(day.getUTCFullYear());
+  } else {
+    throw new Error(`Unsupported service frequency period: ${period}`);
   }
-  if (period !== "reporting_period") {
+  if (period !== "custom" && period !== "reporting_period") {
     if (bounds.effectiveFrom && bounds.effectiveFrom > dateString(start)) {
       start = new Date(`${bounds.effectiveFrom}T00:00:00.000Z`);
     }

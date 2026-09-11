@@ -14,6 +14,12 @@ import type { SessionSessionMode } from './sessionSessionMode';
 export interface Session {
   id: number;
   childId: number;
+  /** @nullable */
+  serviceRequirementId: number | null;
+  /** @nullable */
+  serviceName: string | null;
+  /** @nullable */
+  serviceType: string | null;
   durationSeconds: number;
   gestalts: SessionGestalt[];
   clinicalObservations: string;

@@ -178,6 +178,56 @@ export const childCareTeamMembershipsTable = pgTable(
   ],
 );
 
+export const iepServiceRequirementsTable = pgTable(
+  "iep_service_requirements",
+  {
+    id: serial("id").primaryKey(),
+    organizationId: integer("organization_id")
+      .notNull()
+      .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    childId: integer("child_id")
+      .notNull()
+      .references(() => childProfilesTable.id, { onDelete: "restrict" }),
+    serviceType: text("service_type").notNull().default("individual"),
+    serviceName: text("service_name").notNull(),
+    normalizedServiceName: text("normalized_service_name").notNull(),
+    requiredSessions: integer("required_sessions").notNull(),
+    requiredMinutes: integer("required_minutes").notNull(),
+    sessionDurationMinutes: integer("session_duration_minutes").notNull(),
+    period: text("period").notNull(),
+    customFrequencyDescription: text("custom_frequency_description"),
+    effectiveFrom: date("effective_from", { mode: "string" }).notNull(),
+    effectiveTo: date("effective_to", { mode: "string" }),
+    status: text("status").notNull().default("active"),
+    createdByUserId: text("created_by_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    updatedByUserId: text("updated_by_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    index("iep_service_requirements_child_service_idx").on(
+      table.organizationId,
+      table.childId,
+      table.serviceType,
+      table.effectiveFrom,
+    ),
+    index("iep_service_requirements_child_status_idx").on(
+      table.organizationId,
+      table.childId,
+      table.status,
+    ),
+  ],
+);
+
 export const clinicalGestaltsTable = pgTable(
   "clinical_gestalts",
   {
@@ -327,6 +377,10 @@ export const therapySessionsTable = pgTable(
     childId: integer("child_id")
       .notNull()
       .references(() => childProfilesTable.id, { onDelete: "restrict" }),
+    serviceRequirementId: integer("service_requirement_id").references(
+      () => iepServiceRequirementsTable.id,
+      { onDelete: "restrict" },
+    ),
     sessionMode: text("session_mode").notNull().default("recorded"),
     sessionDate: date("session_date", { mode: "string" })
       .notNull()
@@ -356,6 +410,11 @@ export const therapySessionsTable = pgTable(
       table.organizationId,
       table.childId,
       table.createdAt,
+    ),
+    index("therapy_sessions_service_date_idx").on(
+      table.organizationId,
+      table.serviceRequirementId,
+      table.sessionDate,
     ),
   ],
 );
@@ -521,6 +580,9 @@ export const insertChildProfileSchema = createInsertSchema(
 export const insertChildCareTeamMembershipSchema = createInsertSchema(
   childCareTeamMembershipsTable,
 ).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertIepServiceRequirementSchema = createInsertSchema(
+  iepServiceRequirementsTable,
+).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertClinicalGestaltSchema = createInsertSchema(
   clinicalGestaltsTable,
 ).omit({ id: true, createdAt: true, updatedAt: true });
@@ -553,6 +615,8 @@ export type InsertChildProfile = z.infer<typeof insertChildProfileSchema>;
 export type InsertChildCareTeamMembership = z.infer<
   typeof insertChildCareTeamMembershipSchema
 >;
+export type IepServiceRequirement =
+  typeof iepServiceRequirementsTable.$inferSelect;
 export type InsertClinicalGestalt = z.infer<typeof insertClinicalGestaltSchema>;
 export type InsertClinicalObservation = z.infer<
   typeof insertClinicalObservationSchema

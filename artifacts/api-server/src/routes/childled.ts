@@ -597,6 +597,9 @@ type RecordingConsent = {
 type SavedSession = {
   id: number;
   childId: number;
+  serviceRequirementId?: number | null;
+  serviceName?: string | null;
+  serviceType?: string | null;
   durationSeconds: number;
   gestalts: SessionGestalt[];
   gestaltIds: number[];
@@ -1203,7 +1206,13 @@ const sessionResponse = (session: SavedSession) => {
     transcriptionId: _transcriptionId,
     ...response
   } = session;
-  return { ...response, consent: session.consent ?? null };
+  return {
+    ...response,
+    serviceRequirementId: session.serviceRequirementId ?? null,
+    serviceName: session.serviceName ?? null,
+    serviceType: session.serviceType ?? null,
+    consent: session.consent ?? null,
+  };
 };
 
 type CareTeamActor = ResolvedCareTeamActor;
@@ -4785,6 +4794,7 @@ const communicationGoalSnapshot = (
 
 type ServiceSessionDelivery = {
   childId: number;
+  serviceRequirementId: number | null;
   sessionDate: string;
   durationSeconds: number;
 };
@@ -4800,6 +4810,7 @@ const serviceRequirementResponseFromSessions = (
   const completedSessions = sessions.filter(
     (session) =>
       session.childId === requirement.childId &&
+      session.serviceRequirementId === requirement.id &&
       session.sessionDate >= window.start &&
       session.sessionDate < window.endExclusive,
   );
@@ -4822,11 +4833,13 @@ const serviceRequirementResponseFromSessions = (
   return {
     id: requirement.id,
     childId: requirement.childId,
+    serviceType: requirement.serviceType,
     serviceName: requirement.serviceName,
     requiredSessions: requirement.requiredSessions,
     requiredMinutes: requirement.requiredMinutes,
     sessionDurationMinutes: requirement.sessionDurationMinutes,
     period: requirement.period,
+    customFrequencyDescription: requirement.customFrequencyDescription,
     effectiveFrom: requirement.effectiveFrom,
     effectiveTo: requirement.effectiveTo,
     periodLabel: window.label,
@@ -4851,6 +4864,7 @@ const serviceRequirementResponse = async (
   const sessions = await db
     .select({
       childId: therapySessionsTable.childId,
+      serviceRequirementId: therapySessionsTable.serviceRequirementId,
       sessionDate: therapySessionsTable.sessionDate,
       durationSeconds: therapySessionsTable.durationSeconds,
     })
@@ -4859,6 +4873,7 @@ const serviceRequirementResponse = async (
       and(
         eq(therapySessionsTable.organizationId, requirement.organizationId),
         eq(therapySessionsTable.childId, requirement.childId),
+        eq(therapySessionsTable.serviceRequirementId, requirement.id),
         isNull(therapySessionsTable.archivedAt),
         gte(therapySessionsTable.sessionDate, window.start),
         lt(therapySessionsTable.sessionDate, window.endExclusive),
@@ -4917,6 +4932,7 @@ const activeServiceRequirementsForChildren = async (
   const sessions = await db
     .select({
       childId: therapySessionsTable.childId,
+      serviceRequirementId: therapySessionsTable.serviceRequirementId,
       sessionDate: therapySessionsTable.sessionDate,
       durationSeconds: therapySessionsTable.durationSeconds,
     })
@@ -4948,6 +4964,51 @@ const activeServiceRequirementsFor = async (
     [childId],
   );
   return requirements.get(childId) ?? [];
+};
+
+const serviceTypeLabels = {
+  individual: "Individual",
+  group: "Group",
+  co_treat: "Co-Treat",
+  co_treat_ot: "Co-Treat OT",
+  co_treat_pt: "Co-Treat PT",
+  integrated_group: "Integrated Group",
+  consult: "Consult",
+  assistive_technology: "Assistive Technology Services",
+} as const;
+
+const activeServiceForSession = async ({
+  organizationId,
+  childId,
+  serviceRequirementId,
+  sessionDate,
+}: {
+  organizationId: number;
+  childId: number;
+  serviceRequirementId: number;
+  sessionDate: string;
+}) => {
+  const [service] = await db
+    .select()
+    .from(iepServiceRequirementsTable)
+    .where(
+      and(
+        eq(iepServiceRequirementsTable.id, serviceRequirementId),
+        eq(iepServiceRequirementsTable.organizationId, organizationId),
+        eq(iepServiceRequirementsTable.childId, childId),
+        eq(iepServiceRequirementsTable.status, "active"),
+        gte(
+          sql`${sessionDate}::date`,
+          iepServiceRequirementsTable.effectiveFrom,
+        ),
+        or(
+          isNull(iepServiceRequirementsTable.effectiveTo),
+          gte(iepServiceRequirementsTable.effectiveTo, sessionDate),
+        ),
+      ),
+    )
+    .limit(1);
+  return service;
 };
 
 /**
@@ -16172,6 +16233,27 @@ router.get("/iep-service-requirements", async (req, res) => {
   if (!requireChildAccess(req, res, query.data.childId)) return;
   const actor = requireClinician(req, res);
   if (!actor?.organizationId) return;
+  if (query.data.includeInactive) {
+    const services = await db
+      .select()
+      .from(iepServiceRequirementsTable)
+      .where(
+        and(
+          eq(iepServiceRequirementsTable.organizationId, actor.organizationId),
+          eq(iepServiceRequirementsTable.childId, query.data.childId),
+          eq(iepServiceRequirementsTable.status, "active"),
+        ),
+      )
+      .orderBy(
+        desc(iepServiceRequirementsTable.effectiveFrom),
+        iepServiceRequirementsTable.serviceName,
+      );
+    return res.json(
+      ListIepServiceRequirementsResponse.parse(
+        await Promise.all(services.map(serviceRequirementResponse)),
+      ),
+    );
+  }
   return res.json(
     ListIepServiceRequirementsResponse.parse(
       await activeServiceRequirementsFor(
@@ -16196,9 +16278,14 @@ router.put("/iep-service-requirements", async (req, res) => {
     : null;
   if (effectiveTo && effectiveTo < effectiveFrom)
     return fail(res, "The service end date cannot be before its start date.");
-  if (body.data.period === "reporting_period" && !effectiveTo)
-    return fail(res, "A reporting period requires an end date.");
-  const serviceName = body.data.serviceName.trim();
+  if (body.data.period === "custom" && !effectiveTo)
+    return fail(res, "A custom frequency requires an end date.");
+  if (
+    body.data.period === "custom" &&
+    !body.data.customFrequencyDescription?.trim()
+  )
+    return fail(res, "Describe how the custom service frequency is scheduled.");
+  const serviceName = serviceTypeLabels[body.data.serviceType];
   if (
     !Number.isInteger(body.data.requiredSessions) ||
     !Number.isInteger(body.data.requiredMinutes) ||
@@ -16208,14 +16295,16 @@ router.put("/iep-service-requirements", async (req, res) => {
       res,
       "Service requirements must use whole sessions and minutes.",
     );
-  const normalizedServiceName = serviceName.toLocaleLowerCase();
   const requirementValues = {
     serviceName,
-    normalizedServiceName,
+    normalizedServiceName: body.data.serviceType,
+    serviceType: body.data.serviceType,
     requiredSessions: Math.round(body.data.requiredSessions),
     requiredMinutes: Math.round(body.data.requiredMinutes),
     sessionDurationMinutes: Math.round(body.data.sessionDurationMinutes),
     period: body.data.period,
+    customFrequencyDescription:
+      body.data.customFrequencyDescription?.trim() || null,
     effectiveFrom,
     effectiveTo,
     status: "active",
@@ -16244,15 +16333,6 @@ router.put("/iep-service-requirements", async (req, res) => {
           childId: query.data.childId,
           ...requirementValues,
           createdByUserId: actor.userId,
-        })
-        .onConflictDoUpdate({
-          target: [
-            iepServiceRequirementsTable.organizationId,
-            iepServiceRequirementsTable.childId,
-            iepServiceRequirementsTable.normalizedServiceName,
-            iepServiceRequirementsTable.effectiveFrom,
-          ],
-          set: requirementValues,
         })
         .returning();
   if (!requirement)
@@ -16325,6 +16405,18 @@ router.post("/manual-sessions", async (req, res) => {
   if (!requireChildAccess(req, res, query.data.childId)) return;
   const actor = requireClinician(req, res);
   if (!actor?.organizationId) return;
+  const sessionDate = dateString(body.data.sessionDate);
+  const service = await activeServiceForSession({
+    organizationId: actor.organizationId,
+    childId: query.data.childId,
+    serviceRequirementId: body.data.serviceRequirementId,
+    sessionDate,
+  });
+  if (!service)
+    return fail(
+      res,
+      "Choose an active service for this child and session date.",
+    );
   const goalIds = body.data.goals.map((goal) => goal.goalId);
   if (new Set(goalIds).size !== goalIds.length)
     return fail(res, "Each IEP goal can be included only once per session.");
@@ -16390,7 +16482,6 @@ router.post("/manual-sessions", async (req, res) => {
   const endedAt = body.data.endedAt ?? null;
   if (startedAt && endedAt && endedAt.getTime() < startedAt.getTime())
     return fail(res, "Session end time cannot be before its start time.");
-  const sessionDate = dateString(body.data.sessionDate);
   const goalById = new Map(activeGoals.map((goal) => [goal.id, goal]));
   const saved = await db.transaction(async (transaction) => {
     const [session] = await transaction
@@ -16398,6 +16489,7 @@ router.post("/manual-sessions", async (req, res) => {
       .values({
         organizationId: actor.organizationId!,
         childId: query.data.childId,
+        serviceRequirementId: service.id,
         sessionMode: "manual",
         sessionDate,
         startedAt,
@@ -16451,6 +16543,9 @@ router.post("/manual-sessions", async (req, res) => {
     CreateManualSessionResponse.parse({
       id: saved.session.id,
       childId: saved.session.childId,
+      serviceRequirementId: saved.session.serviceRequirementId,
+      serviceName: service.serviceName,
+      serviceType: service.serviceType,
       durationSeconds: saved.session.durationSeconds,
       gestalts: [],
       clinicalObservations: saved.session.clinicalObservations,
@@ -16557,6 +16652,26 @@ router.get("/sessions", async (req, res) => {
         ...(progressBySession.get(progress.sessionId) ?? []),
         progress,
       ]);
+    const serviceIds = [
+      ...new Set(
+        rows
+          .map((row) => row.serviceRequirementId)
+          .filter((id): id is number => id !== null),
+      ),
+    ];
+    const services = serviceIds.length
+      ? await db
+          .select({
+            id: iepServiceRequirementsTable.id,
+            serviceName: iepServiceRequirementsTable.serviceName,
+            serviceType: iepServiceRequirementsTable.serviceType,
+          })
+          .from(iepServiceRequirementsTable)
+          .where(inArray(iepServiceRequirementsTable.id, serviceIds))
+      : [];
+    const serviceById = new Map(
+      services.map((service) => [service.id, service]),
+    );
     const authorIds = [...new Set(rows.map((row) => row.createdByUserId))];
     const sessionAuthors = authorIds.length
       ? await db
@@ -16571,6 +16686,13 @@ router.get("/sessions", async (req, res) => {
       rows.map((row) => ({
         id: row.id,
         childId: row.childId,
+        serviceRequirementId: row.serviceRequirementId,
+        serviceName: row.serviceRequirementId
+          ? (serviceById.get(row.serviceRequirementId)?.serviceName ?? null)
+          : null,
+        serviceType: row.serviceRequirementId
+          ? (serviceById.get(row.serviceRequirementId)?.serviceType ?? null)
+          : null,
         durationSeconds: row.durationSeconds,
         gestalts: (phrasesBySession.get(row.id) ?? []).map((phrase) => ({
           phrase: phrase.phrase,
@@ -19917,6 +20039,20 @@ router.post("/sessions", async (req, res) => {
     return res
       .status(403)
       .json({ error: "Only an SLP can save a reviewed therapy session." });
+  const sessionDate = dateString(new Date());
+  const service = actor.organizationId
+    ? await activeServiceForSession({
+        organizationId: actor.organizationId,
+        childId: query.data.childId,
+        serviceRequirementId: body.data.serviceRequirementId,
+        sessionDate,
+      })
+    : undefined;
+  if (actor.organizationId && !service)
+    return fail(
+      res,
+      "Choose an active service for this child before saving the session.",
+    );
   if (!body.data.consentConfirmed)
     return fail(
       res,
@@ -20290,6 +20426,7 @@ router.post("/sessions", async (req, res) => {
           .values({
             organizationId: actor.organizationId!,
             childId: query.data.childId,
+            serviceRequirementId: service!.id,
             durationSeconds: body.data.durationSeconds,
             clinicalObservations: body.data.clinicalObservations,
             nextSteps: body.data.nextSteps,
@@ -20629,6 +20766,9 @@ router.post("/sessions", async (req, res) => {
     const response: SavedSession = {
       id: saved.session.id,
       childId: saved.session.childId,
+      serviceRequirementId: saved.session.serviceRequirementId,
+      serviceName: service!.serviceName,
+      serviceType: service!.serviceType,
       durationSeconds: saved.session.durationSeconds,
       gestalts: body.data.gestalts,
       gestaltIds: saved.dictionaryGestalts.map((phrase) => phrase.id),
@@ -20772,6 +20912,9 @@ router.post("/sessions", async (req, res) => {
   const session: SavedSession = {
     id,
     childId: query.data.childId,
+    serviceRequirementId: body.data.serviceRequirementId,
+    serviceName: null,
+    serviceType: null,
     durationSeconds: body.data.durationSeconds,
     gestalts: body.data.gestalts,
     gestaltIds: body.data.gestalts.map(() => sessionStore.nextGestaltId++),
