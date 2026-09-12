@@ -10,6 +10,8 @@ import type { TeamMember } from './teamMember';
 
 export interface Child {
   id: number;
+  /** @pattern ^CLID-[A-Z0-9]{6}$ */
+  childLedId: string;
   name: string;
   firstName: string;
   lastName: string;

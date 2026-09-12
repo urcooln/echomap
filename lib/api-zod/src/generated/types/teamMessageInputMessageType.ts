@@ -12,5 +12,4 @@ export type TeamMessageInputMessageType = typeof TeamMessageInputMessageType[key
 export const TeamMessageInputMessageType = {
   message: 'message',
   question: 'question',
-  notification: 'notification',
 } as const;

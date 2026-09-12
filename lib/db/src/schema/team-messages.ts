@@ -14,6 +14,7 @@ import {
   organizationsTable,
   usersTable,
 } from "./core-domain";
+import { teamConversationsTable } from "./team-conversations";
 
 export const teamMessagesTable = pgTable(
   "team_messages",
@@ -25,6 +26,10 @@ export const teamMessagesTable = pgTable(
     childId: integer("child_id")
       .notNull()
       .references(() => childProfilesTable.id, { onDelete: "restrict" }),
+    conversationId: integer("conversation_id").references(
+      () => teamConversationsTable.id,
+      { onDelete: "cascade" },
+    ),
     senderUserId: text("sender_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
@@ -47,6 +52,10 @@ export const teamMessagesTable = pgTable(
       table.createdAt,
     ),
     index("team_messages_sender_idx").on(table.senderUserId),
+    index("team_messages_conversation_created_idx").on(
+      table.conversationId,
+      table.createdAt,
+    ),
     index("team_messages_recipient_created_idx").on(
       table.recipientUserId,
       table.createdAt,

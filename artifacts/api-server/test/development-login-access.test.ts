@@ -6,6 +6,7 @@ import {
   hasValidDevelopmentAccessKey,
   recordDevelopmentLoginFailure,
 } from "../src/lib/development-login-access";
+import { canAttachDevelopmentDemoActor } from "../src/lib/development-demo-actor";
 
 test("accepts only the configured development access key", () => {
   assert.equal(
@@ -48,4 +49,25 @@ test("a successful development login clears failed attempts", () => {
 
   clearDevelopmentLoginFailures(clientId);
   assert.equal(developmentLoginRetryAfterSeconds(clientId, now), 0);
+});
+
+test("a Clerk-authenticated browser never falls back to the development actor", () => {
+  assert.equal(
+    canAttachDevelopmentDemoActor({
+      demoEnabled: true,
+      hasChildledActor: false,
+      clerkUserId: "user_clerk",
+      demoCookie: "active",
+    }),
+    false,
+  );
+  assert.equal(
+    canAttachDevelopmentDemoActor({
+      demoEnabled: true,
+      hasChildledActor: false,
+      clerkUserId: null,
+      demoCookie: "active",
+    }),
+    true,
+  );
 });

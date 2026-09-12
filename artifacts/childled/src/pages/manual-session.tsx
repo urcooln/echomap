@@ -35,6 +35,7 @@ type TimerStatus = "idle" | "running" | "paused" | "ended";
 type StoredTimer = {
   childId: number;
   serviceRequirementId: number | null;
+  makeupForSessionId?: number | null;
   status: TimerStatus;
   accumulatedSeconds: number;
   runningSince: number | null;
@@ -54,9 +55,11 @@ type GoalEntry = {
 const emptyTimer = (
   childId: number,
   serviceRequirementId: number | null = null,
+  makeupForSessionId: number | null = null,
 ): StoredTimer => ({
   childId,
   serviceRequirementId,
+  makeupForSessionId,
   status: "idle",
   accumulatedSeconds: 0,
   runningSince: null,
@@ -108,11 +111,13 @@ export function ManualSessionTrackingPage({
   children,
   initialChildId,
   initialServiceId,
+  initialMakeupForSessionId,
   onSaved,
 }: {
   children: Child[];
   initialChildId?: number;
   initialServiceId?: number;
+  initialMakeupForSessionId?: number;
   onSaved?: (session: Session) => void;
 }) {
   const [, setLocation] = useLocation();
@@ -125,7 +130,11 @@ export function ManualSessionTrackingPage({
   >(initialServiceId);
   const child = children.find((item) => item.id === childId);
   const [timer, setTimer] = useState<StoredTimer>(() =>
-    emptyTimer(childId, initialServiceId ?? null),
+    emptyTimer(
+      childId,
+      initialServiceId ?? null,
+      initialMakeupForSessionId ?? null,
+    ),
   );
   const [hydratedTimerChildId, setHydratedTimerChildId] = useState(0);
   const [clock, setClock] = useState(Date.now());
@@ -173,7 +182,13 @@ export function ManualSessionTrackingPage({
     if (!childId) return;
     const stored = window.localStorage.getItem(timerStorageKey(childId));
     if (!stored) {
-      setTimer(emptyTimer(childId, serviceRequirementId ?? null));
+      setTimer(
+        emptyTimer(
+          childId,
+          serviceRequirementId ?? null,
+          initialMakeupForSessionId ?? null,
+        ),
+      );
       setDurationSeconds(0);
       setDurationEdited(false);
       setHydratedTimerChildId(childId);
@@ -182,6 +197,11 @@ export function ManualSessionTrackingPage({
     try {
       const parsed = JSON.parse(stored) as StoredTimer;
       if (parsed.childId !== childId) throw new Error("Timer child mismatch");
+      if (
+        (parsed.makeupForSessionId ?? null) !==
+        (initialMakeupForSessionId ?? null)
+      )
+        throw new Error("Timer session type mismatch");
       if (parsed.serviceRequirementId)
         setServiceRequirementId(parsed.serviceRequirementId);
       setTimer(parsed);
@@ -191,7 +211,13 @@ export function ManualSessionTrackingPage({
       setHydratedTimerChildId(childId);
     } catch {
       window.localStorage.removeItem(timerStorageKey(childId));
-      setTimer(emptyTimer(childId, serviceRequirementId ?? null));
+      setTimer(
+        emptyTimer(
+          childId,
+          serviceRequirementId ?? null,
+          initialMakeupForSessionId ?? null,
+        ),
+      );
       setHydratedTimerChildId(childId);
     }
   }, [childId]);
@@ -288,7 +314,13 @@ export function ManualSessionTrackingPage({
   };
 
   const resetTimer = () => {
-    updateTimer(emptyTimer(childId, serviceRequirementId ?? null));
+    updateTimer(
+      emptyTimer(
+        childId,
+        serviceRequirementId ?? null,
+        initialMakeupForSessionId ?? null,
+      ),
+    );
     setDurationSeconds(0);
     setDurationEdited(false);
   };
@@ -383,6 +415,7 @@ export function ManualSessionTrackingPage({
         params: { childId },
         data: {
           serviceRequirementId,
+          makeupForSessionId: initialMakeupForSessionId ?? null,
           sessionDate,
           startedAt: timer.startedAt,
           endedAt: timer.endedAt,
@@ -429,8 +462,9 @@ export function ManualSessionTrackingPage({
           </span>
           <h1 className="serif mt-5 text-3xl font-semibold">Session saved</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            {child?.name}&apos;s manual session and IEP goal data are now in
-            session history.
+            {child?.name}&apos;s{" "}
+            {initialMakeupForSessionId ? "makeup" : "manual"} session and IEP
+            goal data are now in session history.
           </p>
           <Button
             className="mt-6 min-h-12"
@@ -445,6 +479,15 @@ export function ManualSessionTrackingPage({
 
   return (
     <main className="mx-auto max-w-6xl space-y-6 py-4 animate-rise">
+      {initialMakeupForSessionId ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-bold">Makeup session</p>
+          <p className="mt-1 leading-5">
+            Saving this completed session will link it to missed session #
+            {initialMakeupForSessionId}.
+          </p>
+        </div>
+      ) : null}
       <header className="flex flex-wrap items-center justify-between gap-4 px-1">
         <div>
           <Button

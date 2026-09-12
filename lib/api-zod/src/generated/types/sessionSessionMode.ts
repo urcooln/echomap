@@ -12,4 +12,5 @@ export type SessionSessionMode = typeof SessionSessionMode[keyof typeof SessionS
 export const SessionSessionMode = {
   recorded: 'recorded',
   manual: 'manual',
+  missed: 'missed',
 } as const;

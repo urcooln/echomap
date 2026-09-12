@@ -20,7 +20,15 @@ export const privacyPolicySections = [
   {
     title: 'Data deletion requests',
     body: 'Authorized parents, guardians, and care-team members can submit a child-scoped deletion request from the child profile. Select the records to review, and an authorized staff member will document the decision. Consent confirmations and deletion-request audit records are retained as immutable accountability records.',
-    link: { href: '/children', label: 'Open the child profile privacy request form' },
+    link: {
+      href: '/children',
+      label: 'Open the child profile privacy request form',
+    },
+  },
+  {
+    id: 'student-data-confidentiality',
+    title: 'Student data and confidentiality',
+    body: 'Student information may only be accessed and used for authorized educational or therapeutic purposes. Users must follow their school or organization’s confidentiality, access, retention, and disclosure requirements.',
   },
   {
     title: 'Information sharing',
@@ -46,15 +54,22 @@ export const termsOfUseSections = [
     body: 'ChildLed does not replace the judgment of a licensed professional, individualized assessment, diagnosis, treatment plan, or emergency services. Users remain responsible for appropriate professional consultation.',
   },
   {
-    title: 'User responsibilities',
-    body: 'Users must provide accurate information, protect their access credentials, invite only authorized care-team members, and follow applicable privacy, education, and healthcare obligations.',
+    id: 'account-security',
+    title: 'Account security',
+    body: 'Users must provide accurate information, protect their access credentials, never share an account, invite only authorized care-team members, and prevent unauthorized individuals from accessing student information.',
   },
   {
     title: 'Data ownership',
     body: 'Placeholder: Explain who controls uploaded child information, observations, and recordings; how authorized users can access or export them; and what happens when an account closes.',
   },
   {
+    id: 'recording-authorization',
     title: 'Consent requirements',
-    body: 'Users must confirm legal authority before creating a child profile and must obtain any separate permissions required before recording or processing audio.',
+    body: 'Users are responsible for ensuring that all required school, parent or guardian, and other applicable authorizations are in place before recording or uploading a student’s voice or other protected information.',
+  },
+  {
+    id: 'ai-assisted-output',
+    title: 'AI-assisted output',
+    body: 'ChildLed may use AI-assisted tools for transcripts, notes, summaries, classifications, or suggestions. These outputs may contain errors and must be reviewed for accuracy before professional use.',
   },
 ];

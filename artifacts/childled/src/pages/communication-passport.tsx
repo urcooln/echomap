@@ -250,7 +250,7 @@ function PassportDocument({
         year: "numeric",
       })
     : "Not saved yet";
-  const personName = content.preferredName || content.childName;
+  const personName = content.childName;
   const communication = [content.wantsAndNeeds, ...content.gestures].filter(
     Boolean,
   );
@@ -271,9 +271,10 @@ function PassportDocument({
           {personName}
         </h1>
         {content.preferredName &&
-        content.preferredName !== content.childName ? (
+        content.preferredName.toLocaleLowerCase() !==
+          content.childName.split(/\s+/)[0]?.toLocaleLowerCase() ? (
           <p className="mt-1 text-sm text-neutral-700">
-            Full name: {content.childName}
+            Preferred name: {content.preferredName}
           </p>
         ) : null}
         <p className="mt-2 text-xs text-neutral-600">
@@ -676,12 +677,12 @@ export function CommunicationPassportPage({ childId }: { childId: number }) {
         <div className="communication-passport-screen mx-auto max-w-3xl space-y-5 rounded-md border border-border bg-card p-4 sm:p-6">
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="space-y-2 text-sm font-medium">
-              Child name
+              Passport name
               <Input
                 value={draft.childName}
                 maxLength={160}
-                className="mt-2 min-h-11"
-                onChange={(event) => update("childName", event.target.value)}
+                readOnly
+                className="mt-2 min-h-11 bg-muted/50"
               />
             </label>
             <label className="space-y-2 text-sm font-medium">
@@ -689,10 +690,8 @@ export function CommunicationPassportPage({ childId }: { childId: number }) {
               <Input
                 value={draft.preferredName}
                 maxLength={160}
-                className="mt-2 min-h-11"
-                onChange={(event) =>
-                  update("preferredName", event.target.value)
-                }
+                readOnly
+                className="mt-2 min-h-11 bg-muted/50"
               />
             </label>
           </div>

@@ -10,6 +10,8 @@ import type { ManualSessionInputDurationSource } from './manualSessionInputDurat
 
 export interface ManualSessionInput {
   serviceRequirementId: number;
+  /** @nullable */
+  makeupForSessionId?: number | null;
   sessionDate: Date;
   /** @nullable */
   startedAt?: Date | null;

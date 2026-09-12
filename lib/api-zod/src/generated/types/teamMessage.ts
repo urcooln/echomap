@@ -10,8 +10,11 @@ import type { TeamMessageMessageType } from './teamMessageMessageType';
 
 export interface TeamMessage {
   id: number;
+  /** @nullable */
+  conversationId: number | null;
   childId: number;
   childName: string;
+  senderUserId: string;
   senderName: string;
   senderRole: string;
   messageType: TeamMessageMessageType;

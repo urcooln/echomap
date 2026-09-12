@@ -7,6 +7,7 @@ import {
   authReturnPathStorageKey,
   consumeAuthLogout,
   consumeAuthReturnPath,
+  isRoleRestrictedPath,
   markAuthLogout,
   rememberAuthReturnPath,
   roleOverviewPath,
@@ -65,6 +66,65 @@ describe('role-specific overview routing', () => {
     assert.equal(roleOverviewPath('PT'), '/pt-overview');
     assert.equal(roleOverviewPath('BCBA'), '/bcba-overview');
     assert.equal(roleOverviewPath('Unknown'), undefined);
+  });
+});
+
+describe('role-specific route authorization', () => {
+  test('an SLP cannot open Teacher, Parent, Administrator, or owner portals', () => {
+    for (const path of [
+      '/teacher-overview',
+      '/family-overview',
+      '/admin-overview',
+      '/teacher-resources',
+      '/family-resources',
+      '/students',
+      '/ux-testing',
+    ]) {
+      assert.equal(isRoleRestrictedPath({ path, role: 'SLP' }), true, path);
+    }
+    assert.equal(
+      isRoleRestrictedPath({ path: '/overview', role: 'SLP' }),
+      false,
+    );
+  });
+
+  test('Teacher and Parent accounts stay in their own role portals', () => {
+    assert.equal(
+      isRoleRestrictedPath({ path: '/teacher-overview', role: 'Teacher' }),
+      false,
+    );
+    assert.equal(
+      isRoleRestrictedPath({ path: '/overview', role: 'Teacher' }),
+      true,
+    );
+    assert.equal(
+      isRoleRestrictedPath({ path: '/family-overview', role: 'Parent' }),
+      false,
+    );
+    assert.equal(
+      isRoleRestrictedPath({ path: '/teacher-overview', role: 'Parent' }),
+      true,
+    );
+  });
+
+  test('only an explicit Super Admin can open owner testing tools', () => {
+    assert.equal(
+      isRoleRestrictedPath({
+        path: '/ux-testing',
+        role: 'Administrator',
+        isAdmin: true,
+      }),
+      true,
+    );
+    assert.equal(
+      isRoleRestrictedPath({
+        path: '/ux-testing',
+        role: 'Administrator',
+        isAdmin: true,
+        isSuperAdmin: true,
+      }),
+      false,
+    );
   });
 });
 

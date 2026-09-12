@@ -242,33 +242,20 @@ test("a parent observation notifies only assigned SLPs and rejects parent video 
 
     const firstSlpInbox = await request(firstSlp, "/team-inbox");
     assert.equal(firstSlpInbox.status, 200);
-    assert.equal(firstSlpInbox.body.totalUnread, 1);
-    assert.equal(firstSlpInbox.body.messages.length, 1);
-    assert.equal(firstSlpInbox.body.messages[0].senderRole, "Parent");
-    assert.equal(firstSlpInbox.body.messages[0].childName, "Johnny Smith");
+    assert.equal(firstSlpInbox.body.totalUnread, 0);
+    assert.deepEqual(firstSlpInbox.body.conversations, []);
+    assert.deepEqual(firstSlpInbox.body.messages, []);
 
     const secondSlpInbox = await request(secondSlp, "/team-inbox");
     assert.equal(secondSlpInbox.status, 200);
-    assert.equal(secondSlpInbox.body.totalUnread, 1);
-    assert.equal(secondSlpInbox.body.messages.length, 1);
+    assert.equal(secondSlpInbox.body.totalUnread, 0);
+    assert.deepEqual(secondSlpInbox.body.conversations, []);
+    assert.deepEqual(secondSlpInbox.body.messages, []);
 
     const teacherInbox = await request(teacher, "/team-inbox");
     assert.equal(teacherInbox.status, 200);
     assert.equal(teacherInbox.body.totalUnread, 0);
     assert.deepEqual(teacherInbox.body.messages, []);
-
-    const unauthorizedRead = await jsonRequest(teacher, "/team-inbox/read", {
-      messageIds: [firstSlpInbox.body.messages[0].id],
-    });
-    assert.equal(unauthorizedRead.status, 403);
-
-    const markedRead = await jsonRequest(firstSlp, "/team-inbox/read", {
-      messageIds: [firstSlpInbox.body.messages[0].id],
-    });
-    assert.deepEqual(markedRead, { status: 200, body: { updated: 1 } });
-    const readInbox = await request(firstSlp, "/team-inbox");
-    assert.equal(readInbox.body.totalUnread, 0);
-    assert.equal(readInbox.body.messages[0].read, true);
 
     const parentVideoUpload = await jsonRequest(
       parent,

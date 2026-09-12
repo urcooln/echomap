@@ -13,7 +13,13 @@ import {
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { childProfilesTable, organizationsTable, usersTable } from "./core-domain";
+import {
+  childProfilesTable,
+  iepServiceRequirementsTable,
+  organizationsTable,
+  therapySessionsTable,
+  usersTable,
+} from "./core-domain";
 
 export const sessionTranscriptsTable = pgTable(
   "session_transcripts",
@@ -22,22 +28,49 @@ export const sessionTranscriptsTable = pgTable(
     childId: integer("child_id").notNull(),
     audioId: text("audio_id").notNull(),
     sessionId: integer("session_id"),
+    serviceRequirementId: integer("service_requirement_id").references(
+      () => iepServiceRequirementsTable.id,
+      { onDelete: "restrict" },
+    ),
+    makeupForSessionId: integer("makeup_for_session_id").references(
+      () => therapySessionsTable.id,
+      { onDelete: "restrict" },
+    ),
     createdBy: text("created_by").notNull(),
-    createdByUserId: text("created_by_user_id")
-      .references(() => usersTable.id, { onDelete: "restrict" }),
+    createdByUserId: text("created_by_user_id").references(
+      () => usersTable.id,
+      { onDelete: "restrict" },
+    ),
     status: text("status").notNull().default("processing"),
-    provider: text("provider").notNull().default("openai:gpt-4o-mini-transcribe"),
+    provider: text("provider")
+      .notNull()
+      .default("openai:gpt-4o-mini-transcribe"),
     rawTranscript: text("raw_transcript").notNull().default(""),
-    speakerSeparationStatus: text("speaker_separation_status").notNull().default("pending"),
-    speakerSeparationAttempt: integer("speaker_separation_attempt").notNull().default(0),
-    speakerSeparationStartedAt: timestamp("speaker_separation_started_at", { withTimezone: true }),
-    speakerSeparationCompletedAt: timestamp("speaker_separation_completed_at", { withTimezone: true }),
+    speakerSeparationStatus: text("speaker_separation_status")
+      .notNull()
+      .default("pending"),
+    speakerSeparationAttempt: integer("speaker_separation_attempt")
+      .notNull()
+      .default(0),
+    speakerSeparationStartedAt: timestamp("speaker_separation_started_at", {
+      withTimezone: true,
+    }),
+    speakerSeparationCompletedAt: timestamp("speaker_separation_completed_at", {
+      withTimezone: true,
+    }),
     speakerSeparationFailureCode: text("speaker_separation_failure_code"),
     speakerSeparationFailureMessage: text("speaker_separation_failure_message"),
     errorMessage: text("error_message"),
-    occurrenceAppliedAt: timestamp("occurrence_applied_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    occurrenceAppliedAt: timestamp("occurrence_applied_at", {
+      withTimezone: true,
+    }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("session_transcripts_audio_id_unique").on(table.audioId),
@@ -47,6 +80,8 @@ export const sessionTranscriptsTable = pgTable(
       table.sessionId,
       table.updatedAt,
     ),
+    index("session_transcripts_service_idx").on(table.serviceRequirementId),
+    index("session_transcripts_makeup_for_idx").on(table.makeupForSessionId),
   ],
 );
 
@@ -68,11 +103,18 @@ export const transcriptProvisionalPhrasesTable = pgTable(
     candidateKind: text("candidate_kind").notNull().default("potential_phrase"),
     disposition: text("disposition").notNull().default("pending"),
     workingMeaning: text("working_meaning"),
-    reviewedByUserId: text("reviewed_by_user_id")
-      .references(() => usersTable.id, { onDelete: "restrict" }),
+    reviewedByUserId: text("reviewed_by_user_id").references(
+      () => usersTable.id,
+      { onDelete: "restrict" },
+    ),
     reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     index("transcript_provisional_phrases_transcript_idx").on(
@@ -100,7 +142,9 @@ export const transcriptPhrasesTable = pgTable(
      * unassigned transcript material remains ineligible for clinical use.
      */
     attributedRole: text("attributed_role").notNull().default("unassigned"),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
     uniqueIndex("transcript_phrases_transcript_phrase_unique").on(
@@ -128,7 +172,9 @@ export const transcriptSpeakerSegmentsTable = pgTable(
     durationMilliseconds: integer("duration_milliseconds"),
     profileSignatureHash: text("profile_signature_hash"),
     speakerReviewed: boolean("speaker_reviewed").notNull().default(false),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
     uniqueIndex("transcript_speaker_segments_position_unique").on(
@@ -152,31 +198,46 @@ export const transcriptChildUtteranceReviewsTable = pgTable(
       .references(() => sessionTranscriptsTable.id, { onDelete: "cascade" }),
     segmentId: integer("segment_id")
       .notNull()
-      .references(() => transcriptSpeakerSegmentsTable.id, { onDelete: "cascade" }),
+      .references(() => transcriptSpeakerSegmentsTable.id, {
+        onDelete: "cascade",
+      }),
     disposition: text("disposition").notNull().default("pending"),
-    intelligibilityReviewStatus: text("intelligibility_review_status").notNull().default("pending"),
+    intelligibilityReviewStatus: text("intelligibility_review_status")
+      .notNull()
+      .default("pending"),
     context: text("context"),
     meaning: text("meaning"),
     interpretation: text("interpretation"),
     note: text("note"),
     crossSessionLabel: text("cross_session_label"),
     nlaStage: text("nla_stage"),
-    nlaStageAssignedByUserId: text("nla_stage_assigned_by_user_id")
-      .references(() => usersTable.id, { onDelete: "restrict" }),
+    nlaStageAssignedByUserId: text("nla_stage_assigned_by_user_id").references(
+      () => usersTable.id,
+      { onDelete: "restrict" },
+    ),
     nlaStageAssignedByRole: text("nla_stage_assigned_by_role"),
-    nlaStageAssignedAt: timestamp("nla_stage_assigned_at", { withTimezone: true }),
+    nlaStageAssignedAt: timestamp("nla_stage_assigned_at", {
+      withTimezone: true,
+    }),
     reviewedByUserId: text("reviewed_by_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("transcript_child_utterance_reviews_segment_unique").on(
       table.transcriptId,
       table.segmentId,
     ),
-    index("transcript_child_utterance_reviews_transcript_idx").on(table.transcriptId),
+    index("transcript_child_utterance_reviews_transcript_idx").on(
+      table.transcriptId,
+    ),
     check(
       "transcript_child_utterance_reviews_nla_stage_check",
       sql`${table.nlaStage} is null or ${table.nlaStage} in ('stage_0', 'stage_1', 'stage_2', 'stage_3', 'stage_4_plus')`,
@@ -191,7 +252,10 @@ export const childSpeakerRolesTable = pgTable(
     childId: integer("child_id").notNull(),
     speakerLabel: text("speaker_label").notNull(),
     role: text("role").notNull().default("unassigned"),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("child_speaker_roles_child_speaker_unique").on(
@@ -222,11 +286,18 @@ export const childSpeakerProfilesTable = pgTable(
     createdByUserId: text("created_by_user_id")
       .notNull()
       .references(() => usersTable.id, { onDelete: "restrict" }),
-    reviewedAt: timestamp("reviewed_at", { withTimezone: true }).notNull().defaultNow(),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
     lastMatchedAt: timestamp("last_matched_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("child_speaker_profiles_child_signature_unique").on(
@@ -254,7 +325,10 @@ export const transcriptSpeakerRolesTable = pgTable(
       .references(() => sessionTranscriptsTable.id, { onDelete: "cascade" }),
     speakerLabel: text("speaker_label").notNull(),
     role: text("role").notNull().default("unassigned"),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("transcript_speaker_roles_transcript_speaker_unique").on(
@@ -289,22 +363,31 @@ export const transcriptSpeakerRoleInferencesTable = pgTable(
     competingScore: integer("competing_score"),
     margin: integer("margin"),
     signalCount: integer("signal_count").notNull().default(0),
-    signalSummary: jsonb("signal_summary").$type<Array<Record<string, unknown>>>().notNull().default([]),
+    signalSummary: jsonb("signal_summary")
+      .$type<Array<Record<string, unknown>>>()
+      .notNull()
+      .default([]),
     inputFingerprint: text("input_fingerprint").notNull(),
     modelVersion: text("model_version").notNull(),
     featureVersion: text("feature_version").notNull(),
     confirmedRole: text("confirmed_role"),
-    confirmedByUserId: text("confirmed_by_user_id")
-      .references(() => usersTable.id, { onDelete: "restrict" }),
+    confirmedByUserId: text("confirmed_by_user_id").references(
+      () => usersTable.id,
+      { onDelete: "restrict" },
+    ),
     confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
-    uniqueIndex("transcript_speaker_role_inferences_transcript_label_unique").on(
-      table.transcriptId,
-      table.speakerLabel,
-    ),
+    uniqueIndex(
+      "transcript_speaker_role_inferences_transcript_label_unique",
+    ).on(table.transcriptId, table.speakerLabel),
     index("transcript_speaker_role_inferences_org_child_idx").on(
       table.organizationId,
       table.childId,
@@ -331,7 +414,10 @@ export const childSpeakerRoleLearningAggregatesTable = pgTable(
     featureKey: text("feature_key").notNull(),
     confirmedCount: integer("confirmed_count").notNull().default(0),
     modelVersion: text("model_version").notNull(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("child_speaker_role_learning_org_child_role_feature_unique").on(
@@ -357,8 +443,12 @@ export const childProfileConsentRecordsTable = pgTable(
     confirmedBy: text("confirmed_by").notNull(),
     statementVersion: text("statement_version").notNull(),
     statement: text("statement").notNull(),
-    confirmedAt: timestamp("confirmed_at", { withTimezone: true }).notNull().defaultNow(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
     index("child_profile_consent_records_child_id_idx").on(table.childId),
@@ -376,8 +466,13 @@ export const gestaltOccurrencesTable = pgTable(
     normalizedPhrase: text("normalized_phrase").notNull(),
     occurrenceCount: integer("occurrence_count").notNull().default(0),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (table) => [
     uniqueIndex("gestalt_occurrences_child_phrase_unique").on(
@@ -387,12 +482,16 @@ export const gestaltOccurrencesTable = pgTable(
   ],
 );
 
-export const insertSessionTranscriptSchema = createInsertSchema(sessionTranscriptsTable).omit({
+export const insertSessionTranscriptSchema = createInsertSchema(
+  sessionTranscriptsTable,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
-export const insertTranscriptPhraseSchema = createInsertSchema(transcriptPhrasesTable).omit({
+export const insertTranscriptPhraseSchema = createInsertSchema(
+  transcriptPhrasesTable,
+).omit({
   id: true,
   createdAt: true,
 });
@@ -416,11 +515,15 @@ export const insertTranscriptChildUtteranceReviewSchema = createInsertSchema(
   createdAt: true,
   updatedAt: true,
 });
-export const insertChildSpeakerRoleSchema = createInsertSchema(childSpeakerRolesTable).omit({
+export const insertChildSpeakerRoleSchema = createInsertSchema(
+  childSpeakerRolesTable,
+).omit({
   id: true,
   updatedAt: true,
 });
-export const insertChildSpeakerProfileSchema = createInsertSchema(childSpeakerProfilesTable).omit({
+export const insertChildSpeakerProfileSchema = createInsertSchema(
+  childSpeakerProfilesTable,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -450,38 +553,60 @@ export const insertChildProfileConsentRecordSchema = createInsertSchema(
   id: true,
   createdAt: true,
 });
-export const insertGestaltOccurrenceSchema = createInsertSchema(gestaltOccurrencesTable).omit({
+export const insertGestaltOccurrenceSchema = createInsertSchema(
+  gestaltOccurrencesTable,
+).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
 
-export type InsertSessionTranscript = z.infer<typeof insertSessionTranscriptSchema>;
-export type SessionTranscriptRecord = typeof sessionTranscriptsTable.$inferSelect;
-export type InsertTranscriptPhrase = z.infer<typeof insertTranscriptPhraseSchema>;
+export type InsertSessionTranscript = z.infer<
+  typeof insertSessionTranscriptSchema
+>;
+export type SessionTranscriptRecord =
+  typeof sessionTranscriptsTable.$inferSelect;
+export type InsertTranscriptPhrase = z.infer<
+  typeof insertTranscriptPhraseSchema
+>;
 export type TranscriptPhraseRecord = typeof transcriptPhrasesTable.$inferSelect;
 export type InsertTranscriptProvisionalPhrase = z.infer<
   typeof insertTranscriptProvisionalPhraseSchema
 >;
 export type TranscriptProvisionalPhraseRecord =
   typeof transcriptProvisionalPhrasesTable.$inferSelect;
-export type InsertTranscriptSpeakerSegment = z.infer<typeof insertTranscriptSpeakerSegmentSchema>;
-export type TranscriptSpeakerSegmentRecord = typeof transcriptSpeakerSegmentsTable.$inferSelect;
+export type InsertTranscriptSpeakerSegment = z.infer<
+  typeof insertTranscriptSpeakerSegmentSchema
+>;
+export type TranscriptSpeakerSegmentRecord =
+  typeof transcriptSpeakerSegmentsTable.$inferSelect;
 export type InsertTranscriptChildUtteranceReview = z.infer<
   typeof insertTranscriptChildUtteranceReviewSchema
 >;
 export type TranscriptChildUtteranceReviewRecord =
   typeof transcriptChildUtteranceReviewsTable.$inferSelect;
-export type InsertChildSpeakerRole = z.infer<typeof insertChildSpeakerRoleSchema>;
+export type InsertChildSpeakerRole = z.infer<
+  typeof insertChildSpeakerRoleSchema
+>;
 export type ChildSpeakerRoleRecord = typeof childSpeakerRolesTable.$inferSelect;
-export type InsertChildSpeakerProfile = z.infer<typeof insertChildSpeakerProfileSchema>;
-export type ChildSpeakerProfileRecord = typeof childSpeakerProfilesTable.$inferSelect;
-export type TranscriptSpeakerRoleRecord = typeof transcriptSpeakerRolesTable.$inferSelect;
+export type InsertChildSpeakerProfile = z.infer<
+  typeof insertChildSpeakerProfileSchema
+>;
+export type ChildSpeakerProfileRecord =
+  typeof childSpeakerProfilesTable.$inferSelect;
+export type TranscriptSpeakerRoleRecord =
+  typeof transcriptSpeakerRolesTable.$inferSelect;
 export type TranscriptSpeakerRoleInferenceRecord =
   typeof transcriptSpeakerRoleInferencesTable.$inferSelect;
 export type ChildSpeakerRoleLearningAggregateRecord =
   typeof childSpeakerRoleLearningAggregatesTable.$inferSelect;
-export type InsertChildProfileConsentRecord = z.infer<typeof insertChildProfileConsentRecordSchema>;
-export type ChildProfileConsentRecord = typeof childProfileConsentRecordsTable.$inferSelect;
-export type InsertGestaltOccurrence = z.infer<typeof insertGestaltOccurrenceSchema>;
-export type GestaltOccurrenceRecord = typeof gestaltOccurrencesTable.$inferSelect;
+export type InsertChildProfileConsentRecord = z.infer<
+  typeof insertChildProfileConsentRecordSchema
+>;
+export type ChildProfileConsentRecord =
+  typeof childProfileConsentRecordsTable.$inferSelect;
+export type InsertGestaltOccurrence = z.infer<
+  typeof insertGestaltOccurrenceSchema
+>;
+export type GestaltOccurrenceRecord =
+  typeof gestaltOccurrencesTable.$inferSelect;

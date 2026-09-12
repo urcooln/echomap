@@ -20,6 +20,7 @@ import {
   Route,
   Switch,
   useLocation,
+  useSearch,
   Router as WouterRouter,
 } from "wouter";
 import {
@@ -35,6 +36,7 @@ import { shadcn } from "@clerk/themes";
 import {
   Activity as ActivityIcon,
   AlertCircle,
+  CalendarX,
   AudioWaveform,
   ArrowLeft,
   ArrowRight,
@@ -46,6 +48,7 @@ import {
   CircleHelp,
   ClipboardList,
   Clock3,
+  Copy,
   FileText,
   Filter,
   GitMerge,
@@ -54,6 +57,7 @@ import {
   Leaf,
   Library,
   Lightbulb,
+  LogOut,
   Menu,
   MessageCircle,
   Mail,
@@ -64,6 +68,7 @@ import {
   Pause,
   Play,
   RotateCcw,
+  RefreshCw,
   Search,
   Settings,
   Tablet,
@@ -115,6 +120,8 @@ import {
   getListChildPhraseInboxQueryKey,
   getListCommunicationGoalsQueryKey,
   getGetManualSessionSetupQueryKey,
+  getGetSettingsQueryKey,
+  getListMissedSessionsQueryKey,
   useAddGestaltComment,
   useCreateChild,
   useCreateChildInterest,
@@ -127,6 +134,7 @@ import {
   useMergeGestalts,
   useCreateObservation,
   useCreateSession,
+  useCreateMissedSession,
   useGetAdminSecurityOverview,
   useGetDictionaryInsights,
   useListDictionaryDuplicateSuggestions,
@@ -151,6 +159,7 @@ import {
   useUpdateAacPlanning,
   useRemoveAacPlanning,
   useListSessions,
+  useListMissedSessions,
   useRecordReportExport,
   useGetDeletionRequest,
   useReviewDeletionRequest,
@@ -185,6 +194,9 @@ import {
   useCreateCommunicationGoal,
   useUpdateCommunicationGoal,
   useGetManualSessionSetup,
+  useGetSettings,
+  useUpdateMissedSession,
+  useUpdateSettings,
 } from "@workspace/api-client-react";
 import type {
   Activity as ActivityType,
@@ -213,7 +225,12 @@ import type {
   Viewer,
   CommunicationGoal,
   TeamInbox as ApiTeamInbox,
+  TeamMessage as ApiTeamMessage,
   IepServiceRequirement,
+  MissedSession,
+  MissedSessionReason,
+  MakeupStatus,
+  NotificationPreferences,
 } from "@workspace/api-client-react";
 import {
   citationsForTimelineEvidence,
@@ -229,6 +246,7 @@ import {
   isRoleOverviewPath,
   markAuthLogout,
   roleOverviewPath,
+  isRoleRestrictedPath,
   rememberAuthReturnPath,
 } from "@/lib/role-routing";
 import { DocumentationCenter } from "@/pages/documentation-center";
@@ -240,7 +258,9 @@ import { ClinicianLearningPage } from "@/pages/clinician-learning";
 import { ManualSessionTrackingPage } from "@/pages/manual-session";
 import { ServiceSetupPage } from "@/pages/service-setup";
 import { CommunicationPassportPage } from "@/pages/communication-passport";
+import { SlpOnboardingPage } from "@/pages/slp-onboarding";
 import {
+  ArchiveServiceDialog,
   ServiceRequirementForm,
   serviceTypeLabel,
 } from "@/components/service-requirement-form";
@@ -255,6 +275,22 @@ import { TeacherClassroomDashboard } from "@/components/teacher-classroom-dashbo
 import { SharedChildProfile } from "@/components/shared-child-profile";
 import { AacInformationCard } from "@/components/aac-information";
 import { TeamInboxPage } from "@/components/team-inbox";
+import {
+  appendSentMessage,
+  inboxErrorStatus,
+  inboxLoadFailureMessage,
+  inboxPlaceholderForViewer,
+  inboxQueryKeyForViewer,
+  inboxSendFailureMessage,
+  mergeInboxListWithSelectedConversation,
+} from "@/lib/inbox-state";
+import {
+  emptySessionGoalReview,
+  SessionGoalReview,
+  sessionGoalProgressLabel,
+  sessionGoalPromptingLabel,
+  type SessionGoalReviewValue,
+} from "@/components/session-goal-review";
 import {
   SpeakerCalibration,
   type CalibrationDiagnostics,
@@ -753,7 +789,7 @@ function ChildContextNav({
   onChange,
   workspaceStats,
 }: {
-  child?: Child;
+  child: Child;
   childrenList: Child[];
   selectedId?: number;
   onChange: (id: number) => void;
@@ -765,11 +801,11 @@ function ChildContextNav({
   };
 }) {
   const [location] = useLocation();
+  const navigationRef = useRef<HTMLElement>(null);
+  const [copiedChildLedId, setCopiedChildLedId] = useState(false);
   const childQuery = selectedId ? `?childId=${selectedId}` : "";
   const childProfileHref = (section?: string) =>
     `/children${childQuery}${section ? `&section=${section}` : ""}`;
-
-  if (!child) return null;
 
   const childNavItems = [
     {
@@ -845,23 +881,84 @@ function ChildContextNav({
       );
     }) ?? childNavItems[0];
 
+  useEffect(() => {
+    const navigation = navigationRef.current;
+    const activeLink = navigation?.querySelector<HTMLElement>(
+      '[aria-current="page"]',
+    );
+    if (!navigation || !activeLink) return;
+    const navigationBounds = navigation.getBoundingClientRect();
+    const activeBounds = activeLink.getBoundingClientRect();
+    if (
+      activeBounds.left >= navigationBounds.left &&
+      activeBounds.right <= navigationBounds.right
+    )
+      return;
+    navigation.scrollTo({
+      left:
+        navigation.scrollLeft +
+        activeBounds.left -
+        navigationBounds.left -
+        (navigationBounds.width - activeBounds.width) / 2,
+      behavior: "smooth",
+    });
+  }, [activeItem.href]);
+
+  const scrollToSectionContent = () => {
+    window.requestAnimationFrame(() => {
+      document.getElementById("child-workspace-content")?.scrollIntoView({
+        behavior: "auto",
+        block: "start",
+      });
+    });
+  };
+
+  const copyChildLedId = async () => {
+    if (!navigator.clipboard) return;
+    await navigator.clipboard.writeText(child.childLedId);
+    setCopiedChildLedId(true);
+    window.setTimeout(() => setCopiedChildLedId(false), 1800);
+  };
+
   return (
-    <div className="sticky top-14 z-10 -mx-3 mb-5 border-b border-primary/10 bg-background/95 px-3 py-2 shadow-[0_12px_30px_-26px_hsl(var(--brand-forest-950)/.8)] backdrop-blur-xl sm:-mx-5 sm:mb-8 sm:px-5 sm:py-3 md:-mx-10 md:px-10">
-      <div className="mx-auto max-w-[1400px]">
+    <>
+      <section
+        className="mb-3 sm:mb-4"
+        aria-labelledby="child-workspace-heading"
+      >
         <div className="flex items-start justify-between gap-4">
           <div className="flex min-w-0 items-center gap-3">
             <Avatar
               name={child.name}
-              className="size-9 shrink-0 bg-secondary text-xs ring-2 ring-secondary/60 sm:size-11 sm:text-sm sm:ring-4"
+              className="size-11 shrink-0 bg-secondary text-sm ring-4 ring-secondary/60 sm:size-14"
             />
             <div className="min-w-0">
               <p className="mono text-[9px] font-bold uppercase tracking-[0.18em] text-primary/65">
                 Child workspace
               </p>
-              <h1 className="serif truncate text-xl font-semibold leading-tight text-foreground sm:text-2xl md:text-3xl">
+              <h1
+                id="child-workspace-heading"
+                className="serif truncate text-2xl font-semibold leading-tight text-foreground sm:text-3xl md:text-4xl"
+              >
                 {child.name}
               </h1>
-              <p className="hidden text-xs text-muted-foreground sm:block">
+              <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                <span>
+                  ChildLed ID: <span className="mono">{child.childLedId}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => void copyChildLedId()}
+                  disabled={!navigator.clipboard}
+                  aria-label={`Copy ChildLed ID ${child.childLedId}`}
+                  title={copiedChildLedId ? "Copied" : "Copy ChildLed ID"}
+                  className="focus-ring grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition hover:bg-secondary hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                  data-testid="button-copy-child-led-id"
+                >
+                  {copiedChildLedId ? <Check size={13} /> : <Copy size={13} />}
+                </button>
+              </div>
+              <p className="hidden text-sm text-muted-foreground sm:block">
                 Communication Profile &amp; Shared Language Map
               </p>
             </div>
@@ -893,7 +990,14 @@ function ChildContextNav({
                   data-testid={`menu-item-child-${c.id}`}
                 >
                   <Avatar name={c.name} className="size-6" />
-                  <span className="font-semibold">{c.name}</span>
+                  <span className="min-w-0">
+                    <span className="block truncate font-semibold">
+                      {c.name}
+                    </span>
+                    <span className="mono block text-[10px] text-muted-foreground">
+                      {c.childLedId}
+                    </span>
+                  </span>
                   {c.id === selectedId && (
                     <Check size={14} className="ml-auto text-primary" />
                   )}
@@ -935,8 +1039,14 @@ function ChildContextNav({
             </span>
           )}
         </div>
+      </section>
+      <div
+        data-testid="child-workspace-sticky-navigation"
+        className="sticky top-14 z-10 -mx-3 border-y border-primary/10 bg-background px-3 py-2 shadow-[0_12px_30px_-26px_hsl(var(--brand-forest-950)/.8)] sm:-mx-5 sm:px-5 md:-mx-10 md:px-10"
+      >
         <nav
-          className="mt-2 flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none sm:mt-4"
+          ref={navigationRef}
+          className="mx-auto flex max-w-[1400px] items-center gap-1 overflow-x-auto overscroll-x-contain pb-1 scrollbar-none xl:gap-0"
           aria-label="Child context navigation"
         >
           {childNavItems.map((item) => {
@@ -955,7 +1065,9 @@ function ChildContextNav({
                 href={item.href}
                 data-testid={`link-child-context-${item.label.toLowerCase().replaceAll(" ", "-")}`}
                 title={item.description}
-                className={`group inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all focus-ring sm:min-h-0 sm:px-4 sm:text-sm ${
+                aria-current={isActive ? "page" : undefined}
+                onClick={scrollToSectionContent}
+                className={`group inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold transition-all focus-ring sm:min-h-0 sm:px-4 sm:text-sm xl:gap-1 xl:px-2 ${
                   isActive
                     ? "bg-accent text-accent-foreground shadow-[0_8px_18px_-12px_hsl(var(--accent)/.95)]"
                     : "bg-secondary/55 text-muted-foreground hover:bg-secondary hover:text-foreground"
@@ -974,11 +1086,11 @@ function ChildContextNav({
             );
           })}
         </nav>
-        <p className="mt-2 hidden text-xs leading-5 text-muted-foreground md:block">
-          {activeItem.description}
-        </p>
       </div>
-    </div>
+      <p className="mb-5 mt-2 hidden text-xs leading-5 text-muted-foreground sm:mb-8 md:block">
+        {activeItem.description}
+      </p>
+    </>
   );
 }
 
@@ -1282,6 +1394,13 @@ function Shell({
                 workspaceStats={workspaceStats}
               />
             )}
+          {isClinician && showChildWorkspace && child && (
+            <div
+              id="child-workspace-content"
+              className="scroll-mt-[7.5rem]"
+              aria-hidden="true"
+            />
+          )}
           {children}
         </div>
       </main>
@@ -3601,7 +3720,9 @@ function ClinicianRecentUpdates({
             ? notificationLines.slice(1).join(" ")
             : message.body,
         time: message.createdAt,
-        href: `/team-communication?childId=${message.childId}`,
+        href: message.conversationId
+          ? `/team-communication?childId=${message.childId}&conversationId=${message.conversationId}`
+          : `/team-communication?childId=${message.childId}`,
         unread: true,
       };
     });
@@ -3760,6 +3881,426 @@ function CaseloadRequirementDialog({
   );
 }
 
+const missedReasonOptions: Array<{
+  value: MissedSessionReason;
+  label: string;
+}> = [
+  { value: "student_absent", label: "Student Absent" },
+  { value: "student_illness", label: "Student Illness" },
+  { value: "school_event", label: "School Event" },
+  { value: "field_trip", label: "Field Trip" },
+  { value: "early_dismissal", label: "Early Dismissal" },
+  { value: "school_closure", label: "School Closure" },
+  { value: "caregiver_cancellation", label: "Parent/Caregiver Cancellation" },
+  { value: "student_refused", label: "Student Refused" },
+  { value: "clinician_unavailable", label: "Clinician Unavailable" },
+  { value: "scheduling_conflict", label: "Scheduling Conflict" },
+  { value: "other", label: "Other" },
+];
+
+const makeupStatusOptions: Array<{ value: MakeupStatus; label: string }> = [
+  { value: "needed", label: "Makeup Needed" },
+  { value: "not_required", label: "No Makeup Needed" },
+  { value: "undetermined", label: "Undetermined" },
+  { value: "scheduled", label: "Scheduled" },
+];
+
+const missedReasonLabel = (reason: MissedSessionReason) =>
+  missedReasonOptions.find((option) => option.value === reason)?.label ??
+  "Missed session";
+
+const makeupStatusLabel = (status: MakeupStatus) =>
+  status === "completed"
+    ? "Completed"
+    : (makeupStatusOptions.find((option) => option.value === status)?.label ??
+      status);
+
+const sessionHistoryLabel = (session: {
+  sessionMode?: string;
+  sessionStatus?: string;
+  makeupForSessionId?: number | null;
+}) =>
+  session.sessionStatus === "missed" || session.sessionMode === "missed"
+    ? "Missed Session"
+    : session.makeupForSessionId
+      ? "Makeup Session"
+      : session.sessionMode === "recorded"
+        ? "Recorded Session"
+        : "Completed Session";
+
+const inputDateToday = () => {
+  const date = new Date();
+  date.setMinutes(date.getMinutes() - date.getTimezoneOffset());
+  return date.toISOString().slice(0, 10);
+};
+
+function MissedSessionDialog({
+  childId,
+  childName,
+  service,
+  session,
+  onClose,
+  onSaved,
+}: {
+  childId: number;
+  childName: string;
+  service: IepServiceRequirement;
+  session?: MissedSession;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const createMissedSession = useCreateMissedSession();
+  const updateMissedSession = useUpdateMissedSession();
+  const [sessionDate, setSessionDate] = useState(
+    session?.sessionDate.slice(0, 10) ?? inputDateToday(),
+  );
+  const [missedReason, setMissedReason] = useState<MissedSessionReason>(
+    session?.missedReason ?? "student_absent",
+  );
+  const [missedReasonDetail, setMissedReasonDetail] = useState(
+    session?.missedReasonDetail ?? "",
+  );
+  const [note, setNote] = useState(session?.note ?? "");
+  const [makeupStatus, setMakeupStatus] = useState<MakeupStatus>(
+    session?.makeupStatus ?? "undetermined",
+  );
+  const [error, setError] = useState("");
+  const saving = createMissedSession.isPending || updateMissedSession.isPending;
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault();
+    setError("");
+    if (!sessionDate) {
+      setError("Choose the date the session was missed.");
+      return;
+    }
+    if (missedReason === "other" && !missedReasonDetail.trim()) {
+      setError("Explain the other absence reason.");
+      return;
+    }
+    try {
+      const data = {
+        sessionDate,
+        missedReason,
+        missedReasonDetail:
+          missedReason === "other" ? missedReasonDetail.trim() : null,
+        note: note.trim(),
+        makeupStatus,
+      };
+      if (session) {
+        await updateMissedSession.mutateAsync({
+          sessionId: session.id,
+          data,
+        });
+      } else {
+        await createMissedSession.mutateAsync({
+          params: { childId },
+          data: { ...data, serviceRequirementId: service.id },
+        });
+      }
+      onSaved();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "The missed session could not be saved.",
+      );
+    }
+  };
+
+  return (
+    <Modal
+      title={`${session ? "Edit missed session" : "Absent / missed session"} for ${childName}`}
+      onClose={onClose}
+    >
+      <form
+        onSubmit={submit}
+        className="space-y-5"
+        data-testid="form-missed-session"
+      >
+        <div className="rounded-lg border border-border bg-muted/30 p-4">
+          <p className="text-xs font-bold uppercase text-muted-foreground">
+            Selected service
+          </p>
+          <p className="mt-1 font-semibold text-primary">
+            {serviceTypeLabel(service.serviceType)} · {service.periodLabel}
+          </p>
+        </div>
+        {error ? (
+          <p className="rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="text-sm font-semibold">Session date</span>
+            <input
+              type="date"
+              required
+              value={sessionDate}
+              onChange={(event) => setSessionDate(event.target.value)}
+              className="focus-ring mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
+            />
+          </label>
+          <label className="block">
+            <span className="text-sm font-semibold">Absence reason</span>
+            <select
+              required
+              value={missedReason}
+              onChange={(event) => {
+                const value = event.target.value as MissedSessionReason;
+                setMissedReason(value);
+                if (value !== "other") setMissedReasonDetail("");
+              }}
+              className="focus-ring mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              {missedReasonOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {missedReason === "other" ? (
+          <label className="block">
+            <span className="text-sm font-semibold">Reason explanation</span>
+            <input
+              required
+              maxLength={500}
+              value={missedReasonDetail}
+              onChange={(event) => setMissedReasonDetail(event.target.value)}
+              className="focus-ring mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
+              placeholder="Briefly explain why the session was missed"
+            />
+          </label>
+        ) : null}
+        <label className="block">
+          <span className="text-sm font-semibold">Makeup status</span>
+          {session?.makeupStatus === "completed" ? (
+            <p className="mt-2 rounded-lg bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+              Completed by linked makeup session
+            </p>
+          ) : (
+            <select
+              value={makeupStatus}
+              onChange={(event) =>
+                setMakeupStatus(event.target.value as MakeupStatus)
+              }
+              className="focus-ring mt-2 min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
+            >
+              {makeupStatusOptions
+                .filter((option) => option.value !== "scheduled" || session)
+                .map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+            </select>
+          )}
+        </label>
+        <label className="block">
+          <span className="text-sm font-semibold">Optional notes</span>
+          <textarea
+            rows={3}
+            maxLength={4000}
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            className="focus-ring mt-2 w-full resize-y rounded-lg border border-border bg-background p-3 text-sm"
+            placeholder="Add any context the care team should retain"
+          />
+        </label>
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <Button type="button" variant="quiet" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button type="submit" disabled={saving}>
+            <CalendarX size={16} />
+            {saving
+              ? "Saving…"
+              : session
+                ? "Save changes"
+                : "Save missed session"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function MakeupSessionsDialog({
+  childId,
+  childName,
+  service,
+  onClose,
+  onEdit,
+  onLogMakeup,
+  onChanged,
+}: {
+  childId: number;
+  childName: string;
+  service: IepServiceRequirement;
+  onClose: () => void;
+  onEdit: (session: MissedSession) => void;
+  onLogMakeup: (session: MissedSession) => void;
+  onChanged: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const missedQuery = useListMissedSessions(
+    { childId, serviceRequirementId: service.id },
+    {
+      query: {
+        queryKey: getListMissedSessionsQueryKey({
+          childId,
+          serviceRequirementId: service.id,
+        }),
+        retry: false,
+        refetchOnWindowFocus: false,
+      },
+    },
+  );
+  const updateMissed = useUpdateMissedSession();
+  const [error, setError] = useState("");
+  const updateStatus = async (session: MissedSession, status: MakeupStatus) => {
+    setError("");
+    try {
+      await updateMissed.mutateAsync({
+        sessionId: session.id,
+        data: {
+          sessionDate: session.sessionDate,
+          missedReason: session.missedReason,
+          missedReasonDetail: session.missedReasonDetail,
+          note: session.note,
+          makeupStatus: status,
+        },
+      });
+      await queryClient.invalidateQueries({
+        queryKey: getListMissedSessionsQueryKey({
+          childId,
+          serviceRequirementId: service.id,
+        }),
+      });
+      onChanged();
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "The makeup status could not be updated.",
+      );
+    }
+  };
+  return (
+    <Modal title={`Missed sessions for ${childName}`} onClose={onClose}>
+      <div data-testid="dialog-makeup-sessions">
+        <p className="text-sm text-muted-foreground">
+          {serviceTypeLabel(service.serviceType)} · Completed makeups stay
+          linked to their original missed session.
+        </p>
+        {error ? (
+          <p className="mt-4 rounded-lg border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive">
+            {error}
+          </p>
+        ) : null}
+        {missedQuery.isLoading ? (
+          <p className="mt-5 text-sm text-muted-foreground">
+            Loading missed sessions…
+          </p>
+        ) : missedQuery.isError ? (
+          <div className="mt-5 flex items-center justify-between gap-3 rounded-lg border border-destructive/25 bg-destructive/5 p-4">
+            <p className="text-sm text-destructive">
+              Missed sessions could not be loaded.
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => void missedQuery.refetch()}
+            >
+              Retry
+            </Button>
+          </div>
+        ) : missedQuery.data?.length ? (
+          <div className="mt-5 space-y-3">
+            {missedQuery.data.map((session) => {
+              const canLogMakeup =
+                session.makeupStatus === "needed" ||
+                session.makeupStatus === "scheduled";
+              return (
+                <article
+                  key={session.id}
+                  className="rounded-lg border border-border bg-background p-4"
+                >
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                    <div>
+                      <p className="font-semibold">
+                        {new Date(
+                          `${session.sessionDate.slice(0, 10)}T12:00:00`,
+                        ).toLocaleDateString("en-US", {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        })}
+                      </p>
+                      <p className="mt-1 text-sm text-muted-foreground">
+                        {missedReasonLabel(session.missedReason)}
+                        {session.missedReasonDetail
+                          ? ` · ${session.missedReasonDetail}`
+                          : ""}
+                      </p>
+                      {session.note ? (
+                        <p className="mt-2 text-sm">{session.note}</p>
+                      ) : null}
+                    </div>
+                    <span className="shrink-0 rounded-full bg-muted px-3 py-1 text-xs font-bold text-primary">
+                      {makeupStatusLabel(session.makeupStatus)}
+                    </span>
+                  </div>
+                  <div className="mt-4 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
+                    {session.makeupStatus === "completed" ? (
+                      <p className="self-center text-sm font-semibold text-emerald-700">
+                        Linked makeup #{session.makeupSessionId}
+                      </p>
+                    ) : (
+                      <select
+                        value={session.makeupStatus}
+                        disabled={updateMissed.isPending}
+                        onChange={(event) =>
+                          void updateStatus(
+                            session,
+                            event.target.value as MakeupStatus,
+                          )
+                        }
+                        className="focus-ring min-h-11 w-full rounded-lg border border-border bg-card px-3 text-sm"
+                        aria-label={`Makeup status for missed session on ${session.sessionDate}`}
+                      >
+                        {makeupStatusOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                    )}
+                    <Button variant="outline" onClick={() => onEdit(session)}>
+                      Edit
+                    </Button>
+                    {canLogMakeup ? (
+                      <Button onClick={() => onLogMakeup(session)}>
+                        <RefreshCw size={15} /> Log makeup
+                      </Button>
+                    ) : null}
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <p className="mt-5 rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+            No missed sessions have been logged for this service.
+          </p>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function CaseloadOverviewPage({
   overview,
   teamInbox,
@@ -3787,8 +4328,16 @@ function CaseloadOverviewPage({
   caseloadChildren: Child[];
   onOpenChild: (childId: number) => void;
   onAddStudent: () => void;
-  onStartRecordedSession: (childId: number, serviceId?: number) => void;
-  onStartManualSession: (childId: number, serviceId?: number) => void;
+  onStartRecordedSession: (
+    childId: number,
+    serviceId?: number,
+    makeupForSessionId?: number,
+  ) => void;
+  onStartManualSession: (
+    childId: number,
+    serviceId?: number,
+    makeupForSessionId?: number,
+  ) => void;
   onViewGoals: (childId: number) => void;
   onViewHistory: (childId: number) => void;
   onRecordSession: () => void;
@@ -3803,6 +4352,28 @@ function CaseloadOverviewPage({
     childName: string;
     requirement?: IepServiceRequirement;
   } | null>(null);
+  const [deletingService, setDeletingService] = useState<{
+    childId: number;
+    childName: string;
+    requirement: IepServiceRequirement;
+  } | null>(null);
+  const [loggingSession, setLoggingSession] = useState<{
+    childId: number;
+    childName: string;
+    service: IepServiceRequirement;
+    makeupForSession?: MissedSession;
+  } | null>(null);
+  const [missedSessionForm, setMissedSessionForm] = useState<{
+    childId: number;
+    childName: string;
+    service: IepServiceRequirement;
+    session?: MissedSession;
+  } | null>(null);
+  const [makeupManager, setMakeupManager] = useState<{
+    childId: number;
+    childName: string;
+    service: IepServiceRequirement;
+  } | null>(null);
   const [collapsedStudents, setCollapsedStudents] = useState<Set<number>>(
     () => new Set(),
   );
@@ -3811,6 +4382,7 @@ function CaseloadOverviewPage({
     overview?.children ??
     caseloadChildren.map((child) => ({
       childId: child.id,
+      childLedId: child.childLedId,
       childName: child.name,
       school: child.school,
       grade: child.grade,
@@ -3860,6 +4432,7 @@ function CaseloadOverviewPage({
     ? students.filter((student) => {
         return [
           student.childName,
+          student.childLedId,
           student.school,
           student.grade,
           ...student.teacherNames,
@@ -3921,7 +4494,8 @@ function CaseloadOverviewPage({
       ? Math.round(
           Math.min(
             1,
-            requirement.sessionsCompleted / requirement.requiredSessions,
+            (requirement.requiredSessions - requirement.sessionsRemaining) /
+              requirement.requiredSessions,
           ) * 100,
         )
       : 0;
@@ -3933,6 +4507,47 @@ function CaseloadOverviewPage({
       else next.add(childId);
       return next;
     });
+
+  const openSessionLogger = (
+    childId: number,
+    childName: string,
+    service: IepServiceRequirement,
+    makeupForSession?: MissedSession,
+  ) => setLoggingSession({ childId, childName, service, makeupForSession });
+
+  const startSelectedSession = (mode: "manual" | "recorded") => {
+    if (!loggingSession) return;
+    const { childId, service, makeupForSession } = loggingSession;
+    setLoggingSession(null);
+    if (mode === "manual") {
+      onStartManualSession(childId, service.id, makeupForSession?.id);
+      return;
+    }
+    onStartRecordedSession(childId, service.id, makeupForSession?.id);
+  };
+
+  const refreshServiceTracking = async (childId: number, serviceId: number) => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: getGetClinicianOverviewQueryKey(),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getGetManualSessionSetupQueryKey({ childId }),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getListMissedSessionsQueryKey({
+          childId,
+          serviceRequirementId: serviceId,
+        }),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getGetSessionsDashboardQueryKey(),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getListSessionsQueryKey({ childId }),
+      }),
+    ]);
+  };
 
   return (
     <div className="space-y-6 animate-rise">
@@ -4009,7 +4624,7 @@ function CaseloadOverviewPage({
                 type="search"
                 value={studentSearch}
                 onChange={(event) => setStudentSearch(event.target.value)}
-                placeholder="Search students"
+                placeholder="Search by student name or ChildLed ID"
                 data-testid="input-search-caseload-students"
                 className="h-11 w-full rounded-md border border-input bg-background pl-9 pr-10 text-sm outline-none focus-ring sm:h-10"
               />
@@ -4030,20 +4645,20 @@ function CaseloadOverviewPage({
           <div className="hidden lg:block">
             <table className="w-full table-fixed border-collapse text-left text-xs">
               <colgroup>
-                <col className="w-[24%]" />
-                <col className="w-[20%]" />
-                <col className="w-[20%]" />
-                <col className="w-[12%]" />
+                <col className="w-[22%]" />
+                <col className="w-[19%]" />
+                <col className="w-[19%]" />
+                <col className="w-[11%]" />
                 <col className="w-[10%]" />
-                <col className="w-[14%]" />
+                <col className="w-[19%]" />
               </colgroup>
               <thead className="bg-muted/45 text-[11px] font-bold uppercase text-muted-foreground">
                 <tr>
                   <th className="px-3 py-3">Student / classroom</th>
                   <th className="px-2 py-3">Service</th>
                   <th className="px-2 py-3">Frequency / required</th>
-                  <th className="px-2 py-3 text-center">Completed</th>
-                  <th className="px-2 py-3 text-center">Remaining</th>
+                  <th className="px-2 py-3 text-center">Delivery</th>
+                  <th className="px-2 py-3 text-center">Remaining / makeup</th>
                   <th className="px-3 py-3 text-right">Actions</th>
                 </tr>
               </thead>
@@ -4058,6 +4673,10 @@ function CaseloadOverviewPage({
                   );
                   const totalCompleted = student.serviceRequirements.reduce(
                     (total, service) => total + service.sessionsCompleted,
+                    0,
+                  );
+                  const totalMissed = student.serviceRequirements.reduce(
+                    (total, service) => total + service.sessionsMissed,
                     0,
                   );
                   const totalRemaining = student.serviceRequirements.reduce(
@@ -4084,6 +4703,9 @@ function CaseloadOverviewPage({
                             <span className="min-w-0">
                               <span className="block truncate font-bold text-primary">
                                 {student.childName}
+                              </span>
+                              <span className="mono mt-0.5 block truncate text-[10px] font-semibold text-primary/65">
+                                {student.childLedId}
                               </span>
                               <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
                                 {student.teacherNames.length
@@ -4115,7 +4737,7 @@ function CaseloadOverviewPage({
                         </td>
                         <td className="px-2 py-3 text-center font-semibold">
                           {totalRequired
-                            ? `${totalCompleted} / ${totalRequired}`
+                            ? `${totalCompleted} delivered · ${totalMissed} missed`
                             : "-"}
                         </td>
                         <td className="px-2 py-3 text-center font-semibold">
@@ -4125,24 +4747,32 @@ function CaseloadOverviewPage({
                           <div className="flex justify-end gap-1">
                             <Button
                               variant="outline"
-                              className="h-8 min-h-8 px-2 text-[11px]"
+                              className="h-8 min-h-8 bg-card px-2 text-[11px] text-primary"
                               onClick={() =>
                                 setEditingStudent({
                                   childId: student.childId,
                                   childName: student.childName,
                                 })
                               }
+                              title={`Add a service for ${student.childName}`}
+                              aria-label={`Add a service for ${student.childName}`}
                             >
                               <Plus size={13} /> Service
                             </Button>
                             <Button
                               variant="outline"
-                              className="size-8 min-h-8 p-0"
+                              className="relative size-9 min-h-9 overflow-hidden bg-card p-0 text-primary"
                               onClick={() => onOpenChild(student.childId)}
                               title={`View ${student.childName}`}
                               aria-label={`View ${student.childName}`}
                             >
-                              <UserRound size={14} />
+                              <span className="relative z-10 grid size-6 place-items-center text-primary">
+                                <UserRound
+                                  aria-hidden="true"
+                                  className="!size-5"
+                                  strokeWidth={2.5}
+                                />
+                              </span>
                             </Button>
                           </div>
                         </td>
@@ -4186,9 +4816,11 @@ function CaseloadOverviewPage({
                                     </span>
                                   </td>
                                   <td className="px-2 py-3 text-center">
-                                    <span className="font-bold">
-                                      {service.sessionsCompleted} /{" "}
-                                      {service.requiredSessions}
+                                    <span className="block font-bold">
+                                      {service.sessionsCompleted} delivered
+                                    </span>
+                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                      {service.sessionsMissed} missed
                                     </span>
                                     <div className="mx-auto mt-1.5 h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-muted">
                                       <div
@@ -4197,19 +4829,41 @@ function CaseloadOverviewPage({
                                       />
                                     </div>
                                   </td>
-                                  <td className="px-2 py-3 text-center font-bold text-primary">
-                                    {service.sessionsRemaining}
+                                  <td className="px-2 py-3 text-center">
+                                    <span className="block font-bold text-primary">
+                                      {service.sessionsRemaining}
+                                    </span>
+                                    {service.sessionsMissed ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setMakeupManager({
+                                            childId: student.childId,
+                                            childName: student.childName,
+                                            service,
+                                          })
+                                        }
+                                        className={`focus-ring mt-1 inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold ${service.outstandingMakeups ? "bg-amber-100 text-amber-900" : "bg-muted text-muted-foreground"}`}
+                                        aria-label={`${service.outstandingMakeups} outstanding makeups for ${student.childName}`}
+                                      >
+                                        <RefreshCw size={11} />
+                                        {service.outstandingMakeups} makeup
+                                      </button>
+                                    ) : null}
                                   </td>
                                   <td className="px-3 py-3">
                                     <div className="flex items-center justify-end gap-1">
                                       <Button
                                         className="h-8 min-h-8 px-2 text-[11px]"
                                         onClick={() =>
-                                          onStartManualSession(
+                                          openSessionLogger(
                                             student.childId,
-                                            service.id,
+                                            student.childName,
+                                            service,
                                           )
                                         }
+                                        title={`Log ${service.serviceName} session`}
+                                        aria-label={`Log ${service.serviceName} session`}
                                       >
                                         <ClipboardList size={13} /> Log
                                       </Button>
@@ -4217,26 +4871,23 @@ function CaseloadOverviewPage({
                                         <DropdownMenuTrigger asChild>
                                           <Button
                                             variant="outline"
-                                            className="size-8 min-h-8 p-0"
+                                            className="relative size-9 min-h-9 overflow-hidden bg-card p-0 text-primary"
                                             aria-label={`More actions for ${service.serviceName}`}
+                                            title="More service actions"
                                           >
-                                            <ChevronDown size={15} />
+                                            <span className="relative z-10 grid size-6 place-items-center text-primary">
+                                              <Settings
+                                                aria-hidden="true"
+                                                className="!size-5"
+                                                strokeWidth={2.5}
+                                              />
+                                            </span>
                                           </Button>
                                         </DropdownMenuTrigger>
                                         <DropdownMenuContent
                                           align="end"
-                                          className="w-52"
+                                          className="isolate w-52 border-primary/25 bg-card text-foreground opacity-100 shadow-xl"
                                         >
-                                          <DropdownMenuItem
-                                            onSelect={() =>
-                                              onStartRecordedSession(
-                                                student.childId,
-                                                service.id,
-                                              )
-                                            }
-                                          >
-                                            <Mic /> Record Session
-                                          </DropdownMenuItem>
                                           <DropdownMenuItem
                                             onSelect={() =>
                                               setEditingStudent({
@@ -4257,10 +4908,34 @@ function CaseloadOverviewPage({
                                           </DropdownMenuItem>
                                           <DropdownMenuItem
                                             onSelect={() =>
+                                              setMakeupManager({
+                                                childId: student.childId,
+                                                childName: student.childName,
+                                                service,
+                                              })
+                                            }
+                                          >
+                                            <RefreshCw /> Missed sessions
+                                          </DropdownMenuItem>
+                                          <DropdownMenuItem
+                                            onSelect={() =>
                                               onViewGoals(student.childId)
                                             }
                                           >
                                             <Target /> View IEP Goals
+                                          </DropdownMenuItem>
+                                          <DropdownMenuSeparator />
+                                          <DropdownMenuItem
+                                            className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                                            onSelect={() =>
+                                              setDeletingService({
+                                                childId: student.childId,
+                                                childName: student.childName,
+                                                requirement: service,
+                                              })
+                                            }
+                                          >
+                                            <Trash2 /> Delete Service
                                           </DropdownMenuItem>
                                         </DropdownMenuContent>
                                       </DropdownMenu>
@@ -4323,6 +4998,9 @@ function CaseloadOverviewPage({
                         <span className="block truncate font-bold text-primary">
                           {student.childName}
                         </span>
+                        <span className="mono mt-0.5 block truncate text-[10px] font-semibold text-primary/65">
+                          {student.childLedId}
+                        </span>
                         <span className="mt-1 block text-xs text-muted-foreground">
                           {student.teacherNames.length
                             ? student.teacherNames.join(", ")
@@ -4363,9 +5041,26 @@ function CaseloadOverviewPage({
                                   {service.period} · {service.periodLabel}
                                 </span>
                               </button>
-                              <span className="shrink-0 text-sm font-bold text-primary">
-                                {service.sessionsCompleted} /{" "}
-                                {service.requiredSessions}
+                              <span className="flex shrink-0 items-center gap-2">
+                                <span className="text-sm font-bold text-primary">
+                                  {service.requiredSessions} required
+                                </span>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  className="size-9 min-h-9 bg-card text-destructive"
+                                  onClick={() =>
+                                    setDeletingService({
+                                      childId: student.childId,
+                                      childName: student.childName,
+                                      requirement: service,
+                                    })
+                                  }
+                                  aria-label={`Delete ${service.serviceName}`}
+                                  title="Delete service"
+                                >
+                                  <Trash2 size={15} />
+                                </Button>
                               </span>
                             </div>
                             <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
@@ -4374,34 +5069,61 @@ function CaseloadOverviewPage({
                                 style={{ width: `${progress}%` }}
                               />
                             </div>
-                            <div className="mt-3 flex items-center justify-between gap-3 text-xs">
-                              <span>
-                                <strong>{service.sessionsRemaining}</strong>{" "}
-                                remaining · {service.sessionDurationMinutes} min
+                            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                              <span className="rounded-md bg-muted/45 p-2">
+                                <strong className="block text-sm text-primary">
+                                  {service.sessionsCompleted}
+                                </strong>
+                                Delivered
                               </span>
+                              <span className="rounded-md bg-muted/45 p-2">
+                                <strong className="block text-sm text-primary">
+                                  {service.sessionsMissed}
+                                </strong>
+                                Missed
+                              </span>
+                              <span className="rounded-md bg-muted/45 p-2">
+                                <strong className="block text-sm text-primary">
+                                  {service.sessionsRemaining}
+                                </strong>
+                                Remaining
+                              </span>
+                            </div>
+                            <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                              {service.sessionsMissed ? (
+                                <Button
+                                  variant="outline"
+                                  className="min-h-9"
+                                  onClick={() =>
+                                    setMakeupManager({
+                                      childId: student.childId,
+                                      childName: student.childName,
+                                      service,
+                                    })
+                                  }
+                                >
+                                  <RefreshCw size={14} />
+                                  {service.outstandingMakeups} Makeup
+                                </Button>
+                              ) : (
+                                <span className="text-xs text-muted-foreground">
+                                  {service.sessionDurationMinutes} min/session
+                                </span>
+                              )}
                               {statusBadge(service.status)}
                             </div>
-                            <div className="mt-3 grid grid-cols-2 gap-2">
+                            <div className="mt-3">
                               <Button
+                                className="w-full"
                                 onClick={() =>
-                                  onStartManualSession(
+                                  openSessionLogger(
                                     student.childId,
-                                    service.id,
+                                    student.childName,
+                                    service,
                                   )
                                 }
                               >
                                 <ClipboardList size={15} /> Log Session
-                              </Button>
-                              <Button
-                                variant="outline"
-                                onClick={() =>
-                                  onStartRecordedSession(
-                                    student.childId,
-                                    service.id,
-                                  )
-                                }
-                              >
-                                <Mic size={15} /> Record
                               </Button>
                             </div>
                           </section>
@@ -4487,6 +5209,145 @@ function CaseloadOverviewPage({
         onOpenInbox={onOpenInbox}
         onRetry={onRetryOverview}
       />
+      {loggingSession ? (
+        <Modal
+          title={`${loggingSession.makeupForSession ? "Log makeup session" : "Log session"} for ${loggingSession.childName}`}
+          onClose={() => setLoggingSession(null)}
+        >
+          <div data-testid="dialog-choose-session-mode">
+            <p className="text-sm leading-6 text-muted-foreground">
+              {loggingSession.makeupForSession
+                ? `Choose how to complete the makeup for the missed session on ${new Date(`${loggingSession.makeupForSession.sessionDate.slice(0, 10)}T12:00:00`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}.`
+                : "How would you like to log this session?"}
+            </p>
+            <p className="mt-2 text-xs font-semibold text-primary">
+              {serviceTypeLabel(loggingSession.service.serviceType)} ·{" "}
+              {loggingSession.service.serviceName}
+            </p>
+            <div
+              className={`mt-5 grid gap-3 ${loggingSession.makeupForSession ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}
+            >
+              <button
+                type="button"
+                data-autofocus
+                data-testid="button-log-session-manual"
+                onClick={() => startSelectedSession("manual")}
+                className="focus-ring flex min-h-32 items-start gap-4 rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/40 hover:bg-secondary/45"
+              >
+                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
+                  <ClipboardList size={20} />
+                </span>
+                <span>
+                  <span className="block font-bold text-primary">
+                    Manual Entry
+                  </span>
+                  <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+                    Track time, goals, progress data, and a session note without
+                    audio.
+                  </span>
+                </span>
+              </button>
+              {!loggingSession.makeupForSession ? (
+                <button
+                  type="button"
+                  data-testid="button-log-session-missed"
+                  onClick={() => {
+                    setMissedSessionForm({
+                      childId: loggingSession.childId,
+                      childName: loggingSession.childName,
+                      service: loggingSession.service,
+                    });
+                    setLoggingSession(null);
+                  }}
+                  className="focus-ring flex min-h-32 items-start gap-4 rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/40 hover:bg-secondary/45"
+                >
+                  <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-amber-100 text-amber-900">
+                    <CalendarX size={20} />
+                  </span>
+                  <span>
+                    <span className="block font-bold text-primary">
+                      Absent / Missed Session
+                    </span>
+                    <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+                      Document why a scheduled service did not occur and whether
+                      a makeup is needed.
+                    </span>
+                  </span>
+                </button>
+              ) : null}
+              <button
+                type="button"
+                data-testid="button-log-session-recorded"
+                onClick={() => startSelectedSession("recorded")}
+                className="focus-ring flex min-h-32 items-start gap-4 rounded-2xl border border-border bg-background p-5 text-left transition hover:border-primary/40 hover:bg-secondary/45"
+              >
+                <span className="grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground">
+                  <Mic size={20} />
+                </span>
+                <span>
+                  <span className="block font-bold text-primary">
+                    Record Session
+                  </span>
+                  <span className="mt-1 block text-sm leading-5 text-muted-foreground">
+                    Open the recording, transcription, review, and finalization
+                    workflow.
+                  </span>
+                </span>
+              </button>
+            </div>
+            <div className="mt-5 flex justify-end">
+              <Button
+                variant="quiet"
+                onClick={() => setLoggingSession(null)}
+                data-testid="button-cancel-session-mode"
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
+      {missedSessionForm ? (
+        <MissedSessionDialog
+          childId={missedSessionForm.childId}
+          childName={missedSessionForm.childName}
+          service={missedSessionForm.service}
+          session={missedSessionForm.session}
+          onClose={() => setMissedSessionForm(null)}
+          onSaved={() => {
+            const { childId, service } = missedSessionForm;
+            setMissedSessionForm(null);
+            void refreshServiceTracking(childId, service.id);
+          }}
+        />
+      ) : null}
+      {makeupManager ? (
+        <MakeupSessionsDialog
+          childId={makeupManager.childId}
+          childName={makeupManager.childName}
+          service={makeupManager.service}
+          onClose={() => setMakeupManager(null)}
+          onChanged={() => {
+            void refreshServiceTracking(
+              makeupManager.childId,
+              makeupManager.service.id,
+            );
+          }}
+          onEdit={(session) => {
+            setMissedSessionForm({ ...makeupManager, session });
+            setMakeupManager(null);
+          }}
+          onLogMakeup={(session) => {
+            openSessionLogger(
+              makeupManager.childId,
+              makeupManager.childName,
+              makeupManager.service,
+              session,
+            );
+            setMakeupManager(null);
+          }}
+        />
+      ) : null}
       {editingStudent ? (
         <CaseloadRequirementDialog
           childId={editingStudent.childId}
@@ -4503,6 +5364,29 @@ function CaseloadOverviewPage({
                 childId: editingStudent.childId,
               }),
             });
+          }}
+        />
+      ) : null}
+      {deletingService ? (
+        <ArchiveServiceDialog
+          childId={deletingService.childId}
+          childName={deletingService.childName}
+          service={deletingService.requirement}
+          open
+          onOpenChange={(open) => {
+            if (!open) setDeletingService(null);
+          }}
+          onArchived={async () => {
+            const childId = deletingService.childId;
+            setDeletingService(null);
+            await Promise.all([
+              queryClient.invalidateQueries({
+                queryKey: getGetClinicianOverviewQueryKey(),
+              }),
+              queryClient.invalidateQueries({
+                queryKey: getGetManualSessionSetupQueryKey({ childId }),
+              }),
+            ]);
           }}
         />
       ) : null}
@@ -4909,7 +5793,7 @@ function CommunicationGoalsPanel({ childId }: { childId: number }) {
     <section
       id="child-communication-goals"
       data-testid="section-communication-goals"
-      className="scroll-mt-40 rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
+      className="scroll-mt-[7.5rem] rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
     >
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
@@ -5165,6 +6049,7 @@ function ClinicianChildProfilePage({
         }
         loading={false}
         onAddChild={onAddChild}
+        profileCompanion={<CommunicationGoalsPanel childId={child.id} />}
       />
 
       {childProfileIncomplete(child) && <ProfileIncompleteNotice />}
@@ -5203,7 +6088,7 @@ function ClinicianChildProfilePage({
       <section
         id="child-whats-new"
         data-testid="section-profile-whats-new"
-        className="relative scroll-mt-40 overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground soft-shadow md:p-8"
+        className="relative scroll-mt-[7.5rem] overflow-hidden rounded-3xl bg-primary p-6 text-primary-foreground soft-shadow md:p-8"
       >
         <div className="absolute -right-16 -top-20 size-64 rounded-full border-[28px] border-accent/15" />
         <div className="relative">
@@ -5325,11 +6210,10 @@ function ClinicianChildProfilePage({
           )}
         </div>
       </section>
-      <CommunicationGoalsPanel childId={child.id} />
       <section
         id="child-frequent-scripts"
         data-testid="section-profile-frequent-scripts"
-        className="scroll-mt-40 rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
+        className="scroll-mt-[7.5rem] rounded-3xl border border-border bg-card p-6 soft-shadow md:p-7"
       >
         <FrequentScriptsPanel childId={child.id} />
       </section>
@@ -7689,11 +8573,13 @@ function ChildPage({
   latestSessionDate,
   loading,
   onAddChild,
+  profileCompanion,
 }: {
   child?: Child;
   latestSessionDate?: string | null;
   loading: boolean;
   onAddChild: () => void;
+  profileCompanion?: ReactNode;
 }) {
   if (loading) return <LoadingBlocks />;
   if (!child)
@@ -7716,7 +8602,13 @@ function ChildPage({
         title={`${child.name}'s map`}
         description="A quick view of what helps communication feel safe, meaningful, and possible."
       />
-      <div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
+      <div
+        className={
+          profileCompanion
+            ? "grid items-start gap-5 lg:grid-cols-[minmax(17rem,.72fr)_minmax(0,1.55fr)]"
+            : "grid gap-5"
+        }
+      >
         <section className="rounded-3xl bg-primary p-7 text-primary-foreground md:p-9">
           <div className="flex items-start justify-between">
             <Avatar
@@ -7746,51 +8638,7 @@ function ChildPage({
             </p>
           </div>
         </section>
-        <section className="rounded-3xl border border-border bg-card p-7 md:p-9">
-          <div className="mb-7 flex items-center justify-between">
-            <div>
-              <p className="mono text-[10px] uppercase tracking-[.18em] text-muted-foreground">
-                The people around {child.name}
-              </p>
-              <h2 className="serif mt-1 text-2xl font-semibold">
-                Team constellation
-              </h2>
-            </div>
-            <Users className="text-muted-foreground" size={21} />
-          </div>
-          {child.team?.length ? (
-            <div className="grid gap-3 sm:grid-cols-2">
-              {child.team.map((member) => (
-                <div
-                  key={member.id}
-                  className="flex items-center gap-3 rounded-xl bg-muted/60 p-3"
-                >
-                  <Avatar name={member.name} className="bg-card ring-muted" />
-                  <div>
-                    <p className="text-sm font-semibold">{member.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {member.role}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              Invite the people who make up {child.name}’s everyday world.
-            </p>
-          )}
-          <div className="mt-8 grid gap-3 border-t border-border pt-6 sm:grid-cols-3">
-            <Stat label="Phrases mapped" value={child.gestaltCount} />
-            <Stat label="Team members" value={child.team?.length ?? 0} />
-            <div className="rounded-xl bg-muted/60 p-4">
-              <p className="mono text-2xl font-bold text-primary">
-                {child.age || "—"}
-              </p>
-              <p className="mt-1 text-xs text-muted-foreground">Years old</p>
-            </div>
-          </div>
-        </section>
+        {profileCompanion}
       </div>
       <AacInformationCard childId={child.id} />
       <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
@@ -7936,218 +8784,476 @@ function AIDisclaimer() {
 }
 
 function SettingsPage() {
-  return (
-    <div className="space-y-8">
-      <section
-        data-testid="settings-about-mission"
-        className="rounded-3xl border border-primary/15 bg-secondary/45 p-6 md:p-7"
-      >
-        <div className="flex items-start gap-4">
-          <div className="grid size-11 shrink-0 place-items-center rounded-2xl bg-accent text-primary">
-            <Leaf size={21} />
-          </div>
-          <div>
-            <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary">
-              About ChildLed
-            </p>
-            <h2 className="serif mt-2 text-2xl font-semibold text-primary">
-              A shared language across the care team
-            </h2>
-            <p
-              data-testid="settings-about-tagline"
-              className="mt-3 max-w-3xl text-lg font-semibold leading-7 text-primary"
-            >
-              {CHILDLED_TAGLINE}
-            </p>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-              ChildLed connects families, educators, and clinicians around the
-              communication each child is building, so helpful context can
-              travel with care from home to school to therapy.
-            </p>
-          </div>
-        </div>
-      </section>
-      <SettingsPageContent />
-    </div>
-  );
-}
-
-function SettingsPageContent() {
+  const settings = useGetSettings();
+  const queryCache = useQueryClient();
+  const { signOut } = useClerk();
+  const [preferences, setPreferences] =
+    useState<NotificationPreferences | null>(null);
   const [saved, setSaved] = useState(false);
-  const [insights, setInsights] = useState(false);
-  return (
-    <div className="space-y-8">
-      <SectionHeading
-        eyebrow="Your workspace"
-        title="Settings"
-        description="Keep the people, preferences, and future ideas behind your shared map in one place."
-        action={
-          saved ? (
-            <span className="inline-flex focus-ring  items-center gap-2 rounded-xl bg-secondary px-4 py-2.5 text-sm font-semibold text-primary">
-              <Check size={16} /> Saved
-            </span>
-          ) : (
-            <Button
-              onClick={() => setSaved(true)}
-              data-testid="button-save-settings"
-            >
-              Save changes
-            </Button>
-          )
-        }
+  const updatePreferences = useUpdateSettings({
+    mutation: {
+      onSuccess: () => {
+        setSaved(true);
+        void queryCache.invalidateQueries({
+          queryKey: getGetSettingsQueryKey(),
+        });
+      },
+    },
+  });
+
+  useEffect(() => {
+    if (!settings.data) return;
+    setPreferences(settings.data.notificationPreferences);
+  }, [settings.data]);
+
+  const resolvedPreferences =
+    preferences ?? settings.data?.notificationPreferences ?? null;
+  if (settings.isLoading) return <LoadingBlocks />;
+  if (settings.isError || !settings.data || !resolvedPreferences) {
+    return (
+      <EmptyState
+        icon={Shield}
+        title="Settings unavailable"
+        body="We could not securely load the settings for your signed-in account."
+        action={<Button onClick={() => settings.refetch()}>Try again</Button>}
       />
-      <div className="grid gap-5 lg:grid-cols-[.8fr_1.2fr]">
-        <section className="rounded-2xl border border-border bg-primary p-7 text-primary-foreground">
-          <Avatar
-            name="Maya Chen"
-            className="size-16 bg-accent text-lg text-primary ring-primary"
-          />
-          <h2 className="serif mt-6 text-3xl">Maya Chen</h2>
-          <p className="mt-1 text-sm text-primary-foreground/60">
-            Care team lead
-          </p>
-          <div className="mt-8 border-t border-primary-foreground/15 pt-6">
-            <p className="mono text-[10px] uppercase tracking-[.18em] text-accent">
-              Your role
+    );
+  }
+
+  const { identity, professionalProfile, students, pendingInvitations } =
+    settings.data;
+  const isSlp = identity.role === "SLP";
+  const isTeacher = identity.role === "Teacher";
+  const description = identity.isDevelopmentDemo
+    ? "Manage the isolated development workspace and preview role preferences."
+    : isSlp
+      ? "Manage your professional profile, preferences, notifications, and ChildLed account."
+      : isTeacher
+        ? "Manage your account, student access, and notification preferences."
+        : identity.role === "Parent"
+          ? "Manage your account, child access, and communication preferences."
+          : "Manage your ChildLed account and notification preferences.";
+  const accessTitle = isSlp
+    ? "Student care circles"
+    : isTeacher
+      ? "My student access"
+      : identity.role === "Parent"
+        ? "My child access"
+        : "Workspace access";
+  const accessDescription = isSlp
+    ? "People with explicit access to each student in your caseload."
+    : "Only students explicitly connected to your account appear here.";
+
+  const setPreference = (
+    key: keyof NotificationPreferences,
+    value: boolean,
+  ) => {
+    setSaved(false);
+    setPreferences((current) =>
+      ({
+        ...(current ?? settings.data.notificationPreferences),
+        [key]: value,
+      }),
+    );
+  };
+  const savePreferences = () => {
+    updatePreferences.mutate({ data: resolvedPreferences });
+  };
+  const clearAndSignOut = () => {
+    queryClient.clear();
+    clearOverviewSessionMarkers();
+    markAuthLogout();
+    const wasDevelopmentDemo =
+      window.localStorage.getItem(developmentDemoStorageKey) === "active";
+    window.localStorage.removeItem(developmentDemoStorageKey);
+    window.localStorage.removeItem(developmentDemoSessionStorageKey);
+    if (wasDevelopmentDemo) {
+      window.location.assign(basePath || "/");
+      return;
+    }
+    void signOut({ redirectUrl: basePath || "/" });
+  };
+
+  return (
+    <div className="space-y-7" data-testid="settings-page">
+      <SectionHeading
+        eyebrow={
+          identity.isDevelopmentDemo ? "Development workspace" : "Your account"
+        }
+        title="Settings"
+        description={description}
+      />
+
+      {identity.isDevelopmentDemo && (
+        <section
+          data-testid="settings-development-demo"
+          className="flex items-start gap-3 rounded-2xl border border-accent/60 bg-accent/15 p-4 text-sm"
+        >
+          <Shield className="mt-0.5 shrink-0 text-primary" size={19} />
+          <div>
+            <p className="font-semibold text-primary">Development demo</p>
+            <p className="mt-1 leading-6 text-muted-foreground">
+              This identity and its data are isolated from normal Clerk accounts.
             </p>
-            <select
-              data-testid="select-profile-role"
-              className="mt-3 w-full rounded-xl border border-primary-foreground/15 bg-primary/40 px-3 py-3 text-sm text-primary-foreground outline-none transition-shadow focus-ring"
-            >
-              <option>Care team lead</option>
-              <option>Parent / caregiver</option>
-              <option>Teacher</option>
-              <option>Speech-language pathologist</option>
-            </select>
           </div>
         </section>
-        <section className="space-y-4">
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <div className="flex items-center gap-3">
-              <div className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
-                <Bell size={18} />
-              </div>
-              <div>
-                <h3 className="serif text-xl font-semibold">
-                  Team notifications
-                </h3>
-                <p className="text-xs text-muted-foreground">
-                  Know when a new clue is added
-                </p>
-              </div>
+      )}
+
+      <div className="grid gap-5 lg:grid-cols-[minmax(0,.8fr)_minmax(0,1.2fr)]">
+        <section className="rounded-2xl border border-border bg-primary p-6 text-primary-foreground sm:p-7">
+          <Avatar
+            name={identity.name}
+            className="size-16 bg-accent text-lg text-primary ring-primary"
+          />
+          <h2
+            data-testid="settings-identity-name"
+            className="serif mt-5 break-words text-3xl"
+          >
+            {identity.name}
+          </h2>
+          <p
+            data-testid="settings-identity-email"
+            className="mt-1 break-all text-sm text-primary-foreground/70"
+          >
+            {identity.email}
+          </p>
+          <dl className="mt-6 grid gap-4 border-t border-primary-foreground/15 pt-5 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
+            <div>
+              <dt className="text-xs text-primary-foreground/60">Account type</dt>
+              <dd
+                data-testid="settings-account-type"
+                className="mt-1 font-semibold"
+              >
+                {identity.accountType}
+              </dd>
             </div>
-            <div className="mt-5 space-y-3">
-              <label className="flex items-center justify-between gap-4 border-t border-border pt-4">
-                <span className="text-sm">New phrase or comment</span>
-                <input
-                  data-testid="checkbox-notifications-phrases"
-                  type="checkbox"
-                  defaultChecked
-                  className="size-4 accent-primary"
-                />
-              </label>
-              <label className="flex items-center justify-between gap-4">
-                <span className="text-sm">Weekly map reflection</span>
-                <input
-                  data-testid="checkbox-notifications-weekly"
-                  type="checkbox"
-                  defaultChecked
-                  className="size-4 accent-primary"
-                />
-              </label>
+            <div>
+              <dt className="text-xs text-primary-foreground/60">Workspace</dt>
+              <dd className="mt-1 font-semibold">{identity.organizationName}</dd>
+            </div>
+          </dl>
+          <p className="mt-5 text-xs leading-5 text-primary-foreground/60">
+            Your account type is assigned through ChildLed onboarding and cannot
+            be changed here.
+          </p>
+        </section>
+
+        <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+          <div className="flex items-center gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
+              <Bell size={18} />
+            </div>
+            <div>
+              <h2 className="serif text-xl font-semibold">Notifications</h2>
+              <p className="text-xs text-muted-foreground">
+                Choose the updates you want to receive.
+              </p>
             </div>
           </div>
-          <div className="rounded-2xl border border-border bg-card p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex gap-3">
-                <div className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
-                  <Sparkles size={18} />
-                </div>
-                <div>
-                  <h3 className="serif text-xl font-semibold">
-                    Future insights
-                  </h3>
-                  <p className="mt-1 max-w-md text-xs leading-5 text-muted-foreground">
-                    When your map has enough context, ChildLed can gently
-                    surface patterns across settings. You’re always in control.
-                  </p>
-                </div>
-              </div>
-              <button
-                data-testid="button-toggle-insights"
-                aria-pressed={insights}
-                onClick={() => setInsights(!insights)}
-                className={`relative h-6 w-11 rounded-full transition ${insights ? "bg-primary" : "bg-muted"}`}
-              >
-                <span
-                  className={`absolute top-1 size-4 rounded-full bg-card transition-transform ${insights ? "translate-x-6" : "translate-x-1"}`}
-                />
-              </button>
-            </div>
+          <div className="mt-5 divide-y divide-border border-y border-border">
+            <SettingsPreferenceToggle
+              label="Messages"
+              checked={resolvedPreferences.messages}
+              onChange={(value) => setPreference("messages", value)}
+              testId="toggle-settings-messages"
+            />
+            <SettingsPreferenceToggle
+              label={
+                identity.role === "Parent" ? "Child updates" : "Student updates"
+              }
+              checked={resolvedPreferences.studentUpdates}
+              onChange={(value) => setPreference("studentUpdates", value)}
+              testId="toggle-settings-student-updates"
+            />
+            <SettingsPreferenceToggle
+              label="Communication activity"
+              checked={resolvedPreferences.communicationActivity}
+              onChange={(value) =>
+                setPreference("communicationActivity", value)
+              }
+              testId="toggle-settings-communication-activity"
+            />
+            {(isSlp || identity.isDevelopmentDemo) && (
+              <SettingsPreferenceToggle
+                label="Weekly caseload summary"
+                checked={resolvedPreferences.weeklySummary}
+                onChange={(value) => setPreference("weeklySummary", value)}
+                testId="toggle-settings-weekly-summary"
+              />
+            )}
+          </div>
+          <div className="mt-5 flex flex-col-reverse items-stretch gap-3 sm:flex-row sm:items-center sm:justify-end">
+            {updatePreferences.isError && (
+              <p role="alert" className="text-sm text-destructive sm:mr-auto">
+                Preferences could not be saved. Please try again.
+              </p>
+            )}
+            {saved && !updatePreferences.isPending && (
+              <span className="inline-flex items-center justify-center gap-2 text-sm font-semibold text-primary">
+                <Check size={16} /> Saved
+              </span>
+            )}
+            <Button
+              onClick={savePreferences}
+              disabled={updatePreferences.isPending}
+              data-testid="button-save-settings"
+            >
+              {updatePreferences.isPending ? "Saving..." : "Save preferences"}
+            </Button>
           </div>
         </section>
       </div>
-      <section className="rounded-2xl border border-border bg-card p-6">
-        <div className="flex items-center gap-3">
-          <div className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
+
+      {isSlp && !identity.isDevelopmentDemo && (
+        <section
+          data-testid="settings-slp-professional-profile"
+          className="rounded-2xl border border-border bg-card p-5 sm:p-6"
+        >
+          <div className="flex items-start gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
+              <ClipboardList size={18} />
+            </div>
+            <div>
+              <h2 className="serif text-2xl font-semibold">
+                Professional profile
+              </h2>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                License and credential information is self-reported unless a
+                verification status explicitly says otherwise.
+              </p>
+            </div>
+          </div>
+          {professionalProfile ? (
+            <dl className="mt-5 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-3">
+              {[
+                ["First name", professionalProfile.firstName],
+                ["Last name", professionalProfile.lastName],
+                ["Professional title", professionalProfile.professionalTitle],
+                ["School", professionalProfile.school],
+                ["School district", professionalProfile.schoolDistrict],
+                ["Licensure state", professionalProfile.licensureState],
+                ["SLP license number", professionalProfile.licenseNumber],
+                [
+                  "License expiration",
+                  professionalProfile.licenseExpirationDate ?? "Not provided",
+                ],
+                [
+                  "ASHA CCC-SLP number",
+                  professionalProfile.ashaCccSlpNumber ?? "Not provided",
+                ],
+              ].map(([label, value]) => (
+                <div key={label} className="min-w-0">
+                  <dt className="text-xs font-semibold text-muted-foreground">
+                    {label}
+                  </dt>
+                  <dd className="mt-1 break-words text-sm font-semibold">
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          ) : (
+            <p className="mt-5 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+              No professional profile is available for this account. ChildLed
+              will not substitute development profile data.
+            </p>
+          )}
+        </section>
+      )}
+
+      <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
             <Users size={18} />
           </div>
           <div>
-            <h3 className="serif text-2xl font-semibold">Team access</h3>
-            <p className="text-xs text-muted-foreground">
-              The people helping make meaning portable
-            </p>
+            <h2 className="serif text-2xl font-semibold">{accessTitle}</h2>
+            <p className="text-xs text-muted-foreground">{accessDescription}</p>
           </div>
-          <Button
-            variant="outline"
-            className="ml-auto hidden sm:inline-flex"
-            onClick={() => setSaved(true)}
-            data-testid="button-invite-team"
+          {isSlp && (
+            <Link
+              href="/caseload"
+              className="ml-auto inline-flex min-h-11 items-center justify-center rounded-xl border border-primary/20 bg-card px-4 py-2.5 text-sm font-semibold text-primary shadow-sm hover:bg-secondary/70"
+            >
+              View caseload
+            </Link>
+          )}
+        </div>
+        {students.length === 0 ? (
+          <p
+            data-testid="settings-student-access-empty"
+            className="mt-5 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground"
           >
-            <Plus size={15} /> Invite
-          </Button>
-        </div>
-        <div className="mt-6 flex flex-wrap gap-2">
-          <span className="rounded-full bg-secondary px-4 py-2 text-xs font-semibold">
-            Maya Chen · Care team lead
-          </span>
-          <span className="rounded-full bg-muted px-4 py-2 text-xs">
-            Invite a teacher or therapist
-          </span>
-        </div>
+            No students are currently connected to this account.
+          </p>
+        ) : (
+          <div className="mt-5 grid gap-3 lg:grid-cols-2">
+            {students.map((student) => (
+              <article
+                key={student.id}
+                data-testid={`settings-student-${student.id}`}
+                className="rounded-xl border border-border bg-background p-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-primary">{student.name}</h3>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {student.childLedId}
+                    </p>
+                  </div>
+                  <Link
+                    href={`/children?childId=${student.id}`}
+                    className="text-sm font-semibold text-primary underline underline-offset-4"
+                  >
+                    View
+                  </Link>
+                </div>
+                <p className="mt-3 text-sm text-muted-foreground">
+                  {[student.school, student.grade].filter(Boolean).join(" · ") ||
+                    "School details not provided"}
+                </p>
+                {isSlp && (
+                  <div className="mt-4 border-t border-border pt-3">
+                    <p className="text-xs font-semibold text-muted-foreground">
+                      Care circle
+                    </p>
+                    {student.careTeam.length === 0 ? (
+                      <p className="mt-2 text-sm text-muted-foreground">
+                        No additional care-team members assigned.
+                      </p>
+                    ) : (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {student.careTeam.map((member) => (
+                          <span
+                            key={`${student.id}-${member.userId}`}
+                            className="rounded-full bg-secondary px-3 py-1.5 text-xs"
+                          >
+                            {member.name} · {member.role}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </article>
+            ))}
+          </div>
+        )}
       </section>
-      <section className="rounded-2xl border border-border bg-card p-6">
+
+      {isSlp && pendingInvitations.length > 0 && (
+        <section
+          data-testid="settings-pending-invitations"
+          className="rounded-2xl border border-border bg-card p-5 sm:p-6"
+        >
+          <div className="flex items-center gap-3">
+            <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
+              <Mail size={18} />
+            </div>
+            <div>
+              <h2 className="serif text-2xl font-semibold">
+                Pending invitations
+              </h2>
+              <p className="text-xs text-muted-foreground">
+                Invitations for students in your workspace access.
+              </p>
+            </div>
+          </div>
+          <div className="mt-5 divide-y divide-border rounded-xl border border-border">
+            {pendingInvitations.map((invitation) => (
+              <div
+                key={invitation.id}
+                className="flex flex-col gap-1 p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="break-all text-sm font-semibold">
+                    {invitation.email}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    {invitation.childName ?? "Workspace invitation"}
+                  </p>
+                </div>
+                <span className="mt-2 w-fit rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold sm:mt-0">
+                  {invitation.role}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
         <div className="flex items-start gap-3">
           <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
             <FileText size={18} />
           </div>
-          <div>
-            <h3 className="serif text-2xl font-semibold">
-              Privacy and data use
-            </h3>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Review the data-use placeholders, consent expectations, and rights
-              information for your organization.
+          <div className="min-w-0 flex-1">
+            <h2 className="serif text-2xl font-semibold">Account and policies</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Review ChildLed policies or securely end your current session.
             </p>
-            <div className="mt-4 flex flex-wrap gap-3">
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
               <Link
                 href="/privacy"
                 data-testid="link-settings-privacy-policy"
-                className="text-sm font-semibold text-primary underline underline-offset-4"
+                className="min-h-11 content-center text-sm font-semibold text-primary underline underline-offset-4"
               >
                 Privacy Policy
               </Link>
               <Link
                 href="/terms"
                 data-testid="link-settings-terms-of-use"
-                className="text-sm font-semibold text-primary underline underline-offset-4"
+                className="min-h-11 content-center text-sm font-semibold text-primary underline underline-offset-4"
               >
                 Terms of Use
               </Link>
+              <Button
+                variant="outline"
+                className="sm:ml-auto"
+                onClick={clearAndSignOut}
+                data-testid="button-settings-sign-out"
+              >
+                <LogOut size={16} /> Sign out
+              </Button>
             </div>
           </div>
         </div>
       </section>
+    </div>
+  );
+}
+
+function SettingsPreferenceToggle({
+  label,
+  checked,
+  onChange,
+  testId,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  testId: string;
+}) {
+  return (
+    <div className="flex min-h-14 items-center justify-between gap-4 py-2.5">
+      <span className="text-sm font-medium">{label}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        data-testid={testId}
+        onClick={() => onChange(!checked)}
+        className={`relative h-7 w-12 shrink-0 rounded-full transition-colors focus-ring ${
+          checked ? "bg-primary" : "bg-muted"
+        }`}
+      >
+        <span
+          className={`absolute left-0 top-1 size-5 rounded-full bg-card shadow-sm transition-transform ${
+            checked ? "translate-x-6" : "translate-x-1"
+          }`}
+        />
+      </button>
     </div>
   );
 }
@@ -8159,7 +9265,7 @@ function LegalPage({
 }: {
   title: string;
   eyebrow: string;
-  sections: { title: string; body: string }[];
+  sections: { id?: string; title: string; body: string }[];
 }) {
   return (
     <main className="paper-grain min-h-[100dvh] bg-background px-5 py-8 md:px-10 md:py-12">
@@ -8206,6 +9312,7 @@ function LegalPage({
           {sections.map((section) => (
             <section
               key={section.title}
+              id={section.id}
               className="rounded-2xl border border-border bg-card p-6"
             >
               <h2 className="serif text-2xl font-semibold">{section.title}</h2>
@@ -9774,6 +10881,7 @@ function SessionRecorderPage({
   childId,
   child,
   serviceRequirementId,
+  makeupForSessionId,
   resumeTranscriptId,
   startRequestToken = 0,
   onSessionActivityChange,
@@ -9783,6 +10891,7 @@ function SessionRecorderPage({
   childId: number;
   child?: Child;
   serviceRequirementId?: number;
+  makeupForSessionId?: number;
   resumeTranscriptId?: number;
   startRequestToken?: number;
   onSessionActivityChange?: (active: boolean) => void;
@@ -9825,6 +10934,17 @@ function SessionRecorderPage({
       query: {
         queryKey: getListGestaltsQueryKey({ childId }),
         enabled: Boolean(childId),
+      },
+    },
+  );
+  const activeGoalsQuery = useGetManualSessionSetup(
+    { childId },
+    {
+      query: {
+        queryKey: getGetManualSessionSetupQueryKey({ childId }),
+        enabled: Boolean(childId),
+        retry: false,
+        refetchOnWindowFocus: false,
       },
     },
   );
@@ -9884,6 +11004,9 @@ function SessionRecorderPage({
   const [emotion, setEmotion] = useState("Unknown");
   const [observations, setObservations] = useState("");
   const [nextSteps, setNextSteps] = useState("");
+  const [goalReviews, setGoalReviews] = useState<
+    Record<number, SessionGoalReviewValue>
+  >({});
   const [sessionNote, setSessionNote] = useState("");
   const [sessionNoteEdited, setSessionNoteEdited] = useState(false);
   const [savedSession, setSavedSession] = useState<Session>();
@@ -10015,6 +11138,17 @@ function SessionRecorderPage({
   }, [nlaGuideOpen]);
 
   const formattedTime = `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
+  const effectiveServiceRequirementId =
+    transcription?.serviceRequirementId ?? serviceRequirementId;
+  const effectiveMakeupForSessionId =
+    transcription?.makeupForSessionId ?? makeupForSessionId;
+  const activeGoals = activeGoalsQuery.data?.goals ?? [];
+  const addressedGoalReviews = activeGoals
+    .map((goal) => ({
+      goal,
+      review: goalReviews[goal.id] ?? emptySessionGoalReview(),
+    }))
+    .filter(({ review }) => review.progressStatus !== "not_addressed");
   const clinicianName =
     user?.fullName?.trim() || user?.firstName?.trim() || "Clinician";
   const caregiverName =
@@ -10184,8 +11318,17 @@ function SessionRecorderPage({
     if (consentPurpose === "process") setPendingAudioFile(undefined);
     if (consentPurpose === "calibration") setPendingCalibrationRole(undefined);
   };
-  const summaryFor = (items = captured) =>
-    [
+  const summaryFor = (items = captured) => {
+    const goalProgress = addressedGoalReviews.map(({ goal, review }) => {
+      const prompting =
+        review.promptingLevel === "na"
+          ? ""
+          : ` with ${sessionGoalPromptingLabel(review.promptingLevel).toLowerCase()} prompting`;
+      return `${goal.title}: ${sessionGoalProgressLabel(review.progressStatus)}${prompting}.${
+        review.comments.trim() ? ` ${review.comments.trim()}` : ""
+      }`;
+    });
+    return [
       `${formattedTime} therapy session for ${child?.name ?? "the child"}.`,
       "",
       "Reviewed child communication:",
@@ -10207,9 +11350,15 @@ function SessionRecorderPage({
       "Clinical observations:",
       observations || "To be added.",
       "",
+      "Goal progress:",
+      goalProgress.length
+        ? goalProgress.join("\n")
+        : "No communication goals were marked as addressed.",
+      "",
       "Next steps:",
       nextSteps || "To be added.",
     ].join("\n");
+  };
   const clearTranscription = () => {
     transcriptionRun.current += 1;
     setUploadedAudioId(undefined);
@@ -11169,7 +12318,11 @@ function SessionRecorderPage({
       setTranscriptionStatus("transcribing");
       const result = await transcribeAudio.mutateAsync({
         params: { childId },
-        data: { audioId },
+        data: {
+          audioId,
+          serviceRequirementId: effectiveServiceRequirementId ?? null,
+          makeupForSessionId: effectiveMakeupForSessionId ?? null,
+        },
       });
       if (transcriptionRun.current !== runId) return;
       setTranscription(result);
@@ -11591,7 +12744,7 @@ function SessionRecorderPage({
   const saveSession = async () => {
     if (sessionSaveInFlight.current) return;
     setSaveError("");
-    if (!serviceRequirementId) {
+    if (!effectiveServiceRequirementId) {
       setSaveError(
         "Select the service this session should count toward before saving.",
       );
@@ -11621,7 +12774,8 @@ function SessionRecorderPage({
       const session = await createSession.mutateAsync({
         params: { childId },
         data: {
-          serviceRequirementId,
+          serviceRequirementId: effectiveServiceRequirementId,
+          makeupForSessionId: effectiveMakeupForSessionId ?? null,
           durationSeconds: elapsed,
           gestalts: captured.map(
             ({
@@ -11657,6 +12811,12 @@ function SessionRecorderPage({
           calibrationAudioIds: Object.values(calibrationAudioIds).filter(
             (id): id is string => Boolean(id),
           ),
+          goalReviews: addressedGoalReviews.map(({ goal, review }) => ({
+            goalId: goal.id,
+            progressStatus: review.progressStatus,
+            promptingLevel: review.promptingLevel,
+            comments: review.comments,
+          })),
           consentConfirmed: true,
           consentConfirmedAt,
         },
@@ -11708,6 +12868,7 @@ function SessionRecorderPage({
     setMeaning("");
     setObservations("");
     setNextSteps("");
+    setGoalReviews({});
     setSessionNote("");
     setSessionNoteEdited(false);
     setSavedSession(undefined);
@@ -13916,8 +15077,10 @@ function SessionRecorderPage({
     captured,
     elapsed,
     finalizePreparing,
+    goalReviews,
     nextSteps,
     observations,
+    activeGoalsQuery.data?.goals,
     sessionNoteEdited,
     stage,
   ]);
@@ -14158,6 +15321,8 @@ function SessionRecorderPage({
                       createSession.isPending ||
                       uploadAudio.isPending ||
                       !consentConfirmedAt ||
+                      activeGoalsQuery.isLoading ||
+                      activeGoalsQuery.isError ||
                       !canFinalize
                     }
                     data-testid="button-save-session"
@@ -14165,10 +15330,10 @@ function SessionRecorderPage({
                     {finalizePreparing
                       ? "Preparing summary…"
                       : createSession.isPending || uploadAudio.isPending
-                        ? "Saving and generating note…"
+                        ? "Saving session…"
                         : saveError
                           ? "Retry finalization"
-                          : "Save session & generate note"}{" "}
+                          : "Save & finalize session"}{" "}
                     <ArrowRight size={16} />
                   </Button>
                 )}
@@ -14839,9 +16004,41 @@ function SessionRecorderPage({
                     />
                   </label>
                 </div>
+                <section className="mt-7 border-t border-border pt-7">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+                    <div>
+                      <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
+                        Progress tracking
+                      </p>
+                      <h2 className="serif mt-2 text-2xl font-semibold">
+                        Session Goal Review
+                      </h2>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Only goals marked as addressed are saved.
+                    </p>
+                  </div>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                    Review any active communication goals worked on today. You
+                    can leave every other goal as Not Addressed.
+                  </p>
+                  <SessionGoalReview
+                    goals={activeGoals}
+                    values={goalReviews}
+                    loading={activeGoalsQuery.isLoading}
+                    error={activeGoalsQuery.isError}
+                    onRetry={() => void activeGoalsQuery.refetch()}
+                    onChange={(goalId, value) =>
+                      setGoalReviews((current) => ({
+                        ...current,
+                        [goalId]: value,
+                      }))
+                    }
+                  />
+                </section>
                 <div className="mt-5 flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                   <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                    Editable session summary
+                    Editable draft session note
                   </span>
                   <Button
                     className="w-full sm:w-auto"
@@ -14849,7 +16046,7 @@ function SessionRecorderPage({
                     onClick={regenerateSessionNote}
                     data-testid="button-refresh-session-summary"
                   >
-                    <RotateCcw size={15} /> Refresh summary
+                    <RotateCcw size={15} /> Regenerate draft
                   </Button>
                 </div>
                 <textarea
@@ -16586,40 +17783,116 @@ function ObservationForm({
 
 function TeamQuestionForm({
   childId,
+  viewerUserId,
+  viewerRole,
+  developmentLogging,
   phrase,
   notifyClinician = false,
   onClose,
+  onSent,
 }: {
   childId: number;
+  viewerUserId: string;
+  viewerRole: string;
+  developmentLogging: boolean;
   phrase?: string;
   notifyClinician?: boolean;
   onClose: () => void;
+  onSent?: (message: ApiTeamMessage) => void;
 }) {
-  const mutation = useCreateTeamMessage();
+  const mutation = useCreateTeamMessage({
+    mutation: {
+      onError: (error, variables) => {
+        if (!developmentLogging) return;
+        console.error("[ChildLed Inbox] care-team question send failed", {
+          status: inboxErrorStatus(error),
+          viewerUserId,
+          viewerRole,
+          childId: variables.data.childId,
+          recipientCount: variables.data.recipientUserIds?.length ?? 0,
+          error,
+        });
+      },
+    },
+  });
   const client = useQueryClient();
+  const inboxQuery = useGetTeamInbox(
+    { childId },
+    {
+      query: {
+        queryKey: inboxQueryKeyForViewer(
+          getGetTeamInboxQueryKey({ childId }),
+          viewerUserId,
+        ),
+        enabled: Boolean(childId && viewerUserId),
+        placeholderData: (previousData) =>
+          inboxPlaceholderForViewer(previousData, viewerUserId),
+      },
+    },
+  );
+  useEffect(() => {
+    if (!inboxQuery.isError || !developmentLogging) return;
+    console.error("[ChildLed Inbox] care-team recipients failed to load", {
+      status: inboxErrorStatus(inboxQuery.error),
+      viewerUserId,
+      viewerRole,
+      childId,
+      error: inboxQuery.error,
+    });
+  }, [
+    childId,
+    developmentLogging,
+    inboxQuery.error,
+    inboxQuery.isError,
+    viewerRole,
+    viewerUserId,
+  ]);
   const [body, setBody] = useState(
     phrase
       ? `${notifyClinician ? "Clinician attention requested" : "Question"} about “${phrase}”:\n`
       : "",
   );
+  const eligibleRecipients = useMemo(
+    () =>
+      (inboxQuery.data?.members ?? []).filter(
+        (member) => !notifyClinician || member.role === "SLP",
+      ),
+    [inboxQuery.data?.members, notifyClinician],
+  );
+  const [recipientIds, setRecipientIds] = useState<string[]>([]);
+  useEffect(() => {
+    const clinicianIds = eligibleRecipients
+      .filter((member) => member.role === "SLP")
+      .map((member) => member.userId);
+    setRecipientIds(
+      clinicianIds.length
+        ? clinicianIds
+        : eligibleRecipients.length === 1
+          ? [eligibleRecipients[0].userId]
+          : [],
+    );
+  }, [eligibleRecipients]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (!recipientIds.length) return;
     mutation.mutate(
       {
         data: {
           childId,
           body: body.trim(),
-          messageType: notifyClinician ? "notification" : "question",
+          messageType: "question",
+          recipientUserIds: recipientIds,
         },
       },
       {
-        onSuccess: () => {
+        onSuccess: (message) => {
           client.invalidateQueries({
-            queryKey: getGetTeamInboxQueryKey({ childId }),
+            queryKey: getGetTeamInboxQueryKey(),
           });
           client.invalidateQueries({
             queryKey: getGetTeacherCommunicationHelperQueryKey(),
           });
+          onSent?.(message);
           onClose();
         },
       },
@@ -16633,9 +17906,65 @@ function TeamQuestionForm({
       <form onSubmit={submit} className="space-y-5">
         <div className="rounded-2xl border border-primary/15 bg-secondary/35 p-4 text-sm leading-6 text-muted-foreground">
           {notifyClinician
-            ? "This creates a team-visible notification for the assigned clinician. The entire assigned team can see it; ChildLed does not send direct messages."
-            : "Your note is shared with the whole assigned team, including the clinician. ChildLed does not send direct messages or make a clinical conclusion from this question."}
+            ? "This question will be sent to the assigned SLP and saved in your shared Inbox conversation."
+            : "Choose authorized members of this child’s care team. Your question will be saved in the shared Inbox conversation."}
         </div>
+        <fieldset className="space-y-2">
+          <legend className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            To
+          </legend>
+          {inboxQuery.isLoading ? (
+            <div className="skeleton h-12 rounded-xl" />
+          ) : inboxQuery.isError ? (
+            <div className="rounded-xl border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive">
+              <p>{inboxLoadFailureMessage(inboxQuery.error, false)}</p>
+              <button
+                type="button"
+                onClick={() => void inboxQuery.refetch()}
+                className="focus-ring mt-2 min-h-9 rounded-lg px-3 font-semibold hover:bg-destructive/10"
+              >
+                Try again
+              </button>
+            </div>
+          ) : eligibleRecipients.length ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {eligibleRecipients.map((member) => {
+                const checked = recipientIds.includes(member.userId);
+                return (
+                  <label
+                    key={member.userId}
+                    className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 ${checked ? "border-primary bg-secondary/70" : "border-border bg-background"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-5 accent-primary"
+                      checked={checked}
+                      onChange={() =>
+                        setRecipientIds((current) =>
+                          checked
+                            ? current.filter((id) => id !== member.userId)
+                            : [...current, member.userId],
+                        )
+                      }
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">
+                        {member.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {member.role}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">
+              No authorized recipient is assigned to this child yet.
+            </p>
+          )}
+        </fieldset>
         <label className="block space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             {notifyClinician
@@ -16657,7 +17986,7 @@ function TeamQuestionForm({
         </label>
         {mutation.isError && (
           <p className="text-sm text-destructive">
-            We couldn’t send that question. Please try again.
+            {inboxSendFailureMessage(mutation.error)}
           </p>
         )}
         <div className="flex justify-end gap-3">
@@ -16666,7 +17995,9 @@ function TeamQuestionForm({
           </Button>
           <Button
             type="submit"
-            disabled={mutation.isPending || !body.trim()}
+            disabled={
+              mutation.isPending || !body.trim() || !recipientIds.length
+            }
             data-testid="button-submit-team-question"
           >
             {mutation.isPending
@@ -17416,11 +18747,13 @@ function SessionsLandingPage({
   children,
   initialChildId,
   initialServiceId,
+  initialMakeupForSessionId,
   onSaved,
 }: {
   children: Child[];
   initialChildId?: number;
   initialServiceId?: number;
+  initialMakeupForSessionId?: number;
   onSaved: (session: Session) => void;
 }) {
   const [, setLocation] = useLocation();
@@ -17693,6 +19026,15 @@ function SessionsLandingPage({
           </div>
         </Modal>
       )}
+      {initialMakeupForSessionId ? (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950">
+          <p className="font-bold">Makeup session</p>
+          <p className="mt-1">
+            Finalizing this recording will link it to missed session #
+            {initialMakeupForSessionId}.
+          </p>
+        </div>
+      ) : null}
       <section
         className={`${sessionActive ? "hidden" : ""} ${heroSticks ? "lg:sticky lg:top-2 lg:z-20" : ""} overflow-hidden rounded-[2rem] border border-primary/15 bg-card soft-shadow`}
         data-testid="recording-hero"
@@ -18015,6 +19357,7 @@ function SessionsLandingPage({
           childId={selectedChild.id}
           child={selectedChild}
           serviceRequirementId={selectedServiceId}
+          makeupForSessionId={initialMakeupForSessionId}
           resumeTranscriptId={resumeTranscriptId}
           startRequestToken={startRequestToken}
           onSessionActivityChange={setSessionActive}
@@ -18129,11 +19472,13 @@ function SessionsLandingPage({
                     {requirement.status.replace("_", " ")}
                   </span>
                 </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
                   {[
                     ["Required sessions", requirement.requiredSessions],
-                    ["Completed sessions", requirement.sessionsCompleted],
+                    ["Delivered sessions", requirement.sessionsCompleted],
+                    ["Missed sessions", requirement.sessionsMissed],
                     ["Sessions remaining", requirement.sessionsRemaining],
+                    ["Open makeups", requirement.outstandingMakeups],
                     ["Required minutes", requirement.requiredMinutes],
                     ["Completed minutes", requirement.minutesCompleted],
                     ["Minutes remaining", requirement.minutesRemaining],
@@ -18161,9 +19506,9 @@ function SessionsLandingPage({
                 Opened explicitly
               </p>
               <h2 className="serif mt-2 text-2xl font-semibold">
-                {openedSession?.sessionMode === "manual"
-                  ? "Manual Session"
-                  : "Previous Recording"}
+                {openedSession
+                  ? sessionHistoryLabel(openedSession)
+                  : "Previous Session"}
               </h2>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">
                 This completed session is separate from the new-session
@@ -18196,22 +19541,53 @@ function SessionsLandingPage({
                     )?.name ?? "Assigned child"}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(openedSession.createdAt).toLocaleDateString(
-                      "en-US",
-                      { month: "short", day: "numeric", year: "numeric" },
-                    )}{" "}
-                    ·{" "}
-                    {Math.max(1, Math.ceil(openedSession.durationSeconds / 60))}{" "}
-                    min
+                    {new Date(
+                      openedSession.sessionDate
+                        ? `${openedSession.sessionDate.slice(0, 10)}T12:00:00`
+                        : openedSession.createdAt,
+                    ).toLocaleDateString("en-US", {
+                      month: "short",
+                      day: "numeric",
+                      year: "numeric",
+                    })}{" "}
+                    {openedSession.sessionStatus === "missed"
+                      ? ""
+                      : ` · ${Math.max(1, Math.ceil(openedSession.durationSeconds / 60))} min`}
                     {openedSession.serviceName
                       ? ` · ${openedSession.serviceName}`
                       : " · Legacy session (service not assigned)"}
                   </p>
                 </div>
                 <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                  Completed session
+                  {sessionHistoryLabel(openedSession)}
                 </span>
               </div>
+              {openedSession.sessionStatus === "missed" ? (
+                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                  <p className="font-bold">
+                    {openedSession.missedReason
+                      ? missedReasonLabel(openedSession.missedReason)
+                      : "Missed session"}
+                  </p>
+                  {openedSession.missedReasonDetail ? (
+                    <p className="mt-1">{openedSession.missedReasonDetail}</p>
+                  ) : null}
+                  {openedSession.note ? (
+                    <p className="mt-2">{openedSession.note}</p>
+                  ) : null}
+                  <p className="mt-2 font-semibold">
+                    Makeup:{" "}
+                    {openedSession.makeupStatus
+                      ? makeupStatusLabel(openedSession.makeupStatus)
+                      : "Undetermined"}
+                  </p>
+                </div>
+              ) : openedSession.makeupForSessionId ? (
+                <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+                  Makeup for missed session on{" "}
+                  {openedSession.makeupForSessionDate ?? "the linked date"}
+                </p>
+              ) : null}
               {openedSession.goalProgress?.length ? (
                 <div className="mt-4 space-y-3 border-t border-border pt-4">
                   <p className="text-xs font-bold uppercase text-muted-foreground">
@@ -18230,6 +19606,9 @@ function SessionsLandingPage({
                       </p>
                       <p className="mt-2 text-sm text-muted-foreground">
                         {[
+                          progress.progressStatus
+                            ? sessionGoalProgressLabel(progress.progressStatus)
+                            : null,
                           progress.accuracyPercent === null
                             ? null
                             : `${progress.accuracyPercent}% accuracy`,
@@ -18237,7 +19616,7 @@ function SessionsLandingPage({
                             ? null
                             : `${progress.successfulAttempts ?? 0}/${progress.totalAttempts} attempts`,
                           progress.promptingLevel
-                            ? `${progress.promptingLevel} support`
+                            ? `${progress.promptingLevel.charAt(0).toUpperCase()}${progress.promptingLevel.slice(1)} prompting`
                             : null,
                         ]
                           .filter(Boolean)
@@ -18267,7 +19646,8 @@ function SessionsLandingPage({
                 />
               ) : (
                 <p className="mt-4 rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  {openedSession.sessionMode === "manual"
+                  {openedSession.sessionMode === "manual" ||
+                  openedSession.sessionMode === "missed"
                     ? "This session was tracked manually without audio."
                     : "This completed session has no retained recording audio."}
                 </p>
@@ -18483,7 +19863,8 @@ function SessionsLandingPage({
           </p>
           <h2 className="serif mt-2 text-2xl font-semibold">Recent Sessions</h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            Recorded and manually tracked sessions are kept in one history.
+            Completed, recorded, missed, and makeup sessions are kept in one
+            history.
           </p>
         </div>
         {!selectedChildId ? (
@@ -18510,7 +19891,7 @@ function SessionsLandingPage({
                       year: "numeric",
                     })}
                     {" · "}
-                    {session.sessionMode === "manual" ? "Manual" : "Recorded"}
+                    {sessionHistoryLabel(session)}
                   </p>
                 </div>
                 <Button
@@ -18574,6 +19955,7 @@ function SessionsLandingPage({
 
 function Workspace() {
   const [location, setLocation] = useLocation();
+  const locationSearch = useSearch();
   const { sessionId } = useAuth();
   const routePath = location.split("?")[0] || "/";
   const childrenQuery = useListChildren();
@@ -18662,7 +20044,7 @@ function Workspace() {
       ? teacherChildRoutes.has(routePath)
       : viewer?.role === "Parent";
   const requestedChildId = Number(
-    new URLSearchParams(window.location.search).get("childId"),
+    new URLSearchParams(locationSearch).get("childId"),
   );
   const validRequestedChildId =
     Number.isInteger(requestedChildId) && requestedChildId > 0
@@ -18674,6 +20056,14 @@ function Workspace() {
   const validRequestedServiceId =
     Number.isInteger(requestedServiceId) && requestedServiceId > 0
       ? requestedServiceId
+      : undefined;
+  const requestedMakeupForSessionId = Number(
+    new URLSearchParams(window.location.search).get("makeupForSessionId"),
+  );
+  const validRequestedMakeupForSessionId =
+    Number.isInteger(requestedMakeupForSessionId) &&
+    requestedMakeupForSessionId > 0
+      ? requestedMakeupForSessionId
       : undefined;
   const activeId = needsActiveChild
     ? (validRequestedChildId ??
@@ -18689,22 +20079,38 @@ function Workspace() {
       enabled: Boolean(activeId && canUseClinicalPortal),
     },
   });
-  const inboxUrlParams = new URLSearchParams(location.split("?")[1] ?? "");
+  const inboxUrlParams = new URLSearchParams(locationSearch);
   const requestedInboxChildId = Number(inboxUrlParams.get("childId"));
+  const requestedInboxConversationId = Number(
+    inboxUrlParams.get("conversationId"),
+  );
   const inboxChildId =
     routePath === "/team-communication" &&
     Number.isInteger(requestedInboxChildId) &&
     requestedInboxChildId > 0
       ? requestedInboxChildId
       : undefined;
+  const inboxConversationId =
+    routePath === "/team-communication" &&
+    Number.isInteger(requestedInboxConversationId) &&
+    requestedInboxConversationId > 0
+      ? requestedInboxConversationId
+      : undefined;
   const inboxSearch =
     routePath === "/team-communication" ? (inboxUrlParams.get("q") ?? "") : "";
-  const teamInboxParams = useMemo(
-    () => ({
-      ...(inboxChildId ? { childId: inboxChildId } : {}),
-      ...(inboxSearch ? { search: inboxSearch } : {}),
-    }),
-    [inboxChildId, inboxSearch],
+  const teamInboxListParams = useMemo(
+    () => (inboxSearch ? { search: inboxSearch } : undefined),
+    [inboxSearch],
+  );
+  const selectedTeamInboxParams = useMemo(
+    () =>
+      inboxConversationId
+        ? {
+            conversationId: inboxConversationId,
+            ...(inboxChildId ? { childId: inboxChildId } : {}),
+          }
+        : undefined,
+    [inboxChildId, inboxConversationId],
   );
   const canLoadClinicianOverview = canUseClinicalPortal;
   const overviewSessionIdentity =
@@ -18770,17 +20176,83 @@ function Workspace() {
   });
   const globalTeamInboxQuery = useGetTeamInbox(undefined, {
     query: {
-      queryKey: getGetTeamInboxQueryKey(),
+      queryKey: inboxQueryKeyForViewer(
+        getGetTeamInboxQueryKey(),
+        viewer?.userId,
+      ),
       enabled: Boolean(viewer?.userId),
       refetchInterval: 30_000,
     },
   });
-  const teamInboxQuery = useGetTeamInbox(teamInboxParams, {
+  const teamInboxQuery = useGetTeamInbox(teamInboxListParams, {
     query: {
-      queryKey: getGetTeamInboxQueryKey(teamInboxParams),
+      queryKey: inboxQueryKeyForViewer(
+        getGetTeamInboxQueryKey(teamInboxListParams),
+        viewer?.userId,
+      ),
       enabled: routePath === "/team-communication" && Boolean(viewer?.userId),
+      placeholderData: (previousData) =>
+        inboxPlaceholderForViewer(previousData, viewer?.userId),
     },
   });
+  const selectedTeamInboxQuery = useGetTeamInbox(selectedTeamInboxParams, {
+    query: {
+      queryKey: inboxQueryKeyForViewer(
+        getGetTeamInboxQueryKey(selectedTeamInboxParams),
+        viewer?.userId,
+      ),
+      enabled: Boolean(
+        routePath === "/team-communication" &&
+          viewer?.userId &&
+          inboxConversationId,
+      ),
+      placeholderData: (previousData) =>
+        inboxPlaceholderForViewer(previousData, viewer?.userId),
+    },
+  });
+  const activeTeamInboxError =
+    selectedTeamInboxQuery.error ?? teamInboxQuery.error;
+  const teamInboxErrorStatus = inboxErrorStatus(activeTeamInboxError);
+  const combinedTeamInbox = useMemo(
+    () =>
+      mergeInboxListWithSelectedConversation(
+        teamInboxQuery.data,
+        selectedTeamInboxQuery.data,
+        inboxConversationId,
+      ),
+    [
+      inboxConversationId,
+      selectedTeamInboxQuery.data,
+      teamInboxQuery.data,
+    ],
+  );
+  useEffect(() => {
+    if (
+      (!teamInboxQuery.isError && !selectedTeamInboxQuery.isError) ||
+      (!import.meta.env.DEV && !viewer?.isDevelopmentDemo)
+    ) {
+      return;
+    }
+    console.error("[ChildLed Inbox] conversation load failed", {
+      status: teamInboxErrorStatus,
+      viewerUserId: viewer?.userId,
+      viewerRole: viewer?.role,
+      childId: inboxChildId,
+      conversationId: inboxConversationId,
+      source: selectedTeamInboxQuery.isError ? "conversation" : "list",
+      error: activeTeamInboxError,
+    });
+  }, [
+    inboxChildId,
+    inboxConversationId,
+    teamInboxErrorStatus,
+    teamInboxQuery.isError,
+    selectedTeamInboxQuery.isError,
+    activeTeamInboxError,
+    viewer?.isDevelopmentDemo,
+    viewer?.role,
+    viewer?.userId,
+  ]);
   useEffect(() => {
     if (canLoadClinicianOverview && clinicianOverviewSince === null) {
       console.info(
@@ -18811,10 +20283,37 @@ function Workspace() {
   const deleteInterest = useDeleteChildInterest();
   const createTeamMessage = useCreateTeamMessage({
     mutation: {
-      onSuccess: () =>
-        queryClient.invalidateQueries({ queryKey: getGetTeamInboxQueryKey() }),
+      onSuccess: (message) => {
+        const inboxQueryKey = getGetTeamInboxQueryKey();
+        const snapshots = queryClient.getQueriesData<ApiTeamInbox>({
+          queryKey: inboxQueryKey,
+        });
+        for (const [queryKey, cached] of snapshots) {
+          if (!cached || cached.currentUserId !== viewer?.userId) continue;
+          queryClient.setQueryData<ApiTeamInbox>(
+            queryKey,
+            appendSentMessage(cached, message),
+          );
+        }
+        void queryClient.invalidateQueries({ queryKey: inboxQueryKey });
+      },
+      onError: (error, variables) => {
+        if (!import.meta.env.DEV && !viewer?.isDevelopmentDemo) return;
+        console.error("[ChildLed Inbox] message send failed", {
+          status: inboxErrorStatus(error),
+          viewerUserId: viewer?.userId,
+          viewerRole: viewer?.role,
+          childId: variables.data.childId,
+          conversationId: variables.data.conversationId,
+          recipientCount: variables.data.recipientUserIds?.length ?? 0,
+          error,
+        });
+      },
     },
   });
+  useEffect(() => {
+    createTeamMessage.reset();
+  }, [viewer?.userId]);
   const markTeamMessagesRead = useMarkTeamMessagesRead({
     mutation: {
       onMutate: async (variables) => {
@@ -18831,15 +20330,33 @@ function Workspace() {
           );
           if (!newlyRead.length) continue;
           const readByChild = new Map<number, number>();
+          const readByConversation = new Map<number, number>();
           for (const message of newlyRead) {
             readByChild.set(
               message.childId,
               (readByChild.get(message.childId) ?? 0) + 1,
             );
+            if (message.conversationId) {
+              readByConversation.set(
+                message.conversationId,
+                (readByConversation.get(message.conversationId) ?? 0) + 1,
+              );
+            }
           }
+          const conversations = cached.conversations.map((conversation) => ({
+            ...conversation,
+            unreadCount: Math.max(
+              0,
+              conversation.unreadCount -
+                (readByConversation.get(conversation.id) ?? 0),
+            ),
+          }));
           queryClient.setQueryData<ApiTeamInbox>(queryKey, {
             ...cached,
-            totalUnread: Math.max(0, cached.totalUnread - newlyRead.length),
+            totalUnread: conversations.filter(
+              (conversation) => conversation.unreadCount > 0,
+            ).length,
+            conversations,
             children: cached.children.map((child) => ({
               ...child,
               unreadCount: Math.max(
@@ -18944,29 +20461,14 @@ function Workspace() {
       ? { ...item, href, badge: globalTeamInboxQuery.data?.totalUnread ?? 0 }
       : { ...item, href };
   });
-  const roleRestrictedRoute =
-    (isRoleOverviewPath(routePath) && currentRoleOverviewPath !== routePath) ||
-    (!canUseClinicalPortal &&
-      [
-        "/session",
-        "/manual-session",
-        "/service-setup",
-        "/reports",
-        "/clinical-knowledge",
-        "/aac-planning",
-        "/clinician-learning",
-      ].includes(routePath)) ||
-    (viewer?.role === "Teacher" && routePath === "/language-journey") ||
-    (routePath === "/family-resources" && viewer?.role !== "Parent") ||
-    (routePath === "/teacher-resources" && viewer?.role !== "Teacher") ||
-    (routePath === "/caseload" && !canUseClinicalPortal) ||
-    (routePath === "/students" && viewer?.role !== "Teacher") ||
-    (["/admin-overview", "/admin-conversations", "/security"].includes(
-      routePath,
-    ) &&
-      !viewer?.isAdmin) ||
-    (routePath === "/ux-testing" &&
-      (!viewer?.isSuperAdmin || viewer.isRolePreview));
+  const roleRestrictedRoute = isRoleRestrictedPath({
+    path: routePath,
+    role: viewer?.role,
+    isAdmin: viewer?.isAdmin,
+    isSuperAdmin: viewer?.isSuperAdmin,
+    isRolePreview: viewer?.isRolePreview,
+    isNativeDevelopmentDemo,
+  });
   const portalTimeline = (gestaltsQuery.data ?? [])
     .slice(0, 5)
     .map((gestalt) => ({
@@ -19214,16 +20716,16 @@ function Workspace() {
       caseloadChildren={children}
       onOpenChild={openChildWorkspace}
       onAddStudent={() => setModal("child")}
-      onStartRecordedSession={(childId, serviceId) => {
+      onStartRecordedSession={(childId, serviceId, makeupForSessionId) => {
         setSelectedId(childId);
         setLocation(
-          `/session?childId=${childId}${serviceId ? `&serviceId=${serviceId}` : ""}`,
+          `/session?childId=${childId}${serviceId ? `&serviceId=${serviceId}` : ""}${makeupForSessionId ? `&makeupForSessionId=${makeupForSessionId}` : ""}`,
         );
       }}
-      onStartManualSession={(childId, serviceId) => {
+      onStartManualSession={(childId, serviceId, makeupForSessionId) => {
         setSelectedId(childId);
         setLocation(
-          `/manual-session?childId=${childId}${serviceId ? `&serviceId=${serviceId}` : ""}`,
+          `/manual-session?childId=${childId}${serviceId ? `&serviceId=${serviceId}` : ""}${makeupForSessionId ? `&makeupForSessionId=${makeupForSessionId}` : ""}`,
         );
       }}
       onViewGoals={(childId) => {
@@ -19272,19 +20774,41 @@ function Workspace() {
     <TeacherResourcesPage childId={activeId} />
   ) : routePath === "/team-communication" ? (
     <TeamInboxPage
+      selectedConversationId={inboxConversationId}
       selectedChildId={inboxChildId}
       searchTerm={inboxSearch}
-      inbox={teamInboxQuery.data}
-      loading={teamInboxQuery.isLoading}
+      inbox={
+        (inboxErrorStatus(teamInboxQuery.error) === 401 ||
+          inboxErrorStatus(teamInboxQuery.error) === 403)
+          ? undefined
+          : combinedTeamInbox
+      }
+      loading={Boolean(
+        teamInboxQuery.isLoading ||
+          teamInboxQuery.isFetching ||
+          (inboxConversationId && selectedTeamInboxQuery.isLoading),
+      )}
+      loadError={
+        selectedTeamInboxQuery.isError
+          ? inboxLoadFailureMessage(selectedTeamInboxQuery.error, true)
+          : teamInboxQuery.isError
+          ? inboxLoadFailureMessage(
+              teamInboxQuery.error,
+              false,
+            )
+          : undefined
+      }
       sending={createTeamMessage.isPending}
       markingRead={markTeamMessagesRead.isPending}
       sendError={
         createTeamMessage.isError
-          ? "Your message could not be sent. Please try again."
+          ? inboxSendFailureMessage(createTeamMessage.error)
           : undefined
       }
-      onSelectChild={(childId) => {
+      onSelectConversation={(conversationId, childId) => {
         const params = new URLSearchParams();
+        if (conversationId)
+          params.set("conversationId", String(conversationId));
         if (childId) params.set("childId", String(childId));
         if (inboxSearch) params.set("q", inboxSearch);
         setLocation(
@@ -19293,17 +20817,25 @@ function Workspace() {
       }}
       onSearch={(search) => {
         const params = new URLSearchParams();
-        if (inboxChildId) params.set("childId", String(inboxChildId));
         if (search) params.set("q", search);
         setLocation(
           `/team-communication${params.size ? `?${params.toString()}` : ""}`,
         );
       }}
+      onRetry={() => {
+        void teamInboxQuery.refetch();
+        if (inboxConversationId) void selectedTeamInboxQuery.refetch();
+      }}
       onMarkRead={(messageIds) => {
         if (messageIds.length)
           markTeamMessagesRead.mutate({ data: { messageIds } });
       }}
-      onSend={(input) => createTeamMessage.mutate({ data: input })}
+      onSend={(input, callbacks) =>
+        createTeamMessage.mutate(
+          { data: input },
+          { onSuccess: callbacks?.onSuccess },
+        )
+      }
       onOpenProfile={openChildWorkspace}
     />
   ) : routePath === "/students" ? (
@@ -19370,6 +20902,7 @@ function Workspace() {
       children={children}
       initialChildId={validRequestedChildId ?? selectedId}
       initialServiceId={validRequestedServiceId}
+      initialMakeupForSessionId={validRequestedMakeupForSessionId}
     />
   ) : routePath === "/service-setup" && activeChild ? (
     <ServiceSetupPage
@@ -19383,6 +20916,7 @@ function Workspace() {
       children={children}
       initialChildId={validRequestedChildId ?? selectedId}
       initialServiceId={validRequestedServiceId}
+      initialMakeupForSessionId={validRequestedMakeupForSessionId}
       onSaved={(session) => {
         const savedChildId = session.childId;
         queryClient.invalidateQueries({
@@ -19411,6 +20945,9 @@ function Workspace() {
         });
         queryClient.invalidateQueries({
           queryKey: getGetSessionsDashboardQueryKey(),
+        });
+        queryClient.invalidateQueries({
+          queryKey: getGetClinicianOverviewQueryKey(),
         });
         queryClient.invalidateQueries({
           queryKey: getGetSessionSoapNoteQueryKey({
@@ -19703,17 +21240,36 @@ function Workspace() {
         />
       )}
       {modal === "question" && (
-        <ObservationForm
+        <TeamQuestionForm
           childId={activeId}
-          mode="question"
+          viewerUserId={viewer?.userId ?? ""}
+          viewerRole={viewer?.role ?? ""}
+          developmentLogging={Boolean(import.meta.env.DEV || viewer?.isDevelopmentDemo)}
           onClose={() => setModal(null)}
+          onSent={(message) => {
+            if (message.conversationId) {
+              setLocation(
+                `/team-communication?childId=${message.childId}&conversationId=${message.conversationId}`,
+              );
+            }
+          }}
         />
       )}
       {modal === "team-question" && (
         <TeamQuestionForm
           childId={activeId}
+          viewerUserId={viewer?.userId ?? ""}
+          viewerRole={viewer?.role ?? ""}
+          developmentLogging={Boolean(import.meta.env.DEV || viewer?.isDevelopmentDemo)}
           phrase={teacherActionPhrase}
           notifyClinician={teacherQuestionAudience === "clinician"}
+          onSent={(message) => {
+            if (message.conversationId) {
+              setLocation(
+                `/team-communication?childId=${message.childId}&conversationId=${message.conversationId}`,
+              );
+            }
+          }}
           onClose={() => {
             setTeacherActionPhrase(undefined);
             setTeacherQuestionAudience("team");
@@ -19790,6 +21346,7 @@ function Router() {
           "/session",
           "/manual-session",
           "/service-setup",
+          "/slp-onboarding",
           "/communication-passport",
           "/children",
           "/communication-profile",
@@ -19866,9 +21423,11 @@ function CareTeamGate() {
     developmentDemoEnabled &&
     window.localStorage.getItem(developmentDemoStorageKey) === "active";
   const [status, setStatus] = useState<
-    "loading" | "ready" | "blocked" | "beta-notice"
+    "loading" | "ready" | "blocked" | "beta-notice" | "onboarding"
   >("loading");
   const [message, setMessage] = useState("");
+  const [canRetry, setCanRetry] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
   const [resolvedViewer, setResolvedViewer] = useState<Viewer>();
   const [betaNotice, setBetaNotice] = useState<{
     text: string;
@@ -19898,6 +21457,7 @@ function CareTeamGate() {
 
     const initialize = async () => {
       setStatus("loading");
+      setCanRetry(false);
 
       const inviteToken = new URLSearchParams(window.location.search).get(
         "token",
@@ -19920,6 +21480,7 @@ function CareTeamGate() {
                 body.error ||
                   "Failed to accept invitation. The invitation may have expired or been revoked.",
               );
+              setCanRetry(false);
               setStatus("blocked");
             }
             return;
@@ -19930,6 +21491,7 @@ function CareTeamGate() {
             setMessage(
               "Network error while accepting invitation. Please check your connection.",
             );
+            setCanRetry(true);
             setStatus("blocked");
           }
           return;
@@ -19949,6 +21511,19 @@ function CareTeamGate() {
 
         if (response.ok && typeof body?.role === "string") {
           const viewerData = body as Viewer;
+          if (!viewerData.isDevelopmentDemo && developmentSession) {
+            window.localStorage.removeItem(developmentDemoStorageKey);
+            window.localStorage.removeItem(developmentDemoSessionStorageKey);
+          }
+          if (viewerData.role === "SLP" && !viewerData.onboardingComplete) {
+            clearAuthReturnPath();
+            if (location.split("?")[0] !== "/slp-onboarding") {
+              setLocation("/slp-onboarding", { replace: true });
+            }
+            setResolvedViewer(viewerData);
+            setStatus("onboarding");
+            return;
+          }
           if (!developmentSession) {
             const noticeRes = await fetch("/api/beta-notice", {
               credentials: "include",
@@ -19992,14 +21567,16 @@ function CareTeamGate() {
               ? body.error
               : "Your account cannot access this care-team workspace.",
           );
+          setCanRetry(false);
           setStatus("blocked");
         }
       } catch (err) {
         if (!active) return;
         setResolvedViewer(undefined);
         setMessage(
-          "We could not verify your session. Please try signing in again.",
+          "ChildLed could not reach the local API. Make sure the local development server is running, then try again.",
         );
+        setCanRetry(true);
         setStatus("blocked");
       }
     };
@@ -20009,7 +21586,7 @@ function CareTeamGate() {
     return () => {
       active = false;
     };
-  }, [isLoaded, isSignedIn, developmentSession]);
+  }, [isLoaded, isSignedIn, developmentSession, retryAttempt]);
 
   useEffect(() => {
     if (status !== "ready" || !resolvedViewer) return;
@@ -20017,6 +21594,11 @@ function CareTeamGate() {
     if (!target) return;
     const currentLocation = `${location.split("?")[0]}${window.location.search}`;
     const currentPath = currentLocation.split("?")[0] || "/";
+    if (currentPath === "/slp-onboarding") {
+      clearAuthReturnPath();
+      setLocation(target, { replace: true });
+      return;
+    }
     if (currentPath !== "/" && !isRoleOverviewPath(currentPath)) {
       clearAuthReturnPath();
       return;
@@ -20038,6 +21620,14 @@ function CareTeamGate() {
         onAcknowledge={() => setStatus("ready")}
       />
     );
+  if (status === "onboarding" && resolvedViewer)
+    return (
+      <SlpOnboardingPage
+        onCompleted={() =>
+          window.location.replace(`${basePath || ""}/overview`)
+        }
+      />
+    );
   if (status === "ready") return <Workspace />;
   return (
     <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background p-3 sm:p-6">
@@ -20054,6 +21644,16 @@ function CareTeamGate() {
             "Please verify your email and ask a care-team administrator to invite your account."}
         </p>
         <div className="mt-6 grid gap-3 sm:flex sm:flex-wrap sm:justify-center">
+          {canRetry ? (
+            <button
+              type="button"
+              onClick={() => setRetryAttempt((attempt) => attempt + 1)}
+              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
+            >
+              <RotateCcw size={17} />
+              Try again
+            </button>
+          ) : null}
           <Link
             href="/sign-in"
             className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
@@ -20162,6 +21762,8 @@ function LandingPage() {
 }
 
 function DevelopmentLoginPage() {
+  const { isSignedIn } = useAuth();
+  const { signOut } = useClerk();
   const [accessKey, setAccessKey] = useState("");
   const [state, setState] = useState<"idle" | "loading" | "error">("idle");
   const startDemo = async () => {
@@ -20184,6 +21786,10 @@ function DevelopmentLoginPage() {
         crypto.randomUUID(),
       );
       queryClient.clear();
+      if (isSignedIn) {
+        await signOut({ redirectUrl: basePath || "/" });
+        return;
+      }
       window.location.assign(basePath || "/");
     } catch {
       setState("error");

@@ -13,6 +13,12 @@ const invitedOnboardingRoutes = new Set([
   "POST /beta-notice/acknowledge",
 ]);
 
+const slpOnboardingRoutes = new Set([
+  "GET /auth/viewer",
+  "GET /slp-onboarding",
+  "POST /slp-onboarding",
+]);
+
 export const isPublicChildLedApiRequest = (method: string, path: string) =>
   publicApiRoutes.has(`${method.toUpperCase()} ${path}`);
 
@@ -28,6 +34,17 @@ export const requireChildLedApiActor = (
   if (isPublicChildLedApiRequest(request.method, request.path)) return next();
 
   const routeKey = `${request.method.toUpperCase()} ${request.path}`;
+  if (
+    request.childledActor?.role === "SLP" &&
+    request.childledActor.onboardingComplete === false
+  ) {
+    if (slpOnboardingRoutes.has(routeKey) && !request.childledAuthFailure) {
+      return next();
+    }
+    return response.status(403).json({
+      error: "Complete SLP account setup before accessing ChildLed resources.",
+    });
+  }
   if (
     invitedOnboardingRoutes.has(routeKey) &&
     request.childledActor &&

@@ -226,6 +226,7 @@ test("communication passports are SLP-controlled, child-scoped, and share-safe",
       childId: child.id,
     });
     assert.equal(generated.status, 200);
+    assert.equal(generated.body.content.childName, "Alexander M.");
     assert.equal(generated.body.content.preferredName, "Alex");
     assert.equal(generated.body.content.commonPhrases.length, 1);
     assert.equal(generated.body.content.commonPhrases[0].phrase, "All aboard");
@@ -243,6 +244,8 @@ test("communication passports are SLP-controlled, child-scoped, and share-safe",
 
     const content = {
       ...generated.body.content,
+      childName: "Alexander Morgan",
+      preferredName: "Alex Morgan",
       aboutMe: "Alex connects through movement, songs, and shared play.",
     };
     const saved = await json("PUT", "/communication-passport", {
@@ -255,6 +258,8 @@ test("communication passports are SLP-controlled, child-scoped, and share-safe",
     assert.equal(saved.status, 200);
     assert.equal(saved.body.exists, true);
     assert.equal(saved.body.version, 1);
+    assert.equal(saved.body.content.childName, "Alexander M.");
+    assert.equal(saved.body.content.preferredName, "Alex");
 
     actor = actorFor(userIds.teacher, "Teacher", organization.id, [child.id]);
     const teacherView = await request(
@@ -262,6 +267,7 @@ test("communication passports are SLP-controlled, child-scoped, and share-safe",
     );
     assert.equal(teacherView.status, 200);
     assert.equal(teacherView.body.canEdit, false);
+    assert.equal(teacherView.body.content.childName, "Alexander M.");
     assert.equal(teacherView.body.content.aboutMe, content.aboutMe);
     assert.equal(
       (

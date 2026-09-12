@@ -1,10 +1,12 @@
 import { clerkClient } from "@clerk/express";
 import { runtimeConfig } from "./runtime-config";
+import { invitationRoleMarker } from "./clerk-invitation-metadata";
 
 type ApplicationInvitationInput = {
   emailAddress: string;
   token: string;
   childledInvitationId: number;
+  invitedRole: string;
 };
 
 export type IssuedApplicationInvitation = {
@@ -28,6 +30,7 @@ export const issueApplicationInvitation = async ({
   emailAddress,
   token,
   childledInvitationId,
+  invitedRole,
 }: ApplicationInvitationInput): Promise<IssuedApplicationInvitation> => {
   const fallbackPath = localInvitationPath(token);
   if (!runtimeConfig.clerkInvitations.enabled) {
@@ -41,6 +44,8 @@ export const issueApplicationInvitation = async ({
     notify: true,
     publicMetadata: {
       childledInvitationId: String(childledInvitationId),
+      childledInvitationRole: invitationRoleMarker(invitedRole),
+      childledInvitationVersion: "1",
     },
     redirectUrl: applicationInvitationRedirectUrl(
       runtimeConfig.publicAppOrigin!,

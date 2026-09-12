@@ -23,5 +23,8 @@ test('keeps every Teacher workspace section in the sticky navigation contract', 
     assert.match(portalSource, new RegExp(`id=["']${id}["']`));
   }
   assert.match(portalSource, /data-testid="teacher-student-sticky-navigation"/);
-  assert.match(portalSource, /aria-current=\{active \? 'location' : undefined\}/);
+  assert.match(
+    portalSource,
+    /aria-current=\{active \? ["']location["'] : undefined\}/,
+  );
 });

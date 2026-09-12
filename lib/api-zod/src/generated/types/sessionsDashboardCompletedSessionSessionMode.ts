@@ -12,4 +12,5 @@ export type SessionsDashboardCompletedSessionSessionMode = typeof SessionsDashbo
 export const SessionsDashboardCompletedSessionSessionMode = {
   recorded: 'recorded',
   manual: 'manual',
+  missed: 'missed',
 } as const;

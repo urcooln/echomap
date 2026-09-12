@@ -10,6 +10,8 @@ import type { IepServiceRequirement } from './iepServiceRequirement';
 
 export interface ClinicianOverviewChild {
   childId: number;
+  /** @pattern ^CLID-[A-Z0-9]{6}$ */
+  childLedId: string;
   childName: string;
   school: string;
   grade: string;

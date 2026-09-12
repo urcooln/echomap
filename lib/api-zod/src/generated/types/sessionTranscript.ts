@@ -22,6 +22,10 @@ export interface SessionTranscript {
   childId: number;
   audioId: string;
   /** @nullable */
+  serviceRequirementId?: number | null;
+  /** @nullable */
+  makeupForSessionId?: number | null;
+  /** @nullable */
   recordingConsentConfirmedAt: Date | null;
   status: SessionTranscriptStatus;
   rawTranscript: string;

@@ -9,6 +9,7 @@ import type { GetTeamInboxSenderRole } from './getTeamInboxSenderRole';
 
 export type GetTeamInboxParams = {
 childId?: number;
+conversationId?: number;
 /**
  * @maxLength 240
  */

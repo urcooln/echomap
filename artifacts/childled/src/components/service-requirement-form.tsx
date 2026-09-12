@@ -1,12 +1,24 @@
 import { type FormEvent, useState } from "react";
 import {
+  useArchiveIepServiceRequirement,
   useUpsertIepServiceRequirement,
   type CaseloadServiceDeliveryType,
   type IepServiceRequirement,
   type ServiceFrequencyPeriod,
 } from "@workspace/api-client-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Trash2 } from "lucide-react";
 
 export const serviceTypeOptions: Array<{
   value: CaseloadServiceDeliveryType;
@@ -49,6 +61,90 @@ const oneYearFromToday = () => {
   date.setFullYear(date.getFullYear() + 1);
   return localDate(date);
 };
+
+export function ArchiveServiceDialog({
+  childId,
+  childName,
+  service,
+  open,
+  onOpenChange,
+  onArchived,
+}: {
+  childId: number;
+  childName: string;
+  service: IepServiceRequirement;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onArchived: () => void | Promise<void>;
+}) {
+  const archiveService = useArchiveIepServiceRequirement();
+  const [error, setError] = useState("");
+
+  const removeService = async () => {
+    setError("");
+    try {
+      await archiveService.mutateAsync({
+        childId,
+        requirementId: service.id,
+      });
+      await onArchived();
+      onOpenChange(false);
+    } catch (requestError: any) {
+      setError(
+        requestError?.data?.error ??
+          requestError?.message ??
+          "The service could not be deleted. Please try again.",
+      );
+    }
+  };
+
+  return (
+    <AlertDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!archiveService.isPending) {
+          setError("");
+          onOpenChange(nextOpen);
+        }
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete this IEP service?</AlertDialogTitle>
+          <AlertDialogDescription>
+            {serviceTypeLabel(service.serviceType)} will be removed from active
+            tracking for {childName}. Existing sessions and notes will remain in
+            the child's history.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        {error ? (
+          <p
+            role="alert"
+            className="rounded-md border border-destructive/25 bg-destructive/5 p-3 text-sm text-destructive"
+          >
+            {error}
+          </p>
+        ) : null}
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={archiveService.isPending}>
+            Keep Service
+          </AlertDialogCancel>
+          <AlertDialogAction
+            disabled={archiveService.isPending}
+            className="border-destructive-border bg-destructive text-destructive-foreground"
+            onClick={(event) => {
+              event.preventDefault();
+              void removeService();
+            }}
+          >
+            <Trash2 size={16} />
+            {archiveService.isPending ? "Deleting..." : "Delete Service"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
 
 export function ServiceRequirementForm({
   childId,

@@ -6,7 +6,8 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface BetaAccessApprovalInput {
-  organizationId: number;
-  childId: number;
+export interface SettingsCareTeamMember {
+  userId: string;
+  name: string;
+  role: string;
 }

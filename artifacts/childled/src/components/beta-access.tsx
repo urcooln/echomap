@@ -196,17 +196,9 @@ export function SuperAdminBetaControls() {
 
   const handleRequestAction = async (id: number, action: 'approve' | 'reject' | 'archive') => {
     try {
-      let body: string | undefined;
-      if (action === 'approve') {
-        const organizationId = window.prompt('Organization ID for this invitation');
-        if (!organizationId) return;
-        body = JSON.stringify({ organizationId: Number(organizationId) });
-      }
       const response = await fetch(`/api/admin/beta-access-requests/${id}/${action}`, {
         method: 'POST',
         credentials: 'include',
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
-        body,
       });
       const result = await response.json().catch(() => null);
       if (!response.ok) {

@@ -19,6 +19,53 @@ export const roleOverviewPath = (role?: string | null) => {
 export const isRoleOverviewPath = (path: string) =>
   Object.values(roleOverviewPaths).includes(path as (typeof roleOverviewPaths)[keyof typeof roleOverviewPaths]);
 
+const clinicalOnlyPaths = new Set([
+  '/session',
+  '/manual-session',
+  '/service-setup',
+  '/reports',
+  '/clinical-knowledge',
+  '/aac-planning',
+  '/clinician-learning',
+  '/caseload',
+]);
+
+const administratorPaths = new Set([
+  '/admin-overview',
+  '/admin-conversations',
+  '/security',
+]);
+
+export const isRoleRestrictedPath = ({
+  path,
+  role,
+  isAdmin = false,
+  isSuperAdmin = false,
+  isRolePreview = false,
+  isNativeDevelopmentDemo = false,
+}: {
+  path: string;
+  role?: string | null;
+  isAdmin?: boolean;
+  isSuperAdmin?: boolean;
+  isRolePreview?: boolean;
+  isNativeDevelopmentDemo?: boolean;
+}) => {
+  const roleHome = roleOverviewPath(role);
+  const canUseClinicalPortal = role === 'SLP' || isNativeDevelopmentDemo;
+
+  return (
+    (isRoleOverviewPath(path) && roleHome !== path) ||
+    (clinicalOnlyPaths.has(path) && !canUseClinicalPortal) ||
+    (role === 'Teacher' && path === '/language-journey') ||
+    (path === '/family-resources' && role !== 'Parent') ||
+    (path === '/teacher-resources' && role !== 'Teacher') ||
+    (path === '/students' && role !== 'Teacher') ||
+    (administratorPaths.has(path) && !isAdmin) ||
+    (path === '/ux-testing' && (!isSuperAdmin || isRolePreview))
+  );
+};
+
 const isInternalPath = (path: string) =>
   path.startsWith('/') &&
   !path.startsWith('//') &&

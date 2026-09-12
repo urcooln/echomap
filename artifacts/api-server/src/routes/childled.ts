@@ -43,6 +43,8 @@ import {
   careTeamInvitationsTable,
   teamMessagesTable,
   teamMessageReadsTable,
+  teamConversationsTable,
+  teamConversationParticipantsTable,
   aacVocabularyPlanningTable,
   aacVocabularyPlanningMergeHistoryTable,
   aacProfilesTable,
@@ -52,6 +54,7 @@ import {
   type AacProfileHistoryValue,
   type AacUserStatus,
   childProfilesTable,
+  generateChildLedId,
   clinicalGestaltsTable,
   clinicalObservationsTable,
   observationVideoUploadsTable,
@@ -93,6 +96,9 @@ import {
   betaControlsTable,
   betaNoticesTable,
   betaNoticeAcknowledgementsTable,
+  slpProfilesTable,
+  userAgreementAcceptancesTable,
+  userNotificationPreferencesTable,
 } from "@workspace/db";
 import {
   evidenceSafeTranscriptText,
@@ -234,6 +240,7 @@ import {
   hasVerifiedCareTeamSession,
 } from "../lib/auth-authorization";
 import {
+  developmentDemoPersonaActor,
   effectiveViewerFromRequest,
   realViewerFromRequest,
   ROLE_PREVIEW_COOKIE,
@@ -249,10 +256,18 @@ import {
 } from "../lib/dictionary-duplicate-matcher";
 import { logger } from "../lib/logger";
 import {
-  acceptedInvitationChildScope,
   createInvitationToken,
   hashInvitationToken,
 } from "../lib/invitation-security";
+import { provisionClerkInvitation } from "../lib/clerk-invitation-provisioning";
+import {
+  hasEveryCurrentSlpAgreement,
+  SLP_AGREEMENTS,
+} from "../lib/slp-onboarding";
+import {
+  completeSlpOnboardingAccount,
+  SlpOnboardingMembershipError,
+} from "../lib/slp-onboarding-account";
 import {
   issueApplicationInvitation,
   revokeApplicationInvitation,
@@ -366,11 +381,20 @@ import {
   CreateManualSessionQueryParams,
   CreateManualSessionBody,
   CreateManualSessionResponse,
+  ListMissedSessionsQueryParams,
+  ListMissedSessionsResponse,
+  CreateMissedSessionQueryParams,
+  CreateMissedSessionBody,
+  CreateMissedSessionResponse,
+  UpdateMissedSessionParams,
+  UpdateMissedSessionBody,
+  UpdateMissedSessionResponse,
   ListIepServiceRequirementsQueryParams,
   ListIepServiceRequirementsResponse,
   UpsertIepServiceRequirementQueryParams,
   UpsertIepServiceRequirementBody,
   UpsertIepServiceRequirementResponse,
+  ArchiveIepServiceRequirementParams,
   UpdateCaseloadServiceSettingsQueryParams,
   UpdateCaseloadServiceSettingsBody,
   UpdateCaseloadServiceSettingsResponse,
@@ -471,6 +495,12 @@ import {
   GenerateClinicalKnowledgeInsightsResponse,
   GetAdminUxTestingResponse,
   GetViewerResponse,
+  GetSettingsResponse,
+  UpdateSettingsBody,
+  UpdateSettingsResponse,
+  GetSlpOnboardingResponse,
+  CompleteSlpOnboardingBody,
+  CompleteSlpOnboardingResponse,
   ListClinicalKnowledgeInsightsQueryParams,
   ListClinicalKnowledgeInsightsResponse,
   ListClinicalKnowledgeSourcesResponse,
@@ -570,6 +600,68 @@ const teamRoleStorageValue = (role: string) =>
     teacher: "teacher",
     ot: "ot",
   })[role.toLowerCase()] ?? role.toLowerCase();
+const conversationParticipantKey = (userIds: string[]) =>
+  [...new Set(userIds)].sort().join(":");
+const canMessageCareTeamRole = (
+  senderRole: CareTeamActor["role"],
+  recipientRole: string,
+) => {
+  const normalized = teamRoleStorageValue(recipientRole);
+  if (senderRole === "Administrator") return true;
+  if (senderRole === "SLP")
+    return ["parent", "teacher", "ot"].includes(normalized);
+  if (senderRole === "Teacher")
+    return ["clinician", "parent"].includes(normalized);
+  if (senderRole === "Parent")
+    return ["clinician", "teacher"].includes(normalized);
+  return false;
+};
+type MessageableCareTeamMember = {
+  childId: number;
+  userId: string;
+  name: string;
+  role: string;
+};
+const resolveMessageableCareTeamMembers = async (
+  actor: CareTeamActor,
+  childIds: number[],
+): Promise<MessageableCareTeamMember[]> => {
+  if (!actor.organizationId || !childIds.length) return [];
+  const rows = await db
+    .select({
+      childId: childCareTeamMembershipsTable.childId,
+      userId: childCareTeamMembershipsTable.userId,
+      name: usersTable.displayName,
+      role: childCareTeamMembershipsTable.role,
+    })
+    .from(childCareTeamMembershipsTable)
+    .innerJoin(
+      usersTable,
+      eq(usersTable.id, childCareTeamMembershipsTable.userId),
+    )
+    .innerJoin(
+      organizationMembershipsTable,
+      and(
+        eq(organizationMembershipsTable.userId, usersTable.id),
+        eq(organizationMembershipsTable.organizationId, actor.organizationId),
+      ),
+    )
+    .where(
+      and(
+        inArray(childCareTeamMembershipsTable.childId, childIds),
+        eq(childCareTeamMembershipsTable.active, true),
+        eq(organizationMembershipsTable.active, true),
+        eq(organizationMembershipsTable.accountStatus, "active"),
+        isNull(usersTable.archivedAt),
+        isNull(usersTable.disabledAt),
+      ),
+    );
+  return rows.filter(
+    (member) =>
+      member.userId !== actor.userId &&
+      canMessageCareTeamRole(actor.role, member.role),
+  );
+};
 const teamMemberInitials = (name: string) =>
   name
     .split(/\s+/)
@@ -594,12 +686,33 @@ type RecordingConsent = {
   confirmedBy: string;
   childId: number;
 };
+type SavedGoalProgress = {
+  id: number;
+  goalId: number;
+  goalVersion: number;
+  goalTitle: string;
+  goalArea: string;
+  accuracyPercent: number | null;
+  successfulAttempts: number | null;
+  totalAttempts: number | null;
+  promptingLevel: string | null;
+  progressNote: string;
+  progressStatus: string | null;
+  reviewedBy: string | null;
+};
 type SavedSession = {
   id: number;
   childId: number;
   serviceRequirementId?: number | null;
   serviceName?: string | null;
   serviceType?: string | null;
+  sessionMode?: "recorded" | "manual" | "missed";
+  sessionStatus?: "completed" | "missed" | "scheduled";
+  missedReason?: string | null;
+  missedReasonDetail?: string | null;
+  makeupStatus?: string | null;
+  makeupForSessionId?: number | null;
+  makeupForSessionDate?: string | null;
   durationSeconds: number;
   gestalts: SessionGestalt[];
   gestaltIds: number[];
@@ -613,6 +726,7 @@ type SavedSession = {
   createdBy: string;
   role: string;
   consent?: RecordingConsent;
+  goalProgress?: SavedGoalProgress[];
 };
 type AudioRecord = {
   id: string;
@@ -634,6 +748,7 @@ type SessionStore = {
 };
 type Child = {
   id: number;
+  childLedId: string;
   name: string;
   dateOfBirth: string | null;
   age: number;
@@ -656,6 +771,27 @@ type Child = {
   gestaltCount: number;
   team: TeamMember[];
 };
+const CHILD_LED_ID_UNIQUE_CONSTRAINT =
+  "child_profiles_child_led_id_lower_unique";
+const isChildLedIdCollision = (error: unknown) => {
+  let currentError = error;
+  while (currentError && typeof currentError === "object") {
+    const databaseError = currentError as {
+      code?: string;
+      constraint?: string;
+      cause?: unknown;
+    };
+    if (
+      databaseError.code === "23505" &&
+      databaseError.constraint === CHILD_LED_ID_UNIQUE_CONSTRAINT
+    ) {
+      return true;
+    }
+    if (!databaseError.cause || databaseError.cause === currentError) break;
+    currentError = databaseError.cause;
+  }
+  return false;
+};
 type AacSnapshot = {
   isUser: boolean;
   device: string | null;
@@ -673,6 +809,7 @@ const team: TeamMember[] = [
 const children: Child[] = [
   {
     id: 1,
+    childLedId: "CLID-DEMO01",
     name: "Oliver",
     firstName: "Oliver",
     lastName: "Bennett",
@@ -730,6 +867,17 @@ const canonicalChildNames = (
       profile.displayName,
   };
 };
+const communicationPassportName = (
+  profile: typeof childProfilesTable.$inferSelect,
+) => {
+  const names = canonicalChildNames(profile);
+  const firstName = names.firstName || names.preferredName || "Child";
+  const lastInitial = names.lastName.trim().charAt(0).toLocaleUpperCase();
+  return `${firstName}${lastInitial ? ` ${lastInitial}.` : ""}`;
+};
+const communicationPassportPreferredName = (
+  profile: typeof childProfilesTable.$inferSelect,
+) => canonicalChildNames(profile).preferredName.split(/\s+/)[0] ?? "";
 const ageFromDateOfBirth = (dateOfBirth: string | null) => {
   if (!dateOfBirth) return 0;
   const birth = new Date(`${dateOfBirth}T00:00:00Z`);
@@ -816,6 +964,7 @@ const childFromProfile = (
   const names = canonicalChildNames(profile);
   return {
     id: profile.id,
+    childLedId: profile.childLedId,
     name: names.name,
     firstName: names.firstName,
     lastName: names.lastName,
@@ -1211,6 +1360,13 @@ const sessionResponse = (session: SavedSession) => {
     serviceRequirementId: session.serviceRequirementId ?? null,
     serviceName: session.serviceName ?? null,
     serviceType: session.serviceType ?? null,
+    sessionMode: session.sessionMode ?? "recorded",
+    sessionStatus: session.sessionStatus ?? "completed",
+    missedReason: session.missedReason ?? null,
+    missedReasonDetail: session.missedReasonDetail ?? null,
+    makeupStatus: session.makeupStatus ?? null,
+    makeupForSessionId: session.makeupForSessionId ?? null,
+    makeupForSessionDate: session.makeupForSessionDate ?? null,
     consent: session.consent ?? null,
   };
 };
@@ -1236,6 +1392,8 @@ const viewerResponse = (
   isRolePreview: Boolean(actor.previewRole),
   isDevelopmentDemo: Boolean(actor.isDevelopmentDemo),
   previewRole: actor.previewRole ?? null,
+  accountStatus: actor.accountStatus ?? "active",
+  onboardingComplete: actor.onboardingComplete ?? true,
 });
 const authenticationError = (req: Request) =>
   req.childledAuthFailure === "email_unverified"
@@ -1305,6 +1463,17 @@ const requireSuperAdmin = (req: Request, res: any) => {
     );
     res.status(403).json({
       error: "Super Admin access is required to use owner testing tools.",
+    });
+    return null;
+  }
+  return actor;
+};
+const requireDevelopmentDemoSuperAdmin = (req: Request, res: any) => {
+  const actor = requireSuperAdmin(req, res);
+  if (!actor) return null;
+  if (!actor.isDevelopmentDemo) {
+    res.status(403).json({
+      error: "Persona switching is available only in the authenticated development demo.",
     });
     return null;
   }
@@ -2239,7 +2408,7 @@ const generatedCommunicationPassportFor = async (
         )
         .orderBy(communicationGoalsTable.id),
     ]);
-  const names = canonicalChildNames(profile);
+  const passportName = communicationPassportName(profile);
   const entriesFor = (section: SharedProfileSection, category?: string) =>
     sharedEntries
       .filter(
@@ -2298,10 +2467,10 @@ const generatedCommunicationPassportFor = async (
         .join("\n")
     : "";
   return normalizeCommunicationPassportContent({
-    childName: names.name,
-    preferredName: names.preferredName,
+    childName: passportName,
+    preferredName: communicationPassportPreferredName(profile),
     aboutMe: profile.communicationStyle
-      ? `${names.name} communicates ${profile.communicationStyle.toLocaleLowerCase()}.`
+      ? `${passportName} communicates ${profile.communicationStyle.toLocaleLowerCase()}.`
       : "",
     communicationMethods,
     communicationStrengths: entriesFor("strengths"),
@@ -2321,7 +2490,7 @@ const generatedCommunicationPassportFor = async (
   });
 };
 const communicationPassportResponse = async (
-  childId: number,
+  profile: typeof childProfilesTable.$inferSelect,
   actor: CareTeamActor,
   passport?: typeof communicationPassportsTable.$inferSelect,
 ) => {
@@ -2334,11 +2503,17 @@ const communicationPassportResponse = async (
     : [];
   return {
     exists: Boolean(passport),
-    childId,
+    childId: profile.id,
     canEdit: canUseClinicalTools(actor),
     templateKey: passport?.templateKey ?? "general",
     language: passport?.languageTag ?? "en",
-    content: passport?.content ?? null,
+    content: passport?.content
+      ? {
+          ...passport.content,
+          childName: communicationPassportName(profile),
+          preferredName: communicationPassportPreferredName(profile),
+        }
+      : null,
     version: passport?.version ?? null,
     createdAt: passport?.createdAt.toISOString() ?? null,
     updatedAt: passport?.updatedAt.toISOString() ?? null,
@@ -4524,33 +4699,42 @@ const reviewedSoapNoteFor = async (
     .limit(1);
   if (!session) return null;
 
-  const [sessionPhrases, allSessions, occurrenceRows, savedNoteRows] =
-    await Promise.all([
-      db
-        .select()
-        .from(therapySessionGestaltsTable)
-        .where(eq(therapySessionGestaltsTable.sessionId, sessionId)),
-      db
-        .select()
-        .from(therapySessionsTable)
-        .where(
-          and(
-            eq(therapySessionsTable.organizationId, organizationId),
-            eq(therapySessionsTable.childId, childId),
-            isNull(therapySessionsTable.archivedAt),
-          ),
-        )
-        .orderBy(desc(therapySessionsTable.createdAt)),
-      db
-        .select()
-        .from(gestaltOccurrencesTable)
-        .where(eq(gestaltOccurrencesTable.childId, childId)),
-      db
-        .select()
-        .from(clinicalSoapNotesTable)
-        .where(eq(clinicalSoapNotesTable.sessionId, sessionId))
-        .limit(1),
-    ]);
+  const [
+    sessionPhrases,
+    allSessions,
+    occurrenceRows,
+    savedNoteRows,
+    sessionGoalProgress,
+  ] = await Promise.all([
+    db
+      .select()
+      .from(therapySessionGestaltsTable)
+      .where(eq(therapySessionGestaltsTable.sessionId, sessionId)),
+    db
+      .select()
+      .from(therapySessionsTable)
+      .where(
+        and(
+          eq(therapySessionsTable.organizationId, organizationId),
+          eq(therapySessionsTable.childId, childId),
+          isNull(therapySessionsTable.archivedAt),
+        ),
+      )
+      .orderBy(desc(therapySessionsTable.createdAt)),
+    db
+      .select()
+      .from(gestaltOccurrencesTable)
+      .where(eq(gestaltOccurrencesTable.childId, childId)),
+    db
+      .select()
+      .from(clinicalSoapNotesTable)
+      .where(eq(clinicalSoapNotesTable.sessionId, sessionId))
+      .limit(1),
+    db
+      .select()
+      .from(therapySessionGoalProgressTable)
+      .where(eq(therapySessionGoalProgressTable.sessionId, sessionId)),
+  ]);
 
   const savedNote = savedNoteRows[0];
   if (savedNote && savedNote.status !== "draft") return null;
@@ -4675,6 +4859,22 @@ const reviewedSoapNoteFor = async (
       ].join("\n");
     })
     .join("\n\n");
+  const goalProgressSummary = sessionGoalProgress
+    .filter((progress) => Boolean(progress.progressStatus))
+    .map((progress) => {
+      const status = progress
+        .progressStatus!.split("_")
+        .map((word) => `${word.charAt(0).toUpperCase()}${word.slice(1)}`)
+        .join(" ");
+      const prompting = progress.promptingLevel
+        ? ` with ${progress.promptingLevel} prompting`
+        : "";
+      const comments = progress.progressNote.trim()
+        ? ` ${progress.progressNote.trim()}`
+        : "";
+      return `${progress.goalTitleSnapshot}: ${status}${prompting}.${comments}`;
+    })
+    .join("\n");
   const generated: SoapNoteContent = {
     subjective: session.clinicalObservations.trim()
       ? `Clinician-entered session report:\n${session.clinicalObservations.trim()}`
@@ -4695,6 +4895,9 @@ const reviewedSoapNoteFor = async (
       functions.length
         ? `Possible communication functions documented by clinician: ${functions.join(", ")}.`
         : "No communication functions documented.",
+      goalProgressSummary
+        ? `Clinician-recorded goal progress:\n${goalProgressSummary}`
+        : "No communication goals were marked as addressed for this session.",
     ].join("\n"),
     assessment: [
       "DRAFT CLINICAL INSIGHTS - REVIEW REQUIRED",
@@ -4797,6 +5000,9 @@ type ServiceSessionDelivery = {
   serviceRequirementId: number | null;
   sessionDate: string;
   durationSeconds: number;
+  sessionStatus: string;
+  makeupStatus: string | null;
+  makeupForSessionId: number | null;
 };
 
 const serviceRequirementResponseFromSessions = (
@@ -4807,29 +5013,49 @@ const serviceRequirementResponseFromSessions = (
     effectiveFrom: requirement.effectiveFrom,
     effectiveTo: requirement.effectiveTo,
   });
-  const completedSessions = sessions.filter(
+  const periodSessions = sessions.filter(
     (session) =>
       session.childId === requirement.childId &&
       session.serviceRequirementId === requirement.id &&
       session.sessionDate >= window.start &&
       session.sessionDate < window.endExclusive,
   );
-  const sessionsCompleted = completedSessions.length;
+  const deliveredSessions = periodSessions.filter(
+    (session) => session.sessionStatus === "completed",
+  );
+  const sessionsMissed = periodSessions.filter(
+    (session) => session.sessionStatus === "missed",
+  ).length;
+  const ordinaryDelivered = deliveredSessions.filter(
+    (session) => session.makeupForSessionId === null,
+  ).length;
+  const creditedSessions = ordinaryDelivered + sessionsMissed;
+  const sessionsCompleted = deliveredSessions.length;
+  const sessionsRemaining = Math.max(
+    requirement.requiredSessions - creditedSessions,
+    0,
+  );
+  const outstandingMakeups = sessions.filter(
+    (session) =>
+      session.childId === requirement.childId &&
+      session.serviceRequirementId === requirement.id &&
+      session.sessionStatus === "missed" &&
+      (session.makeupStatus === "needed" ||
+        session.makeupStatus === "scheduled"),
+  ).length;
   const minutesCompleted = Math.round(
-    completedSessions.reduce(
+    deliveredSessions.reduce(
       (total, session) => total + session.durationSeconds,
       0,
     ) / 60,
   );
-  const { sessionsRemaining, minutesRemaining, status } = serviceDeliveryStatus(
-    {
-      requiredSessions: requirement.requiredSessions,
-      requiredMinutes: requirement.requiredMinutes,
-      sessionsCompleted,
-      minutesCompleted,
-      periodProgress: window.progress,
-    },
-  );
+  const { minutesRemaining, status } = serviceDeliveryStatus({
+    requiredSessions: requirement.requiredSessions,
+    requiredMinutes: requirement.requiredMinutes,
+    sessionsCompleted: creditedSessions,
+    minutesCompleted,
+    periodProgress: window.progress,
+  });
   return {
     id: requirement.id,
     childId: requirement.childId,
@@ -4846,7 +5072,9 @@ const serviceRequirementResponseFromSessions = (
     periodStart: window.start,
     periodEnd: window.end,
     sessionsCompleted,
+    sessionsMissed,
     sessionsRemaining,
+    outstandingMakeups,
     minutesCompleted,
     minutesRemaining,
     status,
@@ -4867,6 +5095,9 @@ const serviceRequirementResponse = async (
       serviceRequirementId: therapySessionsTable.serviceRequirementId,
       sessionDate: therapySessionsTable.sessionDate,
       durationSeconds: therapySessionsTable.durationSeconds,
+      sessionStatus: therapySessionsTable.sessionStatus,
+      makeupStatus: therapySessionsTable.makeupStatus,
+      makeupForSessionId: therapySessionsTable.makeupForSessionId,
     })
     .from(therapySessionsTable)
     .where(
@@ -4875,8 +5106,16 @@ const serviceRequirementResponse = async (
         eq(therapySessionsTable.childId, requirement.childId),
         eq(therapySessionsTable.serviceRequirementId, requirement.id),
         isNull(therapySessionsTable.archivedAt),
-        gte(therapySessionsTable.sessionDate, window.start),
-        lt(therapySessionsTable.sessionDate, window.endExclusive),
+        or(
+          and(
+            gte(therapySessionsTable.sessionDate, window.start),
+            lt(therapySessionsTable.sessionDate, window.endExclusive),
+          ),
+          and(
+            eq(therapySessionsTable.sessionStatus, "missed"),
+            inArray(therapySessionsTable.makeupStatus, ["needed", "scheduled"]),
+          ),
+        ),
       ),
     );
   return serviceRequirementResponseFromSessions(requirement, sessions);
@@ -4935,6 +5174,9 @@ const activeServiceRequirementsForChildren = async (
       serviceRequirementId: therapySessionsTable.serviceRequirementId,
       sessionDate: therapySessionsTable.sessionDate,
       durationSeconds: therapySessionsTable.durationSeconds,
+      sessionStatus: therapySessionsTable.sessionStatus,
+      makeupStatus: therapySessionsTable.makeupStatus,
+      makeupForSessionId: therapySessionsTable.makeupForSessionId,
     })
     .from(therapySessionsTable)
     .where(
@@ -4942,8 +5184,16 @@ const activeServiceRequirementsForChildren = async (
         eq(therapySessionsTable.organizationId, organizationId),
         inArray(therapySessionsTable.childId, childIds),
         isNull(therapySessionsTable.archivedAt),
-        gte(therapySessionsTable.sessionDate, earliestStart),
-        lt(therapySessionsTable.sessionDate, latestEnd),
+        or(
+          and(
+            gte(therapySessionsTable.sessionDate, earliestStart),
+            lt(therapySessionsTable.sessionDate, latestEnd),
+          ),
+          and(
+            eq(therapySessionsTable.sessionStatus, "missed"),
+            inArray(therapySessionsTable.makeupStatus, ["needed", "scheduled"]),
+          ),
+        ),
       ),
     );
   const responses = requirements.map((requirement) =>
@@ -5009,6 +5259,87 @@ const activeServiceForSession = async ({
     )
     .limit(1);
   return service;
+};
+
+const missedSessionResponse = (
+  session: typeof therapySessionsTable.$inferSelect,
+  service: typeof iepServiceRequirementsTable.$inferSelect,
+  makeupSessionId: number | null,
+) => ({
+  id: session.id,
+  childId: session.childId,
+  serviceRequirementId: service.id,
+  serviceName: service.serviceName,
+  serviceType: service.serviceType,
+  sessionDate: session.sessionDate,
+  missedReason: session.missedReason,
+  missedReasonDetail: session.missedReasonDetail,
+  note: session.note,
+  makeupStatus: session.makeupStatus,
+  makeupSessionId,
+  createdAt: session.createdAt.toISOString(),
+  updatedAt: session.updatedAt.toISOString(),
+});
+
+const validateMissedSessionFields = ({
+  missedReason,
+  missedReasonDetail,
+  makeupStatus,
+}: {
+  missedReason: string;
+  missedReasonDetail?: string | null;
+  makeupStatus: string;
+}) => {
+  if (missedReason === "other" && !missedReasonDetail?.trim())
+    return "Explain the other absence reason.";
+  if (missedReason !== "other" && missedReasonDetail?.trim())
+    return "An additional absence explanation is only needed for Other.";
+  if (makeupStatus === "completed")
+    return "A makeup is completed only when its linked session is saved.";
+  return null;
+};
+
+const makeupTargetForSession = async ({
+  organizationId,
+  childId,
+  serviceRequirementId,
+  makeupForSessionId,
+}: {
+  organizationId: number;
+  childId: number;
+  serviceRequirementId: number;
+  makeupForSessionId?: number | null;
+}) => {
+  if (!makeupForSessionId) return null;
+  const [missed] = await db
+    .select()
+    .from(therapySessionsTable)
+    .where(
+      and(
+        eq(therapySessionsTable.id, makeupForSessionId),
+        eq(therapySessionsTable.organizationId, organizationId),
+        eq(therapySessionsTable.childId, childId),
+        eq(therapySessionsTable.serviceRequirementId, serviceRequirementId),
+        eq(therapySessionsTable.sessionStatus, "missed"),
+        inArray(therapySessionsTable.makeupStatus, ["needed", "scheduled"]),
+        isNull(therapySessionsTable.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (!missed) return undefined;
+  const [existingMakeup] = await db
+    .select({ id: therapySessionsTable.id })
+    .from(therapySessionsTable)
+    .where(
+      and(
+        eq(therapySessionsTable.organizationId, organizationId),
+        eq(therapySessionsTable.makeupForSessionId, missed.id),
+        eq(therapySessionsTable.sessionStatus, "completed"),
+        isNull(therapySessionsTable.archivedAt),
+      ),
+    )
+    .limit(1);
+  return existingMakeup ? undefined : missed;
 };
 
 /**
@@ -6310,6 +6641,8 @@ const transcriptResponse = async (
     id: transcript.id,
     childId: transcript.childId,
     audioId: transcript.audioId,
+    serviceRequirementId: transcript.serviceRequirementId,
+    makeupForSessionId: transcript.makeupForSessionId,
     recordingConsentConfirmedAt:
       audioRecord?.consentConfirmedAt?.toISOString() ?? null,
     status: transcript.status,
@@ -7325,14 +7658,452 @@ router.get("/auth/viewer", (req, res) => {
   res.json(GetViewerResponse.parse(viewerResponse(actor, realActor.role)));
 });
 
+const settingsAccountType = (actor: CareTeamActor) => {
+  const roleLabel =
+    actor.role === "SLP"
+      ? "Speech-Language Pathologist"
+      : actor.role === "Parent"
+        ? "Parent / Caregiver"
+        : actor.role;
+  if (!actor.isDevelopmentDemo) return roleLabel;
+  return actor.previewRole ? `${roleLabel} preview` : "Care team lead";
+};
+
+const defaultNotificationPreferences = {
+  messages: true,
+  studentUpdates: true,
+  communicationActivity: true,
+  weeklySummary: true,
+};
+
+router.get("/settings", async (req, res): Promise<void> => {
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId) {
+    res
+      .status(req.childledAuthFailure ? 403 : 401)
+      .json({ error: authenticationError(req) });
+    return;
+  }
+  const childIds = actor.childIds.length ? actor.childIds : [-1];
+  const canViewCareCircles =
+    actor.role === "SLP" || isNativeDevelopmentDemo(actor);
+  const [userRows, organizationRows, profileRows, preferenceRows, profiles] =
+    await Promise.all([
+      db
+        .select()
+        .from(usersTable)
+        .where(
+          and(eq(usersTable.id, actor.userId), isNull(usersTable.archivedAt)),
+        )
+        .limit(1),
+      db
+        .select({ name: organizationsTable.name })
+        .from(organizationsTable)
+        .where(eq(organizationsTable.id, actor.organizationId))
+        .limit(1),
+      db
+        .select()
+        .from(slpProfilesTable)
+        .where(
+          and(
+            eq(slpProfilesTable.organizationId, actor.organizationId),
+            eq(slpProfilesTable.userId, actor.userId),
+          ),
+        )
+        .limit(1),
+      db
+        .select()
+        .from(userNotificationPreferencesTable)
+        .where(
+          and(
+            eq(
+              userNotificationPreferencesTable.organizationId,
+              actor.organizationId,
+            ),
+            eq(userNotificationPreferencesTable.userId, actor.userId),
+          ),
+        )
+        .limit(1),
+      db
+        .select()
+        .from(childProfilesTable)
+        .where(
+          and(
+            eq(childProfilesTable.organizationId, actor.organizationId),
+            inArray(childProfilesTable.id, childIds),
+            isNull(childProfilesTable.archivedAt),
+          ),
+        )
+        .orderBy(childProfilesTable.displayName),
+    ]);
+  const user = userRows[0];
+  const organization = organizationRows[0];
+  if (!user || !organization) {
+    res.status(403).json({ error: "Your ChildLed account is unavailable." });
+    return;
+  }
+
+  const [careTeamRows, invitationRows] = canViewCareCircles
+    ? await Promise.all([
+        db
+          .select({
+            childId: childCareTeamMembershipsTable.childId,
+            userId: usersTable.id,
+            name: usersTable.displayName,
+            role: childCareTeamMembershipsTable.role,
+          })
+          .from(childCareTeamMembershipsTable)
+          .innerJoin(
+            usersTable,
+            eq(usersTable.id, childCareTeamMembershipsTable.userId),
+          )
+          .innerJoin(
+            childProfilesTable,
+            and(
+              eq(childProfilesTable.id, childCareTeamMembershipsTable.childId),
+              eq(childProfilesTable.organizationId, actor.organizationId),
+              isNull(childProfilesTable.archivedAt),
+            ),
+          )
+          .where(
+            and(
+              inArray(childCareTeamMembershipsTable.childId, childIds),
+              eq(childCareTeamMembershipsTable.active, true),
+              isNull(usersTable.archivedAt),
+            ),
+          )
+          .orderBy(usersTable.displayName),
+        db
+          .select()
+          .from(careTeamInvitationsTable)
+          .where(
+            and(
+              eq(careTeamInvitationsTable.organizationId, actor.organizationId),
+              inArray(careTeamInvitationsTable.childId, childIds),
+              eq(careTeamInvitationsTable.status, "pending"),
+            ),
+          )
+          .orderBy(desc(careTeamInvitationsTable.createdAt)),
+      ])
+    : [[], []];
+  const careTeamByChild = new Map<
+    number,
+    Array<{ userId: string; name: string; role: string }>
+  >();
+  for (const member of careTeamRows) {
+    careTeamByChild.set(member.childId, [
+      ...(careTeamByChild.get(member.childId) ?? []),
+      {
+        userId: member.userId,
+        name: member.name,
+        role: teamRoleLabel(member.role),
+      },
+    ]);
+  }
+  const profile =
+    actor.role === "SLP" && !actor.isDevelopmentDemo
+      ? profileRows[0]
+      : undefined;
+  const preferences = preferenceRows[0] ?? defaultNotificationPreferences;
+  res.json(
+    GetSettingsResponse.parse({
+      identity: {
+        name: user.displayName,
+        email: user.email ?? "",
+        role: actor.role,
+        accountType: settingsAccountType(actor),
+        organizationName: organization.name,
+        isDevelopmentDemo: Boolean(actor.isDevelopmentDemo),
+        isRolePreview: Boolean(actor.previewRole),
+      },
+      ...(profile
+        ? {
+            professionalProfile: {
+              firstName: profile.firstName,
+              lastName: profile.lastName,
+              professionalTitle: profile.professionalTitle,
+              school: profile.school,
+              schoolDistrict: profile.schoolDistrict,
+              licensureState: profile.licensureState,
+              licenseNumber: profile.licenseNumber,
+              licenseExpirationDate: profile.licenseExpirationDate,
+              ashaCccSlpNumber: profile.ashaCccSlpNumber,
+              licenseVerificationStatus: profile.licenseVerificationStatus,
+            },
+          }
+        : {}),
+      students: profiles.map((student) => ({
+        id: student.id,
+        childLedId: student.childLedId,
+        name: student.displayName,
+        school: student.school,
+        grade: student.grade,
+        careTeam: canViewCareCircles
+          ? (careTeamByChild.get(student.id) ?? [])
+          : [],
+      })),
+      pendingInvitations: invitationRows.map((invitation) => ({
+        id: String(invitation.id),
+        childId: invitation.childId,
+        childName:
+          profiles.find((student) => student.id === invitation.childId)
+            ?.displayName ?? null,
+        email: invitation.invitedEmail,
+        role: teamRoleLabel(invitation.invitedRole),
+        createdAt: invitation.createdAt.toISOString(),
+      })),
+      notificationPreferences: {
+        messages: preferences.messages,
+        studentUpdates: preferences.studentUpdates,
+        communicationActivity: preferences.communicationActivity,
+        weeklySummary: preferences.weeklySummary,
+      },
+    }),
+  );
+});
+
+router.patch("/settings", async (req, res): Promise<void> => {
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId) {
+    res
+      .status(req.childledAuthFailure ? 403 : 401)
+      .json({ error: authenticationError(req) });
+    return;
+  }
+  const body = UpdateSettingsBody.safeParse(req.body);
+  if (!body.success) {
+    res.status(400).json({ error: "Choose valid notification preferences." });
+    return;
+  }
+  const [saved] = await db
+    .insert(userNotificationPreferencesTable)
+    .values({
+      organizationId: actor.organizationId,
+      userId: actor.userId,
+      ...body.data,
+    })
+    .onConflictDoUpdate({
+      target: [
+        userNotificationPreferencesTable.organizationId,
+        userNotificationPreferencesTable.userId,
+      ],
+      set: { ...body.data, updatedAt: new Date() },
+    })
+    .returning();
+  if (!saved) {
+    res.status(500).json({ error: "Your preferences could not be saved." });
+    return;
+  }
+  await writeSecurityAudit({
+    actor,
+    action: "USER_NOTIFICATION_PREFERENCES_UPDATED",
+    targetType: "user_notification_preferences",
+    targetId: actor.userId,
+    metadata: body.data,
+  });
+  res.json(UpdateSettingsResponse.parse(body.data));
+});
+
+const slpOnboardingActor = (req: Request) => {
+  const actor = req.childledActor;
+  return actor?.role === "SLP" && actor.organizationId ? actor : null;
+};
+
+router.get("/slp-onboarding", async (req, res): Promise<void> => {
+  const actor = slpOnboardingActor(req);
+  const clerkUserId = getAuth(req).userId;
+  if (!actor || !clerkUserId) {
+    res.status(403).json({ error: "An invited SLP account is required." });
+    return;
+  }
+  const [[organization], [profile], acceptances, clerkUser] = await Promise.all(
+    [
+      db
+        .select({ name: organizationsTable.name })
+        .from(organizationsTable)
+        .where(eq(organizationsTable.id, actor.organizationId!))
+        .limit(1),
+      db
+        .select()
+        .from(slpProfilesTable)
+        .where(
+          and(
+            eq(slpProfilesTable.organizationId, actor.organizationId!),
+            eq(slpProfilesTable.userId, actor.userId),
+          ),
+        )
+        .limit(1),
+      db
+        .select()
+        .from(userAgreementAcceptancesTable)
+        .where(
+          and(
+            eq(
+              userAgreementAcceptancesTable.organizationId,
+              actor.organizationId!,
+            ),
+            eq(userAgreementAcceptancesTable.userId, actor.userId),
+          ),
+        ),
+      clerkClient.users.getUser(clerkUserId),
+    ],
+  );
+  if (!organization) {
+    res.status(403).json({ error: "The invited organization is unavailable." });
+    return;
+  }
+  const acceptedByKey = new Map(
+    acceptances.map((acceptance) => [
+      `${acceptance.agreementType}:${acceptance.documentVersion}`,
+      acceptance,
+    ]),
+  );
+  res.json(
+    GetSlpOnboardingResponse.parse({
+      email:
+        clerkUser.emailAddresses.find(
+          (entry) => entry.verification?.status === "verified",
+        )?.emailAddress ?? "",
+      organizationName: organization.name,
+      profile: {
+        firstName: profile?.firstName ?? clerkUser.firstName ?? "",
+        lastName: profile?.lastName ?? clerkUser.lastName ?? "",
+        professionalTitle:
+          profile?.professionalTitle ?? "Speech-Language Pathologist",
+        school: profile?.school ?? "",
+        schoolDistrict: profile?.schoolDistrict ?? "",
+        licensureState: profile?.licensureState ?? "",
+        licenseNumber: profile?.licenseNumber ?? "",
+        licenseExpirationDate: profile?.licenseExpirationDate ?? null,
+        ashaCccSlpNumber: profile?.ashaCccSlpNumber ?? null,
+        licenseVerificationStatus:
+          profile?.licenseVerificationStatus ?? "unverified",
+      },
+      agreements: SLP_AGREEMENTS.map((agreement) => {
+        const acceptance = acceptedByKey.get(
+          `${agreement.type}:${agreement.version}`,
+        );
+        return {
+          ...agreement,
+          accepted: Boolean(acceptance),
+          acceptedAt: acceptance?.acceptedAt.toISOString() ?? null,
+        };
+      }),
+      accountStatus: actor.accountStatus ?? "onboarding",
+      onboardingComplete: Boolean(actor.onboardingComplete),
+    }),
+  );
+});
+
+router.post("/slp-onboarding", async (req, res): Promise<void> => {
+  const actor = slpOnboardingActor(req);
+  const clerkUserId = getAuth(req).userId;
+  if (!actor || !clerkUserId) {
+    res.status(403).json({ error: "An invited SLP account is required." });
+    return;
+  }
+  const parsed = CompleteSlpOnboardingBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "Complete every required professional profile field.",
+    });
+    return;
+  }
+  const profile = Object.fromEntries(
+    Object.entries(parsed.data.profile).map(([key, value]) => [
+      key,
+      typeof value === "string" ? value.trim() : value,
+    ]),
+  ) as typeof parsed.data.profile;
+  const requiredText = [
+    profile.firstName,
+    profile.lastName,
+    profile.professionalTitle,
+    profile.school,
+    profile.schoolDistrict,
+    profile.licensureState,
+    profile.licenseNumber,
+  ];
+  const expiration = profile.licenseExpirationDate || null;
+  if (
+    requiredText.some((value) => !value) ||
+    (expiration && !/^\d{4}-\d{2}-\d{2}$/.test(expiration)) ||
+    !hasEveryCurrentSlpAgreement(parsed.data.agreements)
+  ) {
+    res.status(400).json({
+      error:
+        "Complete every required profile field and acknowledge each current agreement.",
+    });
+    return;
+  }
+
+  const completedAt = new Date();
+  let completion: Awaited<ReturnType<typeof completeSlpOnboardingAccount>>;
+  try {
+    completion = await completeSlpOnboardingAccount({
+      organizationId: actor.organizationId!,
+      userId: actor.userId,
+      clerkUserId,
+      profile: {
+        firstName: profile.firstName,
+        lastName: profile.lastName,
+        professionalTitle: profile.professionalTitle,
+        school: profile.school,
+        schoolDistrict: profile.schoolDistrict,
+        licensureState: profile.licensureState,
+        licenseNumber: profile.licenseNumber,
+        licenseExpirationDate: expiration,
+        ashaCccSlpNumber: profile.ashaCccSlpNumber || null,
+      },
+      completedAt,
+    });
+  } catch (error) {
+    req.log.error(
+      { err: error, userId: actor.userId },
+      "Could not complete invited SLP onboarding",
+    );
+    res.status(error instanceof SlpOnboardingMembershipError ? 409 : 500).json({
+      error:
+        "Your SLP account could not be activated. Your entries are unchanged; please try again.",
+    });
+    return;
+  }
+  await writeSecurityAudit({
+    actor,
+    action: "SLP_ONBOARDING_COMPLETED",
+    targetType: "organization_membership",
+    targetId: completion.id,
+    metadata: {
+      agreementVersions: Object.fromEntries(
+        SLP_AGREEMENTS.map((agreement) => [agreement.type, agreement.version]),
+      ),
+      licenseVerificationStatus: "unverified",
+    },
+  });
+  res.json(
+    CompleteSlpOnboardingResponse.parse({
+      completed: true,
+      accountStatus: "active",
+      onboardingCompletedAt: completedAt.toISOString(),
+    }),
+  );
+});
+
 router.post("/admin/role-preview", async (req, res): Promise<void> => {
-  const owner = requireSuperAdmin(req, res);
+  const owner = requireDevelopmentDemoSuperAdmin(req, res);
   if (!owner) return;
   const body = SetRolePreviewBody.safeParse(req.body);
   if (!body.success) {
     res
       .status(400)
       .json({ error: "Choose an SLP, Parent, Teacher, or Admin preview." });
+    return;
+  }
+  const effectiveActor = developmentDemoPersonaActor(owner, body.data.role);
+  if (!effectiveActor) {
+    res.status(503).json({
+      error: "The selected development persona is not available.",
+    });
     return;
   }
   res.cookie(ROLE_PREVIEW_COOKIE, body.data.role, {
@@ -7348,21 +8119,18 @@ router.post("/admin/role-preview", async (req, res): Promise<void> => {
     action: "ROLE_PREVIEW_UPDATED",
     targetType: "owner_testing",
     outcome: "success",
-    metadata: { previewRole: body.data.role },
+    metadata: {
+      previewRole: body.data.role,
+      previewUserId: effectiveActor.userId,
+    },
   });
-  const effectiveActor: CareTeamActor = {
-    ...owner,
-    role: body.data.role,
-    isAdmin: body.data.role === "Administrator",
-    previewRole: body.data.role,
-  };
   res.json(
     SetRolePreviewResponse.parse(viewerResponse(effectiveActor, owner.role)),
   );
 });
 
 router.delete("/admin/role-preview", async (req, res): Promise<void> => {
-  const owner = requireSuperAdmin(req, res);
+  const owner = requireDevelopmentDemoSuperAdmin(req, res);
   if (!owner) return;
   res.clearCookie(ROLE_PREVIEW_COOKIE, {
     httpOnly: true,
@@ -7785,7 +8553,7 @@ router.patch("/admin/child-permissions/:userId", async (req, res) => {
     );
   const [[child], [organizationMember]] = await Promise.all([
     db
-      .select({ id: childProfilesTable.id })
+      .select()
       .from(childProfilesTable)
       .where(
         and(
@@ -9614,7 +10382,7 @@ router.post("/clinical-knowledge/sources", async (req, res) => {
         })
         .where(eq(clinicalKnowledgeIngestionJobsTable.id, job.id));
     });
-    req.log.warn(
+    req.log?.warn(
       { sourceId: source.id, code: safe.code },
       "Clinical knowledge source processing failed",
     );
@@ -10386,12 +11154,13 @@ router.get("/clinician-overview", async (req, res) => {
   if (!parsed.success) return fail(res, "The overview date is invalid.");
   const actor = requireClinician(req, res);
   if (!actor?.organizationId) return;
+  const organizationId = actor.organizationId;
   const sinceValue = parsed.data.since ? Date.parse(parsed.data.since) : 0;
   const since = Number.isNaN(sinceValue) ? new Date(0) : new Date(sinceValue);
   const now = new Date();
   const thisWeek = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
   const profileConditions = [
-    eq(childProfilesTable.organizationId, actor.organizationId),
+    eq(childProfilesTable.organizationId, organizationId),
     isNull(childProfilesTable.archivedAt),
   ];
   if (!actor.isAdmin) {
@@ -10433,19 +11202,38 @@ router.get("/clinician-overview", async (req, res) => {
     db
       .select({
         id: teamMessagesTable.id,
+        conversationId: teamMessagesTable.conversationId,
         childId: teamMessagesTable.childId,
+        senderUserId: teamMessagesTable.senderUserId,
         messageType: teamMessagesTable.messageType,
         createdAt: teamMessagesTable.createdAt,
       })
       .from(teamMessagesTable)
+      .leftJoin(
+        teamConversationParticipantsTable,
+        and(
+          eq(
+            teamConversationParticipantsTable.conversationId,
+            teamMessagesTable.conversationId,
+          ),
+          eq(teamConversationParticipantsTable.userId, actor.userId),
+        ),
+      )
       .where(
         and(
           eq(teamMessagesTable.organizationId, actor.organizationId),
           inArray(teamMessagesTable.childId, scopedChildIds),
           gte(teamMessagesTable.createdAt, since),
           or(
-            isNull(teamMessagesTable.recipientUserId),
-            eq(teamMessagesTable.recipientUserId, actor.userId),
+            and(
+              sql`lower(${teamMessagesTable.messageType}) <> 'notification'`,
+              eq(teamConversationParticipantsTable.userId, actor.userId),
+              sql`${teamMessagesTable.senderUserId} <> ${actor.userId}`,
+            ),
+            and(
+              sql`lower(${teamMessagesTable.messageType}) = 'notification'`,
+              eq(teamMessagesTable.recipientUserId, actor.userId),
+            ),
           ),
         ),
       )
@@ -10505,6 +11293,7 @@ router.get("/clinician-overview", async (req, res) => {
         id: therapySessionsTable.id,
         childId: therapySessionsTable.childId,
         sessionDate: therapySessionsTable.sessionDate,
+        sessionStatus: therapySessionsTable.sessionStatus,
         createdAt: therapySessionsTable.createdAt,
       })
       .from(therapySessionsTable)
@@ -10666,7 +11455,9 @@ router.get("/clinician-overview", async (req, res) => {
           ? "A care-team question needs attention."
           : "A new message was shared with the child’s care team.",
       time: item.createdAt,
-      href: `/team-communication?childId=${item.childId}`,
+      href: item.conversationId
+        ? `/team-communication?childId=${item.childId}&conversationId=${item.conversationId}`
+        : `/team-communication?childId=${item.childId}`,
     }),
   );
   const awaitingInsights = insights.filter(
@@ -10841,6 +11632,7 @@ router.get("/clinician-overview", async (req, res) => {
   }
   const lastSessionByChild = new Map<number, string>();
   for (const session of sessionRows) {
+    if (session.sessionStatus !== "completed") continue;
     const previous = lastSessionByChild.get(session.childId);
     if (!previous || session.sessionDate > previous) {
       lastSessionByChild.set(session.childId, session.sessionDate);
@@ -10866,6 +11658,7 @@ router.get("/clinician-overview", async (req, res) => {
       }),
       children: profiles.map((profile) => ({
         childId: profile.id,
+        childLedId: profile.childLedId,
         childName: profile.displayName,
         school: profile.school,
         grade: profile.grade,
@@ -10936,19 +11729,38 @@ router.get("/teacher-overview", async (req, res) => {
       db
         .select({
           id: teamMessagesTable.id,
+          conversationId: teamMessagesTable.conversationId,
           childId: teamMessagesTable.childId,
+          senderUserId: teamMessagesTable.senderUserId,
           messageType: teamMessagesTable.messageType,
           createdAt: teamMessagesTable.createdAt,
         })
         .from(teamMessagesTable)
+        .leftJoin(
+          teamConversationParticipantsTable,
+          and(
+            eq(
+              teamConversationParticipantsTable.conversationId,
+              teamMessagesTable.conversationId,
+            ),
+            eq(teamConversationParticipantsTable.userId, actor.userId),
+          ),
+        )
         .where(
           and(
             eq(teamMessagesTable.organizationId, actor.organizationId),
             inArray(teamMessagesTable.childId, scopedChildIds),
             gte(teamMessagesTable.createdAt, since),
             or(
-              isNull(teamMessagesTable.recipientUserId),
-              eq(teamMessagesTable.recipientUserId, actor.userId),
+              and(
+                sql`lower(${teamMessagesTable.messageType}) <> 'notification'`,
+                eq(teamConversationParticipantsTable.userId, actor.userId),
+                sql`${teamMessagesTable.senderUserId} <> ${actor.userId}`,
+              ),
+              and(
+                sql`lower(${teamMessagesTable.messageType}) = 'notification'`,
+                eq(teamMessagesTable.recipientUserId, actor.userId),
+              ),
             ),
           ),
         )
@@ -11070,6 +11882,7 @@ router.get("/teacher-overview", async (req, res) => {
     const latest = activityByChild.get(profile.id)?.[0];
     return {
       childId: profile.id,
+      childLedId: profile.childLedId,
       childName: profile.displayName,
       school: profile.school,
       grade: profile.grade,
@@ -12012,34 +12825,43 @@ router.post("/children", async (req, res) => {
       const preferredName = childInput.preferredName?.trim() ?? "";
       const displayName =
         preferredName || [firstName, lastName].filter(Boolean).join(" ");
-      const [profile] = await db
-        .insert(childProfilesTable)
-        .values({
-          organizationId: actor.organizationId,
-          displayName,
-          firstName,
-          lastName,
-          preferredName,
-          pronouns: childInput.pronouns?.trim() || null,
-          dateOfBirth: childInput.dateOfBirth
-            ? childInput.dateOfBirth.toISOString().slice(0, 10)
-            : null,
-          school: childInput.school,
-          grade: childInput.grade,
-          communicationStyle: childInput.communicationStyle,
-          profileDetails: {
-            age: 0,
-            photoUrl: childInput.photoUrl ?? null,
-            glpNotes: childInput.glpNotes ?? "",
-            strengths: childInput.strengths ?? [],
-            sensoryPreferences: childInput.sensoryPreferences ?? [],
-            specialInterests: childInput.specialInterests ?? [],
-            regulationNotes: childInput.regulationNotes ?? "",
-            sensorySupports: childInput.sensorySupports ?? [],
-            sensoryChallenges: childInput.sensoryChallenges ?? [],
-          },
-        })
-        .returning();
+      let profile: typeof childProfilesTable.$inferSelect | undefined;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        try {
+          [profile] = await db
+            .insert(childProfilesTable)
+            .values({
+              childLedId: generateChildLedId(),
+              organizationId: actor.organizationId,
+              displayName,
+              firstName,
+              lastName,
+              preferredName,
+              pronouns: childInput.pronouns?.trim() || null,
+              dateOfBirth: childInput.dateOfBirth
+                ? childInput.dateOfBirth.toISOString().slice(0, 10)
+                : null,
+              school: childInput.school,
+              grade: childInput.grade,
+              communicationStyle: childInput.communicationStyle,
+              profileDetails: {
+                age: 0,
+                photoUrl: childInput.photoUrl ?? null,
+                glpNotes: childInput.glpNotes ?? "",
+                strengths: childInput.strengths ?? [],
+                sensoryPreferences: childInput.sensoryPreferences ?? [],
+                specialInterests: childInput.specialInterests ?? [],
+                regulationNotes: childInput.regulationNotes ?? "",
+                sensorySupports: childInput.sensorySupports ?? [],
+                sensoryChallenges: childInput.sensoryChallenges ?? [],
+              },
+            })
+            .returning();
+          break;
+        } catch (error) {
+          if (!isChildLedIdCollision(error) || attempt === 9) throw error;
+        }
+      }
       if (!profile)
         throw new Error("Child profile was not returned after insert.");
       await db.transaction(async (transaction) => {
@@ -12082,6 +12904,7 @@ router.get("/care-team-invitations", async (req, res) => {
   const actor = viewerFrom(req);
   if (!actor?.organizationId)
     return res.status(401).json({ error: authenticationError(req) });
+  const organizationId = actor.organizationId;
   if (!canManageClinicalData(actor.role) && !isNativeDevelopmentDemo(actor)) {
     return res
       .status(403)
@@ -12237,6 +13060,7 @@ router.post("/care-team-invitations", async (req, res) => {
       emailAddress: invitation.invitedEmail,
       token,
       childledInvitationId: invitation.id,
+      invitedRole: invitation.invitedRole,
     });
     clerkInvitationId = issued.clerkInvitationId;
     invitationPath = issued.invitationPath;
@@ -12296,19 +13120,24 @@ router.get("/team-inbox", async (req, res) => {
   const actor = viewerFrom(req);
   if (!actor?.organizationId)
     return res.status(401).json({ error: authenticationError(req) });
+  const organizationId = actor.organizationId;
   if (
     query.data.childId !== undefined &&
     !requireChildAccess(req, res, query.data.childId)
   )
     return;
   const profileConditions = [
-    eq(childProfilesTable.organizationId, actor.organizationId),
+    eq(childProfilesTable.organizationId, organizationId),
     isNull(childProfilesTable.archivedAt),
-    inArray(
-      childProfilesTable.id,
-      actor.childIds.length ? actor.childIds : [-1],
-    ),
   ];
+  if (!actor.isAdmin) {
+    profileConditions.push(
+      inArray(
+        childProfilesTable.id,
+        actor.childIds.length ? actor.childIds : [-1],
+      ),
+    );
+  }
   if (query.data.childId !== undefined)
     profileConditions.push(eq(childProfilesTable.id, query.data.childId));
   const profiles = await db
@@ -12317,164 +13146,276 @@ router.get("/team-inbox", async (req, res) => {
     .where(and(...profileConditions));
   const scopedChildIds = profiles.map((profile) => profile.id);
   const scopedIds = scopedChildIds.length ? scopedChildIds : [-1];
-  const senderRoleStorageValues = query.data.senderRole
-    ? (
-        {
-          SLP: ["clinician", "slp"],
-          Parent: ["parent"],
-          Teacher: ["teacher"],
-          OT: ["ot"],
-          Administrator: ["admin", "administrator"],
-        } as const
-      )[query.data.senderRole]
-    : undefined;
-  const senderRoleCondition = senderRoleStorageValues
-    ? inArray(
-        sql<string>`lower(${teamMessagesTable.senderRole})`,
-        senderRoleStorageValues,
-      )
-    : undefined;
-  const recipientCondition = or(
-    isNull(teamMessagesTable.recipientUserId),
-    eq(teamMessagesTable.recipientUserId, actor.userId),
-  );
-  const summaryRows = await db
-    .select({
-      childId: teamMessagesTable.childId,
-      senderUserId: teamMessagesTable.senderUserId,
-      body: teamMessagesTable.body,
-      createdAt: teamMessagesTable.createdAt,
-      readAt: teamMessageReadsTable.readAt,
-    })
-    .from(teamMessagesTable)
-    .leftJoin(
-      teamMessageReadsTable,
-      and(
-        eq(teamMessageReadsTable.messageId, teamMessagesTable.id),
-        eq(teamMessageReadsTable.userId, actor.userId),
-      ),
-    )
-    .where(
-      and(
-        eq(teamMessagesTable.organizationId, actor.organizationId),
-        inArray(teamMessagesTable.childId, scopedIds),
-        recipientCondition,
-        ...(senderRoleCondition ? [senderRoleCondition] : []),
-      ),
-    )
-    .orderBy(desc(teamMessagesTable.createdAt));
-  const messageConditions = [
-    eq(teamMessagesTable.organizationId, actor.organizationId),
-    inArray(teamMessagesTable.childId, scopedIds),
-    recipientCondition,
+  const conversationConditions = [
+    eq(teamConversationsTable.organizationId, organizationId),
+    eq(childProfilesTable.organizationId, organizationId),
+    inArray(teamConversationsTable.childId, scopedIds),
+    eq(teamConversationParticipantsTable.userId, actor.userId),
+    sql`exists (
+      select 1 from ${teamMessagesTable}
+      where ${teamMessagesTable.conversationId} = ${teamConversationsTable.id}
+    )`,
   ];
-  if (senderRoleCondition) messageConditions.push(senderRoleCondition);
   if (query.data.childId !== undefined)
-    messageConditions.push(eq(teamMessagesTable.childId, query.data.childId));
-  if (query.data.search?.trim()) {
-    const search = `%${query.data.search.trim()}%`;
-    const searchCondition = or(
-      ilike(teamMessagesTable.body, search),
-      ilike(usersTable.displayName, search),
-      ilike(childProfilesTable.displayName, search),
+    conversationConditions.push(
+      eq(teamConversationsTable.childId, query.data.childId),
     );
-    if (searchCondition) messageConditions.push(searchCondition);
-  }
-  const messageRows = await db
+  if (query.data.conversationId !== undefined)
+    conversationConditions.push(
+      eq(teamConversationsTable.id, query.data.conversationId),
+    );
+  const conversationRows = await db
     .select({
-      id: teamMessagesTable.id,
-      childId: teamMessagesTable.childId,
+      id: teamConversationsTable.id,
+      childId: teamConversationsTable.childId,
       childName: childProfilesTable.displayName,
-      senderUserId: teamMessagesTable.senderUserId,
-      senderName: usersTable.displayName,
-      senderRole: teamMessagesTable.senderRole,
-      messageType: teamMessagesTable.messageType,
-      audience: teamMessagesTable.audience,
-      body: teamMessagesTable.body,
-      createdAt: teamMessagesTable.createdAt,
-      readAt: teamMessageReadsTable.readAt,
+      updatedAt: teamConversationsTable.updatedAt,
     })
-    .from(teamMessagesTable)
-    .innerJoin(usersTable, eq(usersTable.id, teamMessagesTable.senderUserId))
+    .from(teamConversationsTable)
     .innerJoin(
       childProfilesTable,
-      eq(childProfilesTable.id, teamMessagesTable.childId),
+      eq(childProfilesTable.id, teamConversationsTable.childId),
     )
-    .leftJoin(
-      teamMessageReadsTable,
+    .innerJoin(
+      teamConversationParticipantsTable,
       and(
-        eq(teamMessageReadsTable.messageId, teamMessagesTable.id),
-        eq(teamMessageReadsTable.userId, actor.userId),
+        eq(
+          teamConversationParticipantsTable.conversationId,
+          teamConversationsTable.id,
+        ),
+        eq(teamConversationParticipantsTable.userId, actor.userId),
       ),
     )
-    .where(and(...messageConditions))
-    .orderBy(
-      desc(
-        sql<number>`CASE WHEN ${teamMessageReadsTable.readAt} IS NULL AND ${teamMessagesTable.senderUserId} <> ${actor.userId} THEN 1 ELSE 0 END`,
-      ),
-      desc(teamMessagesTable.createdAt),
-      desc(teamMessagesTable.id),
-    )
+    .where(and(...conversationConditions))
+    .orderBy(desc(teamConversationsTable.updatedAt))
     .limit(200);
-  const unreadByChild = new Map<number, number>();
-  const latestByChild = new Map<number, (typeof summaryRows)[number]>();
-  let totalUnread = 0;
-  for (const row of summaryRows) {
-    const isRead = Boolean(row.readAt) || row.senderUserId === actor.userId;
-    if (!isRead) {
-      totalUnread += 1;
-      unreadByChild.set(row.childId, (unreadByChild.get(row.childId) ?? 0) + 1);
-    }
-    if (!latestByChild.has(row.childId)) latestByChild.set(row.childId, row);
+  if (
+    query.data.conversationId !== undefined &&
+    !conversationRows.some(
+      (conversation) => conversation.id === query.data.conversationId,
+    )
+  ) {
+    req.log?.warn(
+      {
+        actorUserId: actor.userId,
+        actorRole: actor.role,
+        childId: query.data.childId,
+        conversationId: query.data.conversationId,
+      },
+      "Inbox conversation access denied",
+    );
+    return res
+      .status(403)
+      .json({ error: "You do not have access to this conversation." });
   }
-  const [members] =
-    query.data.childId !== undefined
-      ? await Promise.all([
-          db
-            .select({
-              id: childCareTeamMembershipsTable.id,
-              name: usersTable.displayName,
-              role: childCareTeamMembershipsTable.role,
-            })
-            .from(childCareTeamMembershipsTable)
-            .innerJoin(
-              usersTable,
-              eq(usersTable.id, childCareTeamMembershipsTable.userId),
-            )
-            .where(
-              and(
-                eq(childCareTeamMembershipsTable.childId, query.data.childId),
-                eq(childCareTeamMembershipsTable.active, true),
-              ),
+  const conversationIds = conversationRows.map((row) => row.id);
+  const [participantRows, rawMessageRows, memberRows] = await Promise.all([
+    conversationIds.length
+      ? db
+          .select({
+            conversationId: teamConversationParticipantsTable.conversationId,
+            childId: teamConversationsTable.childId,
+            userId: teamConversationParticipantsTable.userId,
+            name: usersTable.displayName,
+            role: teamConversationParticipantsTable.role,
+          })
+          .from(teamConversationParticipantsTable)
+          .innerJoin(
+            teamConversationsTable,
+            eq(
+              teamConversationsTable.id,
+              teamConversationParticipantsTable.conversationId,
             ),
-        ])
-      : [[]];
+          )
+          .innerJoin(
+            usersTable,
+            eq(usersTable.id, teamConversationParticipantsTable.userId),
+          )
+          .where(
+            and(
+              inArray(
+                teamConversationParticipantsTable.conversationId,
+                conversationIds,
+              ),
+              isNull(usersTable.archivedAt),
+              isNull(usersTable.disabledAt),
+            ),
+          )
+      : Promise.resolve<
+          Array<{
+            conversationId: number;
+            childId: number;
+            userId: string;
+            name: string;
+            role: string;
+          }>
+        >([]),
+    conversationIds.length
+      ? db
+          .select({
+            id: teamMessagesTable.id,
+            conversationId: teamMessagesTable.conversationId,
+            childId: teamMessagesTable.childId,
+            childName: childProfilesTable.displayName,
+            senderUserId: teamMessagesTable.senderUserId,
+            senderName: usersTable.displayName,
+            senderRole: teamMessagesTable.senderRole,
+            messageType: teamMessagesTable.messageType,
+            audience: teamMessagesTable.audience,
+            body: teamMessagesTable.body,
+            createdAt: teamMessagesTable.createdAt,
+            readAt: teamMessageReadsTable.readAt,
+          })
+          .from(teamMessagesTable)
+          .innerJoin(usersTable, eq(usersTable.id, teamMessagesTable.senderUserId))
+          .innerJoin(
+            childProfilesTable,
+            eq(childProfilesTable.id, teamMessagesTable.childId),
+          )
+          .leftJoin(
+            teamMessageReadsTable,
+            and(
+              eq(teamMessageReadsTable.messageId, teamMessagesTable.id),
+              eq(teamMessageReadsTable.userId, actor.userId),
+            ),
+          )
+          .where(
+            and(
+              eq(teamMessagesTable.organizationId, organizationId),
+              inArray(teamMessagesTable.conversationId, conversationIds),
+              sql`lower(${teamMessagesTable.messageType}) <> 'notification'`,
+            ),
+          )
+          .orderBy(desc(teamMessagesTable.createdAt), desc(teamMessagesTable.id))
+          .limit(1000)
+      : Promise.resolve<
+          Array<{
+            id: number;
+            conversationId: number | null;
+            childId: number;
+            childName: string;
+            senderUserId: string;
+            senderName: string;
+            senderRole: string;
+            messageType: string;
+            audience: string;
+            body: string;
+            createdAt: Date;
+            readAt: Date | null;
+          }>
+        >([]),
+    resolveMessageableCareTeamMembers(actor, scopedChildIds),
+  ]);
+  const participantsByConversation = new Map<
+    number,
+    Array<{ childId: number; userId: string; name: string; role: string }>
+  >();
+  for (const participant of participantRows) {
+    participantsByConversation.set(participant.conversationId, [
+      ...(participantsByConversation.get(participant.conversationId) ?? []),
+      {
+        childId: participant.childId,
+        userId: participant.userId,
+        name: participant.name,
+        role: teamRoleLabel(participant.role),
+      },
+    ]);
+  }
+  const search = query.data.search?.trim().toLocaleLowerCase();
+  const senderRole = query.data.senderRole;
+  const matchingConversationIds = new Set(
+    conversationRows
+      .filter((conversation) => {
+        const messages = rawMessageRows.filter(
+          (message) => message.conversationId === conversation.id,
+        );
+        const matchesRole =
+          !senderRole ||
+          messages.some(
+            (message) => teamRoleLabel(message.senderRole) === senderRole,
+          );
+        const matchesSearch =
+          !search ||
+          conversation.childName.toLocaleLowerCase().includes(search) ||
+          (participantsByConversation.get(conversation.id) ?? []).some(
+            (participant) =>
+              participant.name.toLocaleLowerCase().includes(search),
+          ) ||
+          messages.some((message) =>
+            message.body.toLocaleLowerCase().includes(search),
+          );
+        return matchesRole && matchesSearch;
+      })
+      .map((conversation) => conversation.id),
+  );
+  const visibleConversations = conversationRows.filter((conversation) =>
+    matchingConversationIds.has(conversation.id),
+  );
+  const messageRows = rawMessageRows.filter(
+    (message) =>
+      message.conversationId !== null &&
+      matchingConversationIds.has(message.conversationId) &&
+      (!senderRole || teamRoleLabel(message.senderRole) === senderRole),
+  );
+  const conversationSummaries = visibleConversations.map((conversation) => {
+    const messages = rawMessageRows.filter(
+      (message) => message.conversationId === conversation.id,
+    );
+    const latest = messages[0];
+    const unreadCount = messages.filter(
+      (message) =>
+        message.senderUserId !== actor.userId && !Boolean(message.readAt),
+    ).length;
+    return {
+      id: conversation.id,
+      childId: conversation.childId,
+      childName: conversation.childName,
+      participants: participantsByConversation.get(conversation.id) ?? [],
+      unreadCount,
+      messageCount: messages.length,
+      latestMessageAt: latest?.createdAt ?? null,
+      latestMessagePreview: latest?.body.slice(0, 140) ?? null,
+      latestSenderName: latest?.senderName ?? null,
+    };
+  });
+  const childSummary = profiles.map((profile) => {
+    const childConversations = conversationSummaries.filter(
+      (conversation) => conversation.childId === profile.id,
+    );
+    const childMessages = rawMessageRows.filter(
+      (message) => message.childId === profile.id,
+    );
+    const latest = childMessages[0];
+    return {
+      childId: profile.id,
+      childName: profile.name,
+      unreadCount: childConversations.reduce(
+        (total, conversation) => total + conversation.unreadCount,
+        0,
+      ),
+      messageCount: childMessages.length,
+      latestMessageAt: latest?.createdAt ?? null,
+      latestMessagePreview: latest?.body.slice(0, 140) ?? null,
+    };
+  });
   return res.json(
     GetTeamInboxResponse.parse({
+      currentUserId: actor.userId,
       childId: query.data.childId ?? null,
-      children: profiles.map((profile) => {
-        const latest = latestByChild.get(profile.id);
-        return {
-          childId: profile.id,
-          childName: profile.name,
-          unreadCount: unreadByChild.get(profile.id) ?? 0,
-          messageCount: summaryRows.filter(
-            (message) => message.childId === profile.id,
-          ).length,
-          latestMessageAt: latest?.createdAt ?? null,
-          latestMessagePreview: latest?.body ? latest.body.slice(0, 140) : null,
-        };
-      }),
-      members: members.map((member) => ({
-        id: member.id,
+      conversations: conversationSummaries,
+      children: childSummary,
+      members: memberRows.map((member) => ({
+        childId: member.childId,
+        userId: member.userId,
         name: member.name,
         role: teamRoleLabel(member.role),
-        initials: teamMemberInitials(member.name),
       })),
-      messages: messageRows.map((message) => ({
+      messages: [...messageRows].reverse().map((message) => ({
         id: message.id,
+        conversationId: message.conversationId,
         childId: message.childId,
         childName: message.childName,
+        senderUserId: message.senderUserId,
         senderName: message.senderName,
         senderRole: teamRoleLabel(message.senderRole),
         messageType: message.messageType,
@@ -12483,7 +13424,9 @@ router.get("/team-inbox", async (req, res) => {
         read: Boolean(message.readAt) || message.senderUserId === actor.userId,
         createdAt: message.createdAt,
       })),
-      totalUnread,
+      totalUnread: conversationSummaries.filter(
+        (conversation) => conversation.unreadCount > 0,
+      ).length,
     }),
   );
 });
@@ -12495,6 +13438,7 @@ router.post("/team-inbox", async (req, res) => {
   const actor = viewerFrom(req);
   if (!actor?.organizationId)
     return res.status(401).json({ error: authenticationError(req) });
+  const organizationId = actor.organizationId;
   const messageBody = body.data.body.trim();
   if (!messageBody)
     return fail(res, "Write a message before sending it to the team.");
@@ -12504,31 +13448,178 @@ router.post("/team-inbox", async (req, res) => {
     .where(
       and(
         eq(childProfilesTable.id, body.data.childId),
-        eq(childProfilesTable.organizationId, actor.organizationId),
+        eq(childProfilesTable.organizationId, organizationId),
         isNull(childProfilesTable.archivedAt),
       ),
     );
   if (!profile) return res.status(404).json({ error: "Child not found." });
-  const [message] = await db
-    .insert(teamMessagesTable)
-    .values({
-      organizationId: actor.organizationId,
-      childId: body.data.childId,
-      senderUserId: actor.userId,
-      senderRole: teamRoleStorageValue(actor.role),
-      messageType: body.data.messageType ?? "message",
-      audience: "entire_team",
-      body: messageBody,
-    })
-    .returning();
+  let conversationId = body.data.conversationId ?? null;
+  const availableRecipients = conversationId
+    ? []
+    : await resolveMessageableCareTeamMembers(actor, [body.data.childId]);
+  let recipientCount = 0;
+  let message: typeof teamMessagesTable.$inferSelect | undefined;
+  try {
+    message = await db.transaction(async (transaction) => {
+      const requestedConversationId = conversationId;
+      if (requestedConversationId) {
+        const [conversation] = await transaction
+          .select({ id: teamConversationsTable.id })
+          .from(teamConversationsTable)
+          .innerJoin(
+            teamConversationParticipantsTable,
+            and(
+              eq(
+                teamConversationParticipantsTable.conversationId,
+                teamConversationsTable.id,
+              ),
+              eq(teamConversationParticipantsTable.userId, actor.userId),
+            ),
+          )
+          .where(
+            and(
+              eq(teamConversationsTable.id, requestedConversationId),
+              eq(teamConversationsTable.organizationId, organizationId),
+              eq(teamConversationsTable.childId, body.data.childId),
+            ),
+          )
+          .limit(1);
+        if (!conversation)
+          throw new Error("CONVERSATION_ACCESS_DENIED");
+        const participants = await transaction
+          .select({ userId: teamConversationParticipantsTable.userId })
+          .from(teamConversationParticipantsTable)
+          .where(
+            eq(
+              teamConversationParticipantsTable.conversationId,
+              requestedConversationId,
+            ),
+          );
+        recipientCount = participants.filter(
+          (participant) => participant.userId !== actor.userId,
+        ).length;
+      } else {
+        const requestedIds = body.data.recipientUserIds?.length
+          ? [...new Set(body.data.recipientUserIds)]
+          : availableRecipients.map((recipient) => recipient.userId);
+        const recipients = availableRecipients.filter((recipient) =>
+          requestedIds.includes(recipient.userId),
+        );
+        if (
+          recipients.length === 0 ||
+          recipients.length !== requestedIds.length
+        )
+          throw new Error("RECIPIENT_ACCESS_DENIED");
+        recipientCount = recipients.length;
+        const participantIds = [actor.userId, ...requestedIds];
+        const [conversation] = await transaction
+          .insert(teamConversationsTable)
+          .values({
+            organizationId,
+            childId: body.data.childId,
+            participantKey: conversationParticipantKey(participantIds),
+            createdByUserId: actor.userId,
+          })
+          .onConflictDoUpdate({
+            target: [
+              teamConversationsTable.organizationId,
+              teamConversationsTable.childId,
+              teamConversationsTable.participantKey,
+            ],
+            set: { updatedAt: new Date() },
+          })
+          .returning({ id: teamConversationsTable.id });
+        if (!conversation) throw new Error("CONVERSATION_SAVE_FAILED");
+        conversationId = conversation.id;
+        await transaction
+          .insert(teamConversationParticipantsTable)
+          .values([
+            {
+              conversationId,
+              userId: actor.userId,
+              role: teamRoleStorageValue(actor.role),
+              lastReadAt: new Date(),
+            },
+            ...recipients.map((recipient) => ({
+              conversationId: conversation.id,
+              userId: recipient.userId,
+              role: recipient.role,
+            })),
+          ])
+          .onConflictDoNothing();
+      }
+      if (!conversationId) throw new Error("CONVERSATION_SAVE_FAILED");
+      const [savedMessage] = await transaction
+        .insert(teamMessagesTable)
+        .values({
+          organizationId,
+          conversationId,
+          childId: body.data.childId,
+          senderUserId: actor.userId,
+          senderRole: teamRoleStorageValue(actor.role),
+          messageType: body.data.messageType ?? "message",
+          audience: "entire_team",
+          body: messageBody,
+        })
+        .returning();
+      if (!savedMessage) throw new Error("MESSAGE_SAVE_FAILED");
+      await transaction.insert(teamMessageReadsTable).values({
+        messageId: savedMessage.id,
+        userId: actor.userId,
+      });
+      await transaction
+        .update(teamConversationsTable)
+        .set({ updatedAt: savedMessage.createdAt })
+        .where(eq(teamConversationsTable.id, conversationId));
+      await transaction
+        .update(teamConversationParticipantsTable)
+        .set({ lastReadAt: savedMessage.createdAt })
+        .where(
+          and(
+            eq(teamConversationParticipantsTable.conversationId, conversationId),
+            eq(teamConversationParticipantsTable.userId, actor.userId),
+          ),
+        );
+      return savedMessage;
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message === "CONVERSATION_ACCESS_DENIED") {
+      req.log?.warn(
+        {
+          actorUserId: actor.userId,
+          actorRole: actor.role,
+          childId: body.data.childId,
+          conversationId: body.data.conversationId,
+        },
+        "Team message conversation access denied",
+      );
+      return res.status(403).json({
+        error: "You are not an authorized participant in this conversation.",
+      });
+    }
+    if (error instanceof Error && error.message === "RECIPIENT_ACCESS_DENIED") {
+      req.log?.warn(
+        {
+          actorUserId: actor.userId,
+          actorRole: actor.role,
+          childId: body.data.childId,
+          requestedRecipientCount: body.data.recipientUserIds?.length ?? 0,
+        },
+        "Team message recipient access denied",
+      );
+      return res.status(403).json({
+        error: "One or more recipients are not authorized for this child.",
+      });
+    }
+    req.log.error({ err: error }, "Could not save team conversation message");
+    return res
+      .status(500)
+      .json({ error: "The team message could not be saved." });
+  }
   if (!message)
     return res
       .status(500)
       .json({ error: "The team message could not be saved." });
-  await db.insert(teamMessageReadsTable).values({
-    messageId: message.id,
-    userId: actor.userId,
-  });
   await writeSecurityAudit({
     actor,
     action: "CHILD_TEAM_MESSAGE_SENT",
@@ -12538,13 +13629,17 @@ router.post("/team-inbox", async (req, res) => {
     metadata: {
       audience: "entire_team",
       messageType: body.data.messageType ?? "message",
+      conversationId: conversationId ?? 0,
+      recipientCount,
     },
   });
   return res.status(201).json(
     CreateTeamMessageResponse.parse({
       id: message.id,
+      conversationId,
       childId: message.childId,
       childName: profile.name,
+      senderUserId: actor.userId,
       senderName: actor.author,
       senderRole: teamRoleLabel(actor.role),
       messageType: message.messageType,
@@ -12564,16 +13659,26 @@ router.post("/team-inbox/read", async (req, res) => {
     return res.status(401).json({ error: authenticationError(req) });
   const messageIds = [...new Set(body.data.messageIds)];
   const messages = await db
-    .select({ id: teamMessagesTable.id, childId: teamMessagesTable.childId })
+    .select({
+      id: teamMessagesTable.id,
+      childId: teamMessagesTable.childId,
+      conversationId: teamMessagesTable.conversationId,
+    })
     .from(teamMessagesTable)
+    .innerJoin(
+      teamConversationParticipantsTable,
+      and(
+        eq(
+          teamConversationParticipantsTable.conversationId,
+          teamMessagesTable.conversationId,
+        ),
+        eq(teamConversationParticipantsTable.userId, actor.userId),
+      ),
+    )
     .where(
       and(
         eq(teamMessagesTable.organizationId, actor.organizationId),
         inArray(teamMessagesTable.id, messageIds),
-        or(
-          isNull(teamMessagesTable.recipientUserId),
-          eq(teamMessagesTable.recipientUserId, actor.userId),
-        ),
       ),
     );
   if (
@@ -12597,6 +13702,27 @@ router.post("/team-inbox/read", async (req, res) => {
         target: [teamMessageReadsTable.messageId, teamMessageReadsTable.userId],
         set: { readAt: new Date() },
       });
+    const conversationIds = [
+      ...new Set(
+        messages
+          .map((message) => message.conversationId)
+          .filter((id): id is number => id !== null),
+      ),
+    ];
+    if (conversationIds.length) {
+      await db
+        .update(teamConversationParticipantsTable)
+        .set({ lastReadAt: new Date() })
+        .where(
+          and(
+            eq(teamConversationParticipantsTable.userId, actor.userId),
+            inArray(
+              teamConversationParticipantsTable.conversationId,
+              conversationIds,
+            ),
+          ),
+        );
+    }
   }
   return res.json(
     MarkTeamMessagesReadResponse.parse({ updated: messages.length }),
@@ -13051,7 +14177,7 @@ router.get("/communication-passport", async (req, res) => {
     return res.status(401).json({ error: authenticationError(req) });
   const [child, passport] = await Promise.all([
     db
-      .select({ id: childProfilesTable.id })
+      .select()
       .from(childProfilesTable)
       .where(
         and(
@@ -13077,7 +14203,7 @@ router.get("/communication-passport", async (req, res) => {
   if (!child) return res.status(404).json({ error: "Child not found." });
   return res.json(
     GetCommunicationPassportResponse.parse(
-      await communicationPassportResponse(child.id, actor, passport),
+      await communicationPassportResponse(child, actor, passport),
     ),
   );
 });
@@ -13119,13 +14245,13 @@ router.put("/communication-passport", async (req, res) => {
   if (!requireChildAccess(req, res, body.data.childId)) return;
   const actor = requireClinician(req, res);
   if (!actor?.organizationId) return;
-  const content = normalizeCommunicationPassportContent(body.data.content);
-  if (!content.childName)
-    return fail(res, "The communication passport needs the child's name.");
+  const submittedContent = normalizeCommunicationPassportContent(
+    body.data.content,
+  );
   try {
     const result = await db.transaction(async (transaction) => {
       const [child] = await transaction
-        .select({ id: childProfilesTable.id })
+        .select()
         .from(childProfilesTable)
         .where(
           and(
@@ -13136,6 +14262,11 @@ router.put("/communication-passport", async (req, res) => {
         )
         .limit(1);
       if (!child) return { status: "missing" as const };
+      const content = {
+        ...submittedContent,
+        childName: communicationPassportName(child),
+        preferredName: communicationPassportPreferredName(child),
+      };
       const [current] = await transaction
         .select()
         .from(communicationPassportsTable)
@@ -13183,7 +14314,7 @@ router.put("/communication-passport", async (req, res) => {
             })
             .returning();
       if (!passport) return { status: "conflict" as const };
-      return { status: "saved" as const, passport };
+      return { status: "saved" as const, passport, child };
     });
     if (result.status === "missing")
       return res.status(404).json({ error: "Child not found." });
@@ -13207,7 +14338,7 @@ router.put("/communication-passport", async (req, res) => {
     return res.json(
       SaveCommunicationPassportResponse.parse(
         await communicationPassportResponse(
-          result.passport.childId,
+          result.child,
           actor,
           result.passport,
         ),
@@ -16353,6 +17484,50 @@ router.put("/iep-service-requirements", async (req, res) => {
   );
 });
 
+router.delete(
+  "/children/:childId/iep-services/:requirementId",
+  async (req, res) => {
+    const params = ArchiveIepServiceRequirementParams.safeParse(req.params);
+    if (!params.success)
+      return res.status(404).json({ error: "Service not found." });
+    if (!requireChildAccess(req, res, params.data.childId)) return;
+    const actor = requireClinician(req, res);
+    if (!actor?.organizationId) return;
+
+    const [service] = await db
+      .update(iepServiceRequirementsTable)
+      .set({
+        status: "archived",
+        updatedByUserId: actor.userId,
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(iepServiceRequirementsTable.id, params.data.requirementId),
+          eq(iepServiceRequirementsTable.organizationId, actor.organizationId),
+          eq(iepServiceRequirementsTable.childId, params.data.childId),
+          eq(iepServiceRequirementsTable.status, "active"),
+        ),
+      )
+      .returning({
+        id: iepServiceRequirementsTable.id,
+        childId: iepServiceRequirementsTable.childId,
+      });
+    if (!service)
+      return res.status(404).json({ error: "Active service not found." });
+
+    await writeSecurityAudit({
+      actor,
+      action: "IEP_SERVICE_REQUIREMENT_ARCHIVED",
+      targetType: "iep_service_requirement",
+      targetId: service.id,
+      childId: service.childId,
+      metadata: { linkedSessionHistoryRetained: true },
+    });
+    return res.status(204).send();
+  },
+);
+
 router.put("/caseload-service-settings", async (req, res) => {
   const query = UpdateCaseloadServiceSettingsQueryParams.safeParse(req.query);
   const body = UpdateCaseloadServiceSettingsBody.safeParse(req.body);
@@ -16397,6 +17572,229 @@ router.put("/caseload-service-settings", async (req, res) => {
   );
 });
 
+router.get("/missed-sessions", async (req, res) => {
+  const query = ListMissedSessionsQueryParams.safeParse(req.query);
+  if (!query.success) return fail(res, "Choose a child and service.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+  const [service] = await db
+    .select()
+    .from(iepServiceRequirementsTable)
+    .where(
+      and(
+        eq(iepServiceRequirementsTable.id, query.data.serviceRequirementId),
+        eq(iepServiceRequirementsTable.organizationId, actor.organizationId),
+        eq(iepServiceRequirementsTable.childId, query.data.childId),
+      ),
+    )
+    .limit(1);
+  if (!service) return res.status(404).json({ error: "Service not found." });
+  const missed = await db
+    .select()
+    .from(therapySessionsTable)
+    .where(
+      and(
+        eq(therapySessionsTable.organizationId, actor.organizationId),
+        eq(therapySessionsTable.childId, query.data.childId),
+        eq(
+          therapySessionsTable.serviceRequirementId,
+          query.data.serviceRequirementId,
+        ),
+        eq(therapySessionsTable.sessionStatus, "missed"),
+        isNull(therapySessionsTable.archivedAt),
+      ),
+    )
+    .orderBy(
+      desc(therapySessionsTable.sessionDate),
+      desc(therapySessionsTable.id),
+    );
+  const missedIds = missed.map((session) => session.id);
+  const makeupSessions = missedIds.length
+    ? await db
+        .select({
+          id: therapySessionsTable.id,
+          makeupForSessionId: therapySessionsTable.makeupForSessionId,
+        })
+        .from(therapySessionsTable)
+        .where(
+          and(
+            eq(therapySessionsTable.organizationId, actor.organizationId),
+            inArray(therapySessionsTable.makeupForSessionId, missedIds),
+            eq(therapySessionsTable.sessionStatus, "completed"),
+            isNull(therapySessionsTable.archivedAt),
+          ),
+        )
+    : [];
+  const makeupByMissedId = new Map(
+    makeupSessions
+      .filter(
+        (session): session is typeof session & { makeupForSessionId: number } =>
+          session.makeupForSessionId !== null,
+      )
+      .map((session) => [session.makeupForSessionId, session.id]),
+  );
+  return res.json(
+    ListMissedSessionsResponse.parse(
+      missed.map((session) =>
+        missedSessionResponse(
+          session,
+          service,
+          makeupByMissedId.get(session.id) ?? null,
+        ),
+      ),
+    ),
+  );
+});
+
+router.post("/missed-sessions", async (req, res) => {
+  const query = CreateMissedSessionQueryParams.safeParse(req.query);
+  const body = CreateMissedSessionBody.safeParse(req.body);
+  if (!query.success || !body.success)
+    return fail(res, "Complete the missed-session details.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+  const fieldError = validateMissedSessionFields(body.data);
+  if (fieldError) return fail(res, fieldError);
+  const sessionDate = dateString(body.data.sessionDate);
+  const service = await activeServiceForSession({
+    organizationId: actor.organizationId,
+    childId: query.data.childId,
+    serviceRequirementId: body.data.serviceRequirementId,
+    sessionDate,
+  });
+  if (!service)
+    return fail(
+      res,
+      "Choose an active service for this child and missed-session date.",
+    );
+  const [session] = await db
+    .insert(therapySessionsTable)
+    .values({
+      organizationId: actor.organizationId,
+      childId: query.data.childId,
+      serviceRequirementId: service.id,
+      sessionMode: "missed",
+      sessionStatus: "missed",
+      sessionDate,
+      durationSeconds: 0,
+      durationSource: "manual",
+      missedReason: body.data.missedReason,
+      missedReasonDetail: body.data.missedReasonDetail?.trim() || null,
+      makeupStatus: body.data.makeupStatus,
+      note: body.data.note.trim(),
+      createdByUserId: actor.userId,
+    })
+    .returning();
+  if (!session)
+    return res.status(500).json({ error: "The missed session was not saved." });
+  await writeSecurityAudit({
+    actor,
+    action: "MISSED_THERAPY_SESSION_CREATED",
+    targetType: "therapy_session",
+    targetId: session.id,
+    childId: session.childId,
+    metadata: { serviceRequirementId: service.id },
+  });
+  return res
+    .status(201)
+    .json(
+      CreateMissedSessionResponse.parse(
+        missedSessionResponse(session, service, null),
+      ),
+    );
+});
+
+router.patch("/missed-sessions/:sessionId", async (req, res) => {
+  const params = UpdateMissedSessionParams.safeParse(req.params);
+  const body = UpdateMissedSessionBody.safeParse(req.body);
+  if (!params.success || !body.success)
+    return fail(res, "Complete the missed-session details.");
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+  const [existing] = await db
+    .select()
+    .from(therapySessionsTable)
+    .where(
+      and(
+        eq(therapySessionsTable.id, params.data.sessionId),
+        eq(therapySessionsTable.organizationId, actor.organizationId),
+        eq(therapySessionsTable.sessionStatus, "missed"),
+        isNull(therapySessionsTable.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (!existing)
+    return res.status(404).json({ error: "Missed session not found." });
+  if (!requireChildAccess(req, res, existing.childId)) return;
+  if (!existing.serviceRequirementId)
+    return res
+      .status(409)
+      .json({ error: "This missed session has no service." });
+  const sessionDate = dateString(body.data.sessionDate);
+  const service = await activeServiceForSession({
+    organizationId: actor.organizationId,
+    childId: existing.childId,
+    serviceRequirementId: existing.serviceRequirementId,
+    sessionDate,
+  });
+  if (!service)
+    return fail(
+      res,
+      "The service was not active on the selected missed-session date.",
+    );
+  const [linkedMakeup] = await db
+    .select({ id: therapySessionsTable.id })
+    .from(therapySessionsTable)
+    .where(
+      and(
+        eq(therapySessionsTable.organizationId, actor.organizationId),
+        eq(therapySessionsTable.makeupForSessionId, existing.id),
+        eq(therapySessionsTable.sessionStatus, "completed"),
+        isNull(therapySessionsTable.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (linkedMakeup && body.data.makeupStatus !== "completed")
+    return res.status(409).json({
+      error: "This missed session already has a completed makeup session.",
+    });
+  const fieldError = linkedMakeup
+    ? body.data.missedReason === "other" &&
+      !body.data.missedReasonDetail?.trim()
+      ? "Explain the other absence reason."
+      : null
+    : validateMissedSessionFields(body.data);
+  if (fieldError) return fail(res, fieldError);
+  const [updated] = await db
+    .update(therapySessionsTable)
+    .set({
+      sessionDate,
+      missedReason: body.data.missedReason,
+      missedReasonDetail: body.data.missedReasonDetail?.trim() || null,
+      note: body.data.note.trim(),
+      makeupStatus: linkedMakeup ? "completed" : body.data.makeupStatus,
+      updatedAt: new Date(),
+    })
+    .where(eq(therapySessionsTable.id, existing.id))
+    .returning();
+  if (!updated || !service)
+    return res.status(404).json({ error: "Missed session not found." });
+  await writeSecurityAudit({
+    actor,
+    action: "MISSED_THERAPY_SESSION_UPDATED",
+    targetType: "therapy_session",
+    targetId: updated.id,
+    childId: updated.childId,
+  });
+  return res.json(
+    UpdateMissedSessionResponse.parse(
+      missedSessionResponse(updated, service, linkedMakeup?.id ?? null),
+    ),
+  );
+});
+
 router.post("/manual-sessions", async (req, res) => {
   const query = CreateManualSessionQueryParams.safeParse(req.query);
   const body = CreateManualSessionBody.safeParse(req.body);
@@ -16417,6 +17815,17 @@ router.post("/manual-sessions", async (req, res) => {
       res,
       "Choose an active service for this child and session date.",
     );
+  const makeupTarget = await makeupTargetForSession({
+    organizationId: actor.organizationId,
+    childId: query.data.childId,
+    serviceRequirementId: service.id,
+    makeupForSessionId: body.data.makeupForSessionId,
+  });
+  if (body.data.makeupForSessionId && !makeupTarget)
+    return res.status(409).json({
+      error:
+        "This missed session is no longer eligible for a makeup or already has one.",
+    });
   const goalIds = body.data.goals.map((goal) => goal.goalId);
   if (new Set(goalIds).size !== goalIds.length)
     return fail(res, "Each IEP goal can be included only once per session.");
@@ -16490,7 +17899,9 @@ router.post("/manual-sessions", async (req, res) => {
         organizationId: actor.organizationId!,
         childId: query.data.childId,
         serviceRequirementId: service.id,
+        makeupForSessionId: makeupTarget?.id ?? null,
         sessionMode: "manual",
+        sessionStatus: "completed",
         sessionDate,
         startedAt,
         endedAt,
@@ -16504,6 +17915,21 @@ router.post("/manual-sessions", async (req, res) => {
       })
       .returning();
     if (!session) throw new Error("Session insert did not return a row.");
+    if (makeupTarget) {
+      const [completedMiss] = await transaction
+        .update(therapySessionsTable)
+        .set({ makeupStatus: "completed", updatedAt: new Date() })
+        .where(
+          and(
+            eq(therapySessionsTable.id, makeupTarget.id),
+            inArray(therapySessionsTable.makeupStatus, ["needed", "scheduled"]),
+            isNull(therapySessionsTable.archivedAt),
+          ),
+        )
+        .returning({ id: therapySessionsTable.id });
+      if (!completedMiss)
+        throw new Error("The missed session changed before the makeup saved.");
+    }
     const progress = await transaction
       .insert(therapySessionGoalProgressTable)
       .values(
@@ -16523,8 +17949,10 @@ router.post("/manual-sessions", async (req, res) => {
                 : Math.round(entry.accuracyPercent),
             successfulAttempts: entry.successfulAttempts ?? null,
             totalAttempts: entry.totalAttempts ?? null,
+            progressStatus: null,
             promptingLevel: entry.promptingLevel ?? null,
             progressNote: entry.progressNote.trim(),
+            reviewedByUserId: actor.userId,
           };
         }),
       )
@@ -16557,6 +17985,12 @@ router.post("/manual-sessions", async (req, res) => {
       role: "SLP",
       consent: null,
       sessionMode: "manual",
+      sessionStatus: "completed",
+      missedReason: null,
+      missedReasonDetail: null,
+      makeupStatus: null,
+      makeupForSessionId: saved.session.makeupForSessionId,
+      makeupForSessionDate: makeupTarget?.sessionDate ?? null,
       sessionDate: saved.session.sessionDate,
       startedAt: saved.session.startedAt?.toISOString() ?? null,
       endedAt: saved.session.endedAt?.toISOString() ?? null,
@@ -16574,6 +18008,8 @@ router.post("/manual-sessions", async (req, res) => {
         totalAttempts: progress.totalAttempts,
         promptingLevel: progress.promptingLevel,
         progressNote: progress.progressNote,
+        progressStatus: progress.progressStatus,
+        reviewedBy: progress.reviewedByUserId,
       })),
     }),
   );
@@ -16672,6 +18108,7 @@ router.get("/sessions", async (req, res) => {
     const serviceById = new Map(
       services.map((service) => [service.id, service]),
     );
+    const sessionById = new Map(rows.map((session) => [session.id, session]));
     const authorIds = [...new Set(rows.map((row) => row.createdByUserId))];
     const sessionAuthors = authorIds.length
       ? await db
@@ -16715,6 +18152,14 @@ router.get("/sessions", async (req, res) => {
         role: "SLP",
         consent: null,
         sessionMode: row.sessionMode,
+        sessionStatus: row.sessionStatus,
+        missedReason: row.missedReason,
+        missedReasonDetail: row.missedReasonDetail,
+        makeupStatus: row.makeupStatus,
+        makeupForSessionId: row.makeupForSessionId,
+        makeupForSessionDate: row.makeupForSessionId
+          ? (sessionById.get(row.makeupForSessionId)?.sessionDate ?? null)
+          : null,
         sessionDate: row.sessionDate,
         startedAt: row.startedAt?.toISOString() ?? null,
         endedAt: row.endedAt?.toISOString() ?? null,
@@ -16732,6 +18177,8 @@ router.get("/sessions", async (req, res) => {
           totalAttempts: progress.totalAttempts,
           promptingLevel: progress.promptingLevel,
           progressNote: progress.progressNote,
+          progressStatus: progress.progressStatus,
+          reviewedBy: progress.reviewedByUserId,
         })),
       })),
     );
@@ -16954,6 +18401,8 @@ router.get("/sessions/dashboard", async (req, res) => {
         childName: childNameById.get(session.childId) ?? "Assigned child",
         sessionDate: session.sessionDate,
         sessionMode: session.sessionMode,
+        sessionStatus: session.sessionStatus,
+        makeupForSessionId: session.makeupForSessionId,
       })),
       draftDocumentation: [
         ...documentationDrafts
@@ -16980,7 +18429,9 @@ router.get("/sessions/dashboard", async (req, res) => {
       weeklySnapshot: {
         weekStart: weekStart.toISOString().slice(0, 10),
         sessionsRecorded: completedSessions.filter(
-          (session) => session.createdAt >= weekStart,
+          (session) =>
+            session.createdAt >= weekStart &&
+            session.sessionStatus === "completed",
         ).length,
         awaitingReview: requiresReview.length,
         draftNotes:
@@ -18612,6 +20063,23 @@ router.post("/sessions/transcription", async (req, res) => {
       error: "The selected recording is unavailable. Please upload it again.",
     });
   }
+  if (body.data.makeupForSessionId && !body.data.serviceRequirementId) {
+    return fail(res, "Select the service this makeup session belongs to.");
+  }
+  const requestedMakeup = body.data.makeupForSessionId
+    ? await makeupTargetForSession({
+        organizationId: actor.organizationId,
+        childId: query.data.childId,
+        serviceRequirementId: body.data.serviceRequirementId!,
+        makeupForSessionId: body.data.makeupForSessionId,
+      })
+    : null;
+  if (body.data.makeupForSessionId && !requestedMakeup) {
+    return res.status(409).json({
+      error:
+        "This missed session is unavailable or already has a completed makeup.",
+    });
+  }
   if (isManagedObjectStorageDriver(productionAudio?.storageDriver)) {
     const finalizedObjectPath =
       await recordingObjectStorage.finalizeExpectedObject(
@@ -18719,6 +20187,8 @@ router.post("/sessions/transcription", async (req, res) => {
         .values({
           childId: query.data.childId,
           audioId: audio.id,
+          serviceRequirementId: body.data.serviceRequirementId ?? null,
+          makeupForSessionId: requestedMakeup?.id ?? null,
           createdBy: actor.author,
           createdByUserId: actor.userId,
           status: "processing",
@@ -20053,6 +21523,19 @@ router.post("/sessions", async (req, res) => {
       res,
       "Choose an active service for this child before saving the session.",
     );
+  const makeupTarget = actor.organizationId
+    ? await makeupTargetForSession({
+        organizationId: actor.organizationId,
+        childId: query.data.childId,
+        serviceRequirementId: body.data.serviceRequirementId,
+        makeupForSessionId: body.data.makeupForSessionId,
+      })
+    : null;
+  if (body.data.makeupForSessionId && !makeupTarget)
+    return res.status(409).json({
+      error:
+        "This missed session is no longer eligible for a makeup or already has one.",
+    });
   if (!body.data.consentConfirmed)
     return fail(
       res,
@@ -20061,7 +21544,44 @@ router.post("/sessions", async (req, res) => {
   const consentConfirmedAt = new Date(body.data.consentConfirmedAt);
   if (Number.isNaN(consentConfirmedAt.getTime()))
     return fail(res, "Consent confirmation must include a valid timestamp.");
+  const goalReviews = body.data.goalReviews ?? [];
+  const goalReviewIds = goalReviews.map((review) => review.goalId);
+  if (new Set(goalReviewIds).size !== goalReviewIds.length)
+    return fail(
+      res,
+      "Each communication goal can be reviewed only once per session.",
+    );
+  if (
+    goalReviews.some(
+      (review) =>
+        review.progressStatus === "not_addressed" &&
+        review.promptingLevel !== "na",
+    )
+  )
+    return fail(res, "Goals marked Not Addressed must use N/A for prompting.");
+  const addressedGoalReviews = goalReviews.filter(
+    (review) => review.progressStatus !== "not_addressed",
+  );
   if (actor.organizationId) {
+    const activeGoals = goalReviewIds.length
+      ? await db
+          .select()
+          .from(communicationGoalsTable)
+          .where(
+            and(
+              eq(communicationGoalsTable.organizationId, actor.organizationId),
+              eq(communicationGoalsTable.childId, query.data.childId),
+              eq(communicationGoalsTable.status, "active"),
+              inArray(communicationGoalsTable.id, goalReviewIds),
+            ),
+          )
+      : [];
+    if (activeGoals.length !== goalReviewIds.length)
+      return fail(
+        res,
+        "One reviewed communication goal is not active for this child.",
+      );
+    const activeGoalById = new Map(activeGoals.map((goal) => [goal.id, goal]));
     const audio = body.data.audioId
       ? (
           await db
@@ -20427,6 +21947,9 @@ router.post("/sessions", async (req, res) => {
             organizationId: actor.organizationId!,
             childId: query.data.childId,
             serviceRequirementId: service!.id,
+            makeupForSessionId: makeupTarget?.id ?? null,
+            sessionMode: "recorded",
+            sessionStatus: "completed",
             durationSeconds: body.data.durationSeconds,
             clinicalObservations: body.data.clinicalObservations,
             nextSteps: body.data.nextSteps,
@@ -20435,6 +21958,55 @@ router.post("/sessions", async (req, res) => {
           })
           .returning();
         if (!session) throw new Error("Session insert did not return a row.");
+        const savedGoalProgress = addressedGoalReviews.length
+          ? await transaction
+              .insert(therapySessionGoalProgressTable)
+              .values(
+                addressedGoalReviews.map((review) => {
+                  const goal = activeGoalById.get(review.goalId)!;
+                  return {
+                    organizationId: actor.organizationId!,
+                    childId: query.data.childId,
+                    sessionId: session.id,
+                    goalId: goal.id,
+                    goalVersion: goal.version,
+                    goalTitleSnapshot: goal.title,
+                    goalAreaSnapshot: goal.goalArea,
+                    accuracyPercent: null,
+                    successfulAttempts: null,
+                    totalAttempts: null,
+                    progressStatus: review.progressStatus,
+                    promptingLevel:
+                      review.promptingLevel === "na"
+                        ? null
+                        : review.promptingLevel,
+                    progressNote: review.comments.trim(),
+                    reviewedByUserId: actor.userId,
+                  };
+                }),
+              )
+              .returning()
+          : [];
+        if (makeupTarget) {
+          const [completedMiss] = await transaction
+            .update(therapySessionsTable)
+            .set({ makeupStatus: "completed", updatedAt: new Date() })
+            .where(
+              and(
+                eq(therapySessionsTable.id, makeupTarget.id),
+                inArray(therapySessionsTable.makeupStatus, [
+                  "needed",
+                  "scheduled",
+                ]),
+                isNull(therapySessionsTable.archivedAt),
+              ),
+            )
+            .returning({ id: therapySessionsTable.id });
+          if (!completedMiss)
+            throw new Error(
+              "The missed session changed before the makeup saved.",
+            );
+        }
         // Insert the durable queue record in this same transaction. A committed
         // reviewed session can therefore never exist without a recoverable
         // engine trigger, even if the process stops immediately after responding.
@@ -20751,6 +22323,7 @@ router.post("/sessions", async (req, res) => {
           dictionaryGestalts,
           insightRunId: insightRun.id,
           phraseInboxDictionaryAddedCount,
+          savedGoalProgress,
         };
       })
       .catch(async (error) => {
@@ -20769,6 +22342,13 @@ router.post("/sessions", async (req, res) => {
       serviceRequirementId: saved.session.serviceRequirementId,
       serviceName: service!.serviceName,
       serviceType: service!.serviceType,
+      sessionMode: "recorded",
+      sessionStatus: "completed",
+      missedReason: null,
+      missedReasonDetail: null,
+      makeupStatus: null,
+      makeupForSessionId: saved.session.makeupForSessionId,
+      makeupForSessionDate: makeupTarget?.sessionDate ?? null,
       durationSeconds: saved.session.durationSeconds,
       gestalts: body.data.gestalts,
       gestaltIds: saved.dictionaryGestalts.map((phrase) => phrase.id),
@@ -20787,6 +22367,20 @@ router.post("/sessions", async (req, res) => {
         confirmedBy: author,
         childId: query.data.childId,
       },
+      goalProgress: saved.savedGoalProgress.map((progress) => ({
+        id: progress.id,
+        goalId: progress.goalId,
+        goalVersion: progress.goalVersion,
+        goalTitle: progress.goalTitleSnapshot,
+        goalArea: progress.goalAreaSnapshot,
+        accuracyPercent: progress.accuracyPercent,
+        successfulAttempts: progress.successfulAttempts,
+        totalAttempts: progress.totalAttempts,
+        promptingLevel: progress.promptingLevel,
+        progressNote: progress.progressNote,
+        progressStatus: progress.progressStatus,
+        reviewedBy: progress.reviewedByUserId,
+      })),
     };
     if (transcript)
       await applyTranscriptOccurrences(
@@ -20915,6 +22509,13 @@ router.post("/sessions", async (req, res) => {
     serviceRequirementId: body.data.serviceRequirementId,
     serviceName: null,
     serviceType: null,
+    sessionMode: "recorded",
+    sessionStatus: "completed",
+    missedReason: null,
+    missedReasonDetail: null,
+    makeupStatus: null,
+    makeupForSessionId: body.data.makeupForSessionId ?? null,
+    makeupForSessionDate: null,
     durationSeconds: body.data.durationSeconds,
     gestalts: body.data.gestalts,
     gestaltIds: body.data.gestalts.map(() => sessionStore.nextGestaltId++),
@@ -21064,6 +22665,16 @@ const safeBetaRequest = (
         : "received",
   createdAt: request.createdAt.toISOString(),
 });
+const slpWorkspaceSlug = (organizationName: string) => {
+  const base = organizationName
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .slice(0, 48);
+  return `${base || "slp-workspace"}-${randomUUID().slice(0, 8)}`;
+};
 const rawParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 const betaActor = (req: Request) => req.childledActor;
@@ -21142,13 +22753,6 @@ for (const action of ["approve", "reject", "archive"] as const) {
         return;
       }
       if (action === "approve") {
-        const organizationId = Number(req.body?.organizationId);
-        if (!Number.isSafeInteger(organizationId)) {
-          res.status(400).json({
-            error: "SLP approval requires a valid organization.",
-          });
-          return;
-        }
         const token = invitationToken();
         const expiresAt = new Date(Date.now() + 7 * 86_400_000);
         const approved = await db.transaction(async (tx) => {
@@ -21165,39 +22769,17 @@ for (const action of ["approve", "reject", "archive"] as const) {
           };
           const role = roleMap[request.requestedRole];
           if (!role) return null;
-          const [organization] = await tx
-            .select()
-            .from(organizationsTable)
-            .where(
-              and(
-                eq(organizationsTable.id, organizationId),
-                isNull(organizationsTable.archivedAt),
-              ),
-            )
-            .limit(1)
-            .for("update");
           const [controls] = await tx
             .select()
             .from(betaControlsTable)
             .where(eq(betaControlsTable.id, 1))
             .limit(1);
-          if (
-            !organization ||
-            organization.disabledAt ||
-            !organization.betaApprovedAt ||
-            !controls?.enabled
-          )
-            return null;
+          if (!controls?.enabled) return null;
           const dayAgo = new Date(Date.now() - 86_400_000);
           const recent = await tx
             .select({ count: sql<number>`count(*)::int` })
             .from(careTeamInvitationsTable)
-            .where(
-              and(
-                eq(careTeamInvitationsTable.organizationId, organizationId),
-                gte(careTeamInvitationsTable.createdAt, dayAgo),
-              ),
-            );
+            .where(gte(careTeamInvitationsTable.createdAt, dayAgo));
           if (
             (controls?.invitationLimitPerDay ?? 25) <= (recent[0]?.count ?? 0)
           )
@@ -21207,17 +22789,28 @@ for (const action of ["approve", "reject", "archive"] as const) {
             .from(careTeamInvitationsTable)
             .where(
               and(
-                eq(careTeamInvitationsTable.organizationId, organizationId),
                 eq(careTeamInvitationsTable.invitedEmail, request.email),
                 eq(careTeamInvitationsTable.status, "pending"),
+                isNull(careTeamInvitationsTable.revokedAt),
               ),
             )
             .limit(1);
           if (existingInvite) return null;
+          const [organization] = await tx
+            .insert(organizationsTable)
+            .values({
+              slug: slpWorkspaceSlug(request.organizationName),
+              name: request.organizationName,
+              betaApprovedAt: new Date(),
+              betaCohort: controls.defaultCohort,
+              betaUserLimit: controls.defaultOrganizationUserLimit,
+            })
+            .returning();
+          if (!organization) return null;
           const [invite] = await tx
             .insert(careTeamInvitationsTable)
             .values({
-              organizationId,
+              organizationId: organization.id,
               childId: null,
               invitedEmail: request.email,
               invitedRole: role,
@@ -21235,17 +22828,17 @@ for (const action of ["approve", "reject", "archive"] as const) {
               status: "approved",
               reviewedAt: new Date(),
               reviewedByUserId: actor.userId,
-              approvedOrganizationId: organizationId,
+              approvedOrganizationId: organization.id,
               invitationId: invite.id,
             })
             .where(eq(betaAccessRequestsTable.id, id))
             .returning();
-          return updated ? { request: updated, invite } : null;
+          return updated ? { request: updated, invite, organization } : null;
         });
         if (!approved) {
           res.status(409).json({
             error:
-              "This request cannot be approved for that organization and child.",
+              "This SLP request cannot be approved or already has a pending invitation.",
           });
           return;
         }
@@ -21256,6 +22849,7 @@ for (const action of ["approve", "reject", "archive"] as const) {
             emailAddress: approved.invite.invitedEmail,
             token,
             childledInvitationId: approved.invite.id,
+            invitedRole: approved.invite.invitedRole,
           });
           clerkInvitationId = issued.clerkInvitationId;
           invitationPath = issued.invitationPath;
@@ -21292,6 +22886,10 @@ for (const action of ["approve", "reject", "archive"] as const) {
                 invitationId: null,
               })
               .where(eq(betaAccessRequestsTable.id, approved.request.id));
+            await tx
+              .update(organizationsTable)
+              .set({ archivedAt: new Date(), disabledAt: new Date() })
+              .where(eq(organizationsTable.id, approved.organization.id));
           });
           logger.error(
             { err: error, invitationId: approved.invite.id },
@@ -21308,6 +22906,7 @@ for (const action of ["approve", "reject", "archive"] as const) {
           action: "BETA_REQUEST_APPROVED",
           targetType: "beta_access_request",
           targetId: id,
+          metadata: { organizationId: approved.organization.id },
         });
         res.json({
           id: approved.request.id,
@@ -21447,188 +23046,15 @@ router.post("/invitations/accept", async (req, res): Promise<void> => {
     return;
   }
   const clerkUser = await clerkClient.users.getUser(auth.userId);
-  const verified = clerkUser.emailAddresses.find(
-    (entry) => entry.verification?.status === "verified" && entry.emailAddress,
-  );
-  if (!verified) {
-    res.status(403).json({
-      error: "Verify your Clerk email address before accepting an invitation.",
-    });
-    return;
-  }
-  const email = verified.emailAddress.toLowerCase();
-  const hash = invitationTokenHash(token);
-  const result = await db.transaction(async (tx) => {
-    // PostgreSQL row lock prevents two concurrent acceptances from both winning.
-    await tx.execute(
-      sql`SELECT id FROM care_team_invitations WHERE token_hash = ${hash} FOR UPDATE`,
-    );
-    const [invite] = await tx
-      .select()
-      .from(careTeamInvitationsTable)
-      .where(eq(careTeamInvitationsTable.tokenHash, hash))
-      .limit(1);
-    if (
-      !invite ||
-      invite.status !== "pending" ||
-      invite.revokedAt ||
-      !invite.expiresAt ||
-      invite.expiresAt <= new Date() ||
-      invite.invitedEmail.toLowerCase() !== email
-    )
-      return null;
-    const [org] = await tx
-      .select()
-      .from(organizationsTable)
-      .where(eq(organizationsTable.id, invite.organizationId))
-      .limit(1)
-      .for("update");
-    if (!org || org.disabledAt || org.archivedAt || !org.betaApprovedAt)
-      return null;
-    const [controls] = await tx
-      .select()
-      .from(betaControlsTable)
-      .where(eq(betaControlsTable.id, 1))
-      .limit(1);
-    if (!controls?.enabled) return null;
-    const [existing] = await tx
-      .select()
-      .from(usersTable)
-      .where(
-        and(
-          eq(usersTable.identityProvider, "clerk"),
-          eq(usersTable.providerSubject, auth.userId),
-        ),
-      )
-      .limit(1);
-    const userId = existing?.id ?? `clerk_${auth.userId}`;
-    if (existing?.disabledAt) return null;
-    const roleMap: Record<
-      string,
-      "clinician" | "parent" | "teacher" | "admin"
-    > = {
-      clinician: "clinician",
-      slp: "clinician",
-      parent: "parent",
-      teacher: "teacher",
-      admin: "admin",
-      administrator: "admin",
-    };
-    const membershipRole = roleMap[invite.invitedRole.toLowerCase()];
-    if (!membershipRole || membershipRole === "admin") return null;
-    if (!existing)
-      await tx.insert(usersTable).values({
-        id: userId,
-        identityProvider: "clerk",
-        providerSubject: auth.userId,
-        displayName: clerkUser.fullName || clerkUser.username || email,
-        email,
-        betaApprovedAt: new Date(),
-        betaCohort: org.betaCohort,
-      });
-    else
-      await tx
-        .update(usersTable)
-        .set({
-          displayName:
-            clerkUser.fullName || clerkUser.username || existing.displayName,
-          email,
-          betaApprovedAt: new Date(),
-          betaCohort: org.betaCohort,
-        })
-        .where(eq(usersTable.id, userId));
-    const [existingMembership] = await tx
-      .select({ active: organizationMembershipsTable.active })
-      .from(organizationMembershipsTable)
-      .where(
-        and(
-          eq(organizationMembershipsTable.organizationId, org.id),
-          eq(organizationMembershipsTable.userId, userId),
-        ),
-      )
-      .limit(1);
-    const activeCount = await tx
-      .select({ count: sql<number>`count(*)::int` })
-      .from(organizationMembershipsTable)
-      .where(
-        and(
-          eq(organizationMembershipsTable.organizationId, org.id),
-          eq(organizationMembershipsTable.active, true),
-        ),
-      );
-    const membershipLimit =
-      org.betaUserLimit ?? controls?.defaultOrganizationUserLimit ?? null;
-    if (
-      existingMembership?.active !== true &&
-      membershipLimit !== null &&
-      (activeCount[0]?.count ?? 0) >= membershipLimit
-    )
-      return null;
-    await tx
-      .insert(organizationMembershipsTable)
-      .values({
-        organizationId: org.id,
-        userId,
-        role: membershipRole,
-        active: true,
-      })
-      .onConflictDoUpdate({
-        target: [
-          organizationMembershipsTable.organizationId,
-          organizationMembershipsTable.userId,
-        ],
-        set: { role: membershipRole, active: true },
-      });
-    const scopedChildren = acceptedInvitationChildScope({
-      membershipRole,
-      accessScope: invite.accessScope,
-      childScope: invite.childScope,
-      childId: invite.childId,
-    });
-    if (!scopedChildren) return null;
-    if (scopedChildren.length) {
-      const validChildren = await tx
-        .select({ id: childProfilesTable.id })
-        .from(childProfilesTable)
-        .where(
-          and(
-            eq(childProfilesTable.organizationId, org.id),
-            inArray(childProfilesTable.id, scopedChildren),
-            isNull(childProfilesTable.archivedAt),
-          ),
-        );
-      if (validChildren.length !== new Set(scopedChildren).size) return null;
-    }
-    for (const childId of scopedChildren)
-      await tx
-        .insert(childCareTeamMembershipsTable)
-        .values({ childId, userId, role: membershipRole, active: true })
-        .onConflictDoUpdate({
-          target: [
-            childCareTeamMembershipsTable.childId,
-            childCareTeamMembershipsTable.userId,
-          ],
-          set: { role: membershipRole, active: true },
-        });
-    const [accepted] = await tx
-      .update(careTeamInvitationsTable)
-      .set({
-        status: "accepted",
-        acceptedAt: new Date(),
-        acceptedByUserId: userId,
-      })
-      .where(eq(careTeamInvitationsTable.id, invite.id))
-      .returning();
-    return accepted;
-  });
+  const result = await provisionClerkInvitation({ clerkUser, token });
   if (!result) {
     res.status(403).json({ error: "This invitation cannot be accepted." });
     return;
   }
   res.json({
     accepted: true,
-    organizationId: result.organizationId,
-    role: result.invitedRole,
+    organizationId: result.invitation.organizationId,
+    role: result.invitation.invitedRole,
   });
 });
 

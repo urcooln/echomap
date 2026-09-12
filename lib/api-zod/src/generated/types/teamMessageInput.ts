@@ -9,6 +9,14 @@ import type { TeamMessageInputMessageType } from './teamMessageInputMessageType'
 
 export interface TeamMessageInput {
   childId: number;
+  /** @nullable */
+  conversationId?: number | null;
+  /**
+     * @maxItems 50
+     * @items.minLength 1
+     * @items.maxLength 255
+     */
+  recipientUserIds?: string[];
   /**
      * @minLength 1
      * @maxLength 4000

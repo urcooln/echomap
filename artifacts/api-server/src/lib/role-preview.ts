@@ -1,5 +1,5 @@
 import type { Request } from "express";
-import type { CareTeamRole, ResolvedCareTeamActor } from "./auth-context";
+import type { ResolvedCareTeamActor } from "./auth-context";
 import {
   hasVerifiedCareTeamSession,
   isPreviewableRole,
@@ -18,21 +18,32 @@ export const realViewerFromRequest = (request: Request): ResolvedCareTeamActor |
   return hasVerifiedCareTeamSession(actor) && actor?.organizationId ? actor : null;
 };
 
+export const developmentDemoPersonaActor = (
+  actor: ResolvedCareTeamActor,
+  role: PreviewableRole,
+): ResolvedCareTeamActor | null => {
+  if (!actor.isDevelopmentDemo || !actor.isSuperAdmin) return null;
+  const persona = actor.developmentDemoPersonas?.[role];
+  if (!persona) return null;
+  return {
+    ...actor,
+    ...persona,
+    previewRole: role,
+  };
+};
+
 /**
- * Applies only a server-issued preview cookie, and only after the real actor
- * has already been authenticated as a Super Admin. The preview changes
- * effective authorization, while preserving the owner capability separately.
+ * Resolves a server-issued preview cookie to a seeded identity only after the
+ * dedicated development demo session has been authenticated. Real Clerk users
+ * never receive an alternate persona, even if a preview cookie is present.
  */
 export const effectiveViewerFromRequest = (request: Request): ResolvedCareTeamActor | null => {
   const actor = realViewerFromRequest(request);
   if (!actor) return null;
-  const previewRole = actor.isSuperAdmin ? previewRoleFromRequest(request) : undefined;
+  const previewRole =
+    actor.isSuperAdmin && actor.isDevelopmentDemo
+      ? previewRoleFromRequest(request)
+      : undefined;
   if (!previewRole) return actor;
-
-  return {
-    ...actor,
-    role: previewRole as CareTeamRole,
-    isAdmin: previewRole === "Administrator",
-    previewRole,
-  };
+  return developmentDemoPersonaActor(actor, previewRole) ?? actor;
 };

@@ -1,5 +1,8 @@
+import { randomInt } from "node:crypto";
 import {
+  type AnyPgColumn,
   boolean,
+  check,
   date,
   index,
   integer,
@@ -13,6 +16,15 @@ import {
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
+
+const CHILD_LED_ID_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+export const CHILD_LED_ID_PATTERN = /^CLID-[A-Z0-9]{6}$/;
+
+export const generateChildLedId = () =>
+  `CLID-${Array.from(
+    { length: 6 },
+    () => CHILD_LED_ID_ALPHABET[randomInt(CHILD_LED_ID_ALPHABET.length)],
+  ).join("")}`;
 
 export const applicationRoleValues = [
   "clinician",
@@ -89,6 +101,15 @@ export const organizationMembershipsTable = pgTable(
       .references(() => usersTable.id, { onDelete: "restrict" }),
     role: text("role").notNull(),
     active: boolean("active").notNull().default(true),
+    /**
+     * `active` remains the administrative enable/disable switch. Account
+     * status separately prevents a provisioned invitee from using the
+     * workspace until role-specific onboarding is complete.
+     */
+    accountStatus: text("account_status").notNull().default("active"),
+    onboardingCompletedAt: timestamp("onboarding_completed_at", {
+      withTimezone: true,
+    }).defaultNow(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -113,6 +134,7 @@ export const childProfilesTable = pgTable(
   "child_profiles",
   {
     id: serial("id").primaryKey(),
+    childLedId: text("child_led_id").notNull().$defaultFn(generateChildLedId),
     organizationId: integer("organization_id")
       .notNull()
       .references(() => organizationsTable.id, { onDelete: "restrict" }),
@@ -139,6 +161,13 @@ export const childProfilesTable = pgTable(
       .$onUpdate(() => new Date()),
   },
   (table) => [
+    uniqueIndex("child_profiles_child_led_id_lower_unique").on(
+      sql`lower(${table.childLedId})`,
+    ),
+    check(
+      "child_profiles_child_led_id_format_check",
+      sql`${table.childLedId} ~ '^CLID-[A-Z0-9]{6}$'`,
+    ),
     index("child_profiles_org_active_idx").on(
       table.organizationId,
       table.archivedAt,
@@ -382,6 +411,14 @@ export const therapySessionsTable = pgTable(
       { onDelete: "restrict" },
     ),
     sessionMode: text("session_mode").notNull().default("recorded"),
+    sessionStatus: text("session_status").notNull().default("completed"),
+    missedReason: text("missed_reason"),
+    missedReasonDetail: text("missed_reason_detail"),
+    makeupStatus: text("makeup_status"),
+    makeupForSessionId: integer("makeup_for_session_id").references(
+      (): AnyPgColumn => therapySessionsTable.id,
+      { onDelete: "restrict" },
+    ),
     sessionDate: date("session_date", { mode: "string" })
       .notNull()
       .default(sql`CURRENT_DATE`),
@@ -416,6 +453,11 @@ export const therapySessionsTable = pgTable(
       table.serviceRequirementId,
       table.sessionDate,
     ),
+    uniqueIndex("therapy_sessions_makeup_for_unique")
+      .on(table.makeupForSessionId)
+      .where(
+        sql`${table.makeupForSessionId} is not null and ${table.archivedAt} is null`,
+      ),
   ],
 );
 

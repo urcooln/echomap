@@ -6,6 +6,14 @@ import { eq, inArray } from "drizzle-orm";
 import {
   childCareTeamMembershipsTable,
   childProfilesTable,
+  clinicalKnowledgeAppliedFactsTable,
+  clinicalKnowledgeChunksTable,
+  clinicalKnowledgeIngestionJobsTable,
+  clinicalKnowledgeInsightRunsTable,
+  clinicalKnowledgeInsightsTable,
+  clinicalKnowledgeSourcesTable,
+  clinicalKnowledgeSourceVersionsTable,
+  clinicalSoapNotesTable,
   communicationGoalsTable,
   db,
   iepServiceRequirementsTable,
@@ -24,7 +32,7 @@ test.after(async () => {
   await pool.end();
 });
 
-test("manual sessions persist goal progress and update IEP service delivery totals", async () => {
+test("manual and recorded sessions share IEP service delivery totals", async () => {
   const suffix = randomUUID();
   const userId = `manual-session-route-${suffix}`;
   const ids = {
@@ -80,6 +88,75 @@ test("manual sessions persist goal progress and update IEP service delivery tota
     .returning();
   assert.ok(goal);
   ids.goals.push(goal.id);
+  const additionalGoals = await db
+    .insert(communicationGoalsTable)
+    .values([
+      {
+        organizationId: organization.id,
+        childId: child.id,
+        title: "WH questions",
+        goalArea: "Receptive communication",
+        description:
+          "Respond to familiar WH questions during shared activities.",
+        startDate: "2026-09-01",
+        createdByUserId: userId,
+        updatedByUserId: userId,
+      },
+      {
+        organizationId: organization.id,
+        childId: child.id,
+        title: "Peer interaction",
+        goalArea: "Social communication",
+        description: "Initiate a familiar interaction with a peer.",
+        startDate: "2026-09-01",
+        createdByUserId: userId,
+        updatedByUserId: userId,
+      },
+      {
+        organizationId: organization.id,
+        childId: child.id,
+        title: "Archived language goal",
+        goalArea: "Expressive communication",
+        description: "An archived goal must not appear in session review.",
+        status: "archived",
+        startDate: "2026-01-01",
+        archivedAt: new Date(),
+        archivedByUserId: userId,
+        createdByUserId: userId,
+        updatedByUserId: userId,
+      },
+    ])
+    .returning();
+  assert.equal(additionalGoals.length, 3);
+  ids.goals.push(...additionalGoals.map((item) => item.id));
+  const whGoal = additionalGoals[0]!;
+  const notAddressedGoal = additionalGoals[1]!;
+  const archivedGoal = additionalGoals[2]!;
+
+  const [unassignedChild] = await db
+    .insert(childProfilesTable)
+    .values({
+      organizationId: organization.id,
+      displayName: "Unassigned goal child",
+    })
+    .returning();
+  assert.ok(unassignedChild);
+  ids.children.push(unassignedChild.id);
+  const [unrelatedGoal] = await db
+    .insert(communicationGoalsTable)
+    .values({
+      organizationId: organization.id,
+      childId: unassignedChild.id,
+      title: "Unrelated child goal",
+      goalArea: "Expressive communication",
+      description: "Must not attach to another child's session.",
+      startDate: "2026-09-01",
+      createdByUserId: userId,
+      updatedByUserId: userId,
+    })
+    .returning();
+  assert.ok(unrelatedGoal);
+  ids.goals.push(unrelatedGoal.id);
 
   let actor: ResolvedCareTeamActor = {
     userId,
@@ -105,9 +182,12 @@ test("manual sessions persist goal progress and update IEP service delivery tota
   const base = `http://127.0.0.1:${address.port}`;
   const request = async (path: string, init?: RequestInit) => {
     const response = await fetch(`${base}${path}`, init);
+    const responseText = await response.text();
     return {
       status: response.status,
-      body: (await response.json()) as Record<string, any>,
+      body: responseText
+        ? (JSON.parse(responseText) as Record<string, any>)
+        : ({} as Record<string, any>),
     };
   };
   const json = (method: string, path: string, body: Record<string, unknown>) =>
@@ -137,7 +217,13 @@ test("manual sessions persist goal progress and update IEP service delivery tota
     assert.equal(setup.status, 200);
     assert.deepEqual(
       setup.body.goals.map((item: { id: number }) => item.id),
-      [goal.id],
+      [goal.id, whGoal.id, notAddressedGoal.id],
+    );
+    assert.equal(
+      setup.body.goals.some(
+        (item: { id: number }) => item.id === archivedGoal.id,
+      ),
+      false,
     );
 
     const serviceSettings = await json(
@@ -330,16 +416,449 @@ test("manual sessions persist goal progress and update IEP service delivery tota
     assert.equal(overviewChild.lastSessionDate, "2026-09-10");
     assert.deepEqual(overviewChild.teacherNames, []);
     assert.equal(overviewChild.nextSessionDate, null);
+
+    const recordedBody = {
+      serviceRequirementId: requirement.body.id,
+      durationSeconds: 1_800,
+      gestalts: [],
+      clinicalObservations: "Participated in structured play.",
+      nextSteps: "Continue familiar requesting opportunities.",
+      note: "Finalized recorded session with clinician-reviewed goal progress.",
+      audioId: null,
+      transcriptionId: null,
+      calibrationAudioIds: [],
+      consentConfirmed: true,
+      consentConfirmedAt: new Date().toISOString(),
+    };
+    const duplicateReview = await json(
+      "POST",
+      `/sessions?childId=${child.id}`,
+      {
+        ...recordedBody,
+        goalReviews: [
+          {
+            goalId: goal.id,
+            progressStatus: "progressed",
+            promptingLevel: "minimal",
+            comments: "First copy.",
+          },
+          {
+            goalId: goal.id,
+            progressStatus: "regressed",
+            promptingLevel: "moderate",
+            comments: "Duplicate copy.",
+          },
+        ],
+      },
+    );
+    assert.equal(duplicateReview.status, 400);
+
+    const unrelatedReview = await json(
+      "POST",
+      `/sessions?childId=${child.id}`,
+      {
+        ...recordedBody,
+        goalReviews: [
+          {
+            goalId: unrelatedGoal.id,
+            progressStatus: "progressed",
+            promptingLevel: "minimal",
+            comments: "Must be rejected.",
+          },
+        ],
+      },
+    );
+    assert.equal(unrelatedReview.status, 400);
+
+    const archivedReview = await json("POST", `/sessions?childId=${child.id}`, {
+      ...recordedBody,
+      goalReviews: [
+        {
+          goalId: archivedGoal.id,
+          progressStatus: "progressed",
+          promptingLevel: "minimal",
+          comments: "Archived goals must be rejected.",
+        },
+      ],
+    });
+    assert.equal(archivedReview.status, 400);
+
+    const progressBeforeFinalization = await db
+      .select()
+      .from(therapySessionGoalProgressTable)
+      .where(eq(therapySessionGoalProgressTable.childId, child.id));
+    assert.equal(progressBeforeFinalization.length, 1);
+
+    const recordedSession = await json(
+      "POST",
+      `/sessions?childId=${child.id}`,
+      {
+        ...recordedBody,
+        goalReviews: [
+          {
+            goalId: goal.id,
+            progressStatus: "progressed",
+            promptingLevel: "minimal",
+            comments: "Requested during structured play.",
+          },
+          {
+            goalId: whGoal.id,
+            progressStatus: "goal_met",
+            promptingLevel: "independent",
+            comments: "Responded independently across familiar activities.",
+          },
+        ],
+      },
+    );
+    assert.equal(recordedSession.status, 201);
+    ids.sessions.push(recordedSession.body.id);
+    assert.equal(recordedSession.body.goalProgress.length, 2);
+    assert.equal(
+      recordedSession.body.goalProgress[0].progressStatus,
+      "progressed",
+    );
+    assert.equal(
+      recordedSession.body.goalProgress[0].promptingLevel,
+      "minimal",
+    );
+    assert.equal(
+      recordedSession.body.goalProgress[1].progressStatus,
+      "goal_met",
+    );
+    assert.equal(
+      recordedSession.body.goalProgress[1].promptingLevel,
+      "independent",
+    );
+    assert.equal(
+      recordedSession.body.goalProgress.some(
+        (entry: { goalId: number }) => entry.goalId === notAddressedGoal.id,
+      ),
+      false,
+    );
+    const goalStatuses = await db
+      .select({
+        id: communicationGoalsTable.id,
+        status: communicationGoalsTable.status,
+      })
+      .from(communicationGoalsTable)
+      .where(inArray(communicationGoalsTable.id, [goal.id, whGoal.id]));
+    assert.ok(goalStatuses.every((entry) => entry.status === "active"));
+
+    const generatedNote = await request(
+      `/session-soap-note?childId=${child.id}&sessionId=${recordedSession.body.id}`,
+    );
+    assert.equal(generatedNote.status, 200);
+    assert.match(
+      generatedNote.body.content.objective,
+      /Functional requesting: Progressed with minimal prompting/,
+    );
+    assert.match(
+      generatedNote.body.content.objective,
+      /WH questions: Goal Met with independent prompting/,
+    );
+    assert.doesNotMatch(
+      generatedNote.body.content.objective,
+      /Peer interaction/,
+    );
+
+    const setupWithRecordedSession = await request(
+      `/manual-sessions/setup?childId=${child.id}`,
+    );
+    const combinedIndividual =
+      setupWithRecordedSession.body.serviceRequirements.find(
+        (service: { id: number }) => service.id === requirement.body.id,
+      );
+    assert.equal(combinedIndividual.sessionsCompleted, 2);
+    assert.equal(combinedIndividual.sessionsRemaining, 0);
+    assert.equal(combinedIndividual.minutesCompleted, 60);
+    assert.equal(combinedIndividual.minutesRemaining, 0);
+
+    const overviewWithRecordedSession = await request("/clinician-overview");
+    const overviewChildWithRecordedSession =
+      overviewWithRecordedSession.body.children.find(
+        (item: { childId: number }) => item.childId === child.id,
+      );
+    const overviewCombinedIndividual =
+      overviewChildWithRecordedSession.serviceRequirements.find(
+        (service: { id: number }) => service.id === requirement.body.id,
+      );
+    assert.equal(overviewCombinedIndividual.sessionsCompleted, 2);
+    assert.equal(overviewCombinedIndividual.sessionsRemaining, 0);
+    assert.equal(
+      overviewChildWithRecordedSession.lastSessionDate,
+      "2026-09-12",
+    );
+
+    await db
+      .update(therapySessionsTable)
+      .set({ archivedAt: new Date("2026-09-12T12:00:00.000Z") })
+      .where(eq(therapySessionsTable.id, recordedSession.body.id));
+    const setupAfterRecordedSessionArchive = await request(
+      `/manual-sessions/setup?childId=${child.id}`,
+    );
+    const recalculatedIndividual =
+      setupAfterRecordedSessionArchive.body.serviceRequirements.find(
+        (service: { id: number }) => service.id === requirement.body.id,
+      );
+    assert.equal(recalculatedIndividual.sessionsCompleted, 1);
+    assert.equal(recalculatedIndividual.sessionsRemaining, 1);
+    assert.equal(recalculatedIndividual.sessionsMissed, 0);
+    assert.equal(recalculatedIndividual.outstandingMakeups, 0);
+
+    actor = { ...actor, role: "Parent" };
+    const unauthorizedMiss = await json(
+      "POST",
+      `/missed-sessions?childId=${child.id}`,
+      {
+        serviceRequirementId: requirement.body.id,
+        sessionDate: "2026-09-11",
+        missedReason: "student_absent",
+        missedReasonDetail: null,
+        note: "Should not save for a parent account.",
+        makeupStatus: "needed",
+      },
+    );
+    assert.equal(unauthorizedMiss.status, 403);
+
+    actor = { ...actor, role: "SLP" };
+    const missed = await json("POST", `/missed-sessions?childId=${child.id}`, {
+      serviceRequirementId: requirement.body.id,
+      sessionDate: "2026-09-11",
+      missedReason: "student_absent",
+      missedReasonDetail: null,
+      note: "Student was absent for the scheduled session.",
+      makeupStatus: "needed",
+    });
+    assert.equal(missed.status, 201);
+    ids.sessions.push(missed.body.id);
+    assert.equal(missed.body.makeupStatus, "needed");
+
+    actor = { ...actor, role: "Parent" };
+    const unauthorizedMissUpdate = await json(
+      "PATCH",
+      `/missed-sessions/${missed.body.id}`,
+      {
+        sessionDate: "2026-09-11",
+        missedReason: "student_absent",
+        missedReasonDetail: null,
+        note: "A parent cannot change clinical makeup tracking.",
+        makeupStatus: "not_required",
+      },
+    );
+    assert.equal(unauthorizedMissUpdate.status, 403);
+    actor = { ...actor, role: "SLP" };
+
+    const setupWithMissed = await request(
+      `/manual-sessions/setup?childId=${child.id}`,
+    );
+    const individualWithMissed = setupWithMissed.body.serviceRequirements.find(
+      (service: { id: number }) => service.id === requirement.body.id,
+    );
+    assert.equal(individualWithMissed.sessionsCompleted, 1);
+    assert.equal(individualWithMissed.sessionsMissed, 1);
+    assert.equal(individualWithMissed.sessionsRemaining, 0);
+    assert.equal(individualWithMissed.outstandingMakeups, 1);
+    assert.equal(individualWithMissed.minutesCompleted, 30);
+
+    const makeup = await json("POST", `/manual-sessions?childId=${child.id}`, {
+      serviceRequirementId: requirement.body.id,
+      makeupForSessionId: missed.body.id,
+      sessionDate: "2026-09-12",
+      startedAt: null,
+      endedAt: null,
+      durationSeconds: 1_800,
+      timerElapsedSeconds: 0,
+      durationSource: "manual",
+      durationEdited: false,
+      goals: [
+        {
+          goalId: goal.id,
+          accuracyPercent: 90,
+          successfulAttempts: 9,
+          totalAttempts: 10,
+          promptingLevel: "independent",
+          progressNote: "Progress recorded during the makeup session.",
+        },
+      ],
+      note: "Completed makeup for the September 11 absence.",
+    });
+    assert.equal(makeup.status, 201);
+    ids.sessions.push(makeup.body.id);
+    assert.equal(makeup.body.makeupForSessionId, missed.body.id);
+    assert.equal(makeup.body.makeupForSessionDate.slice(0, 10), "2026-09-11");
+
+    const setupAfterMakeup = await request(
+      `/manual-sessions/setup?childId=${child.id}`,
+    );
+    const individualAfterMakeup =
+      setupAfterMakeup.body.serviceRequirements.find(
+        (service: { id: number }) => service.id === requirement.body.id,
+      );
+    assert.equal(individualAfterMakeup.sessionsCompleted, 2);
+    assert.equal(individualAfterMakeup.sessionsMissed, 1);
+    assert.equal(individualAfterMakeup.sessionsRemaining, 0);
+    assert.equal(individualAfterMakeup.outstandingMakeups, 0);
+    assert.equal(individualAfterMakeup.minutesCompleted, 60);
+
+    const missedHistory = await request(
+      `/missed-sessions?childId=${child.id}&serviceRequirementId=${requirement.body.id}`,
+    );
+    assert.equal(missedHistory.status, 200);
+    const completedMiss = missedHistory.body.find(
+      (session: { id: number }) => session.id === missed.body.id,
+    );
+    assert.equal(completedMiss.makeupStatus, "completed");
+    assert.equal(completedMiss.makeupSessionId, makeup.body.id);
+
+    const duplicateMakeup = await json(
+      "POST",
+      `/manual-sessions?childId=${child.id}`,
+      {
+        serviceRequirementId: requirement.body.id,
+        makeupForSessionId: missed.body.id,
+        sessionDate: "2026-09-13",
+        startedAt: null,
+        endedAt: null,
+        durationSeconds: 1_800,
+        timerElapsedSeconds: 0,
+        durationSource: "manual",
+        durationEdited: false,
+        goals: [
+          {
+            goalId: goal.id,
+            accuracyPercent: 90,
+            successfulAttempts: null,
+            totalAttempts: null,
+            promptingLevel: null,
+            progressNote: "This duplicate should be rejected.",
+          },
+        ],
+        note: "Duplicate makeup.",
+      },
+    );
+    assert.equal(duplicateMakeup.status, 409);
+
+    const unifiedHistory = await request(`/sessions?childId=${child.id}`);
+    const missedHistoryRow = unifiedHistory.body.find(
+      (session: { id: number }) => session.id === missed.body.id,
+    );
+    const makeupHistoryRow = unifiedHistory.body.find(
+      (session: { id: number }) => session.id === makeup.body.id,
+    );
+    assert.equal(missedHistoryRow.sessionStatus, "missed");
+    assert.equal(missedHistoryRow.missedReason, "student_absent");
+    assert.equal(missedHistoryRow.makeupStatus, "completed");
+    assert.equal(makeupHistoryRow.sessionStatus, "completed");
+    assert.equal(makeupHistoryRow.makeupForSessionId, missed.body.id);
+
+    actor = { ...actor, role: "Parent" };
+    const unauthorizedArchive = await request(
+      `/children/${child.id}/iep-services/${requirement.body.id}`,
+      { method: "DELETE" },
+    );
+    assert.equal(unauthorizedArchive.status, 403);
+
+    actor = { ...actor, role: "SLP" };
+    const archived = await request(
+      `/children/${child.id}/iep-services/${requirement.body.id}`,
+      { method: "DELETE" },
+    );
+    assert.equal(archived.status, 204);
+    const setupAfterArchive = await request(
+      `/manual-sessions/setup?childId=${child.id}`,
+    );
+    assert.equal(
+      setupAfterArchive.body.serviceRequirements.some(
+        (service: { id: number }) => service.id === requirement.body.id,
+      ),
+      false,
+    );
+    const historyAfterArchive = await request(`/sessions?childId=${child.id}`);
+    const retainedSession = historyAfterArchive.body.find(
+      (session: { id: number }) => session.id === saved.body.id,
+    );
+    assert.equal(retainedSession.serviceRequirementId, requirement.body.id);
+    assert.equal(retainedSession.serviceName, "Individual");
+    const [archivedRow] = await db
+      .select({ status: iepServiceRequirementsTable.status })
+      .from(iepServiceRequirementsTable)
+      .where(eq(iepServiceRequirementsTable.id, requirement.body.id));
+    assert.equal(archivedRow?.status, "archived");
   } finally {
     await new Promise<void>((resolve, reject) =>
       server.close((error) => (error ? reject(error) : resolve())),
     );
+    for (let attempt = 0; attempt < 100; attempt += 1) {
+      const runs = await db
+        .select({ status: clinicalKnowledgeInsightRunsTable.status })
+        .from(clinicalKnowledgeInsightRunsTable)
+        .where(eq(clinicalKnowledgeInsightRunsTable.childId, child.id));
+      if (
+        !runs.length ||
+        runs.every(
+          (run) => run.status === "completed" || run.status === "failed",
+        )
+      )
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    await db
+      .delete(clinicalKnowledgeInsightsTable)
+      .where(eq(clinicalKnowledgeInsightsTable.childId, child.id));
+    await db
+      .delete(clinicalKnowledgeAppliedFactsTable)
+      .where(eq(clinicalKnowledgeAppliedFactsTable.childId, child.id));
+    await db
+      .delete(clinicalKnowledgeInsightRunsTable)
+      .where(eq(clinicalKnowledgeInsightRunsTable.childId, child.id));
+    await db
+      .delete(clinicalSoapNotesTable)
+      .where(eq(clinicalSoapNotesTable.childId, child.id));
+    const knowledgeSources = await db
+      .select({ id: clinicalKnowledgeSourcesTable.id })
+      .from(clinicalKnowledgeSourcesTable)
+      .where(eq(clinicalKnowledgeSourcesTable.organizationId, organization.id));
+    if (knowledgeSources.length) {
+      const sourceIds = knowledgeSources.map((source) => source.id);
+      const sourceVersions = await db
+        .select({ id: clinicalKnowledgeSourceVersionsTable.id })
+        .from(clinicalKnowledgeSourceVersionsTable)
+        .where(
+          inArray(clinicalKnowledgeSourceVersionsTable.sourceId, sourceIds),
+        );
+      if (sourceVersions.length) {
+        const versionIds = sourceVersions.map((version) => version.id);
+        await db
+          .delete(clinicalKnowledgeIngestionJobsTable)
+          .where(
+            inArray(
+              clinicalKnowledgeIngestionJobsTable.sourceVersionId,
+              versionIds,
+            ),
+          );
+        await db
+          .delete(clinicalKnowledgeChunksTable)
+          .where(
+            inArray(clinicalKnowledgeChunksTable.sourceVersionId, versionIds),
+          );
+        await db
+          .delete(clinicalKnowledgeSourceVersionsTable)
+          .where(inArray(clinicalKnowledgeSourceVersionsTable.id, versionIds));
+      }
+      await db
+        .delete(clinicalKnowledgeSourcesTable)
+        .where(inArray(clinicalKnowledgeSourcesTable.id, sourceIds));
+    }
     if (ids.sessions.length) {
       await db
         .delete(therapySessionGoalProgressTable)
         .where(
           inArray(therapySessionGoalProgressTable.sessionId, ids.sessions),
         );
+      await db
+        .update(therapySessionsTable)
+        .set({ makeupForSessionId: null })
+        .where(inArray(therapySessionsTable.id, ids.sessions));
       await db
         .delete(therapySessionsTable)
         .where(inArray(therapySessionsTable.id, ids.sessions));

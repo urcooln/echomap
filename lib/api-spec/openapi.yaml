@@ -167,6 +167,75 @@ paths:
               schema: { $ref: "#/components/schemas/Session" }
         "400": { description: Invalid timing or goal progress data }
         "403": { description: SLP and assigned child access required }
+  /missed-sessions:
+    get:
+      operationId: listMissedSessions
+      tags: [sessions]
+      summary: List missed therapy sessions for one child service
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+        - in: query
+          name: serviceRequirementId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Missed sessions for the selected service
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/MissedSession" }
+        "403": { description: SLP and assigned child access required }
+    post:
+      operationId: createMissedSession
+      tags: [sessions]
+      summary: Save an absent or missed therapy session
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MissedSessionInput" }
+      responses:
+        "201":
+          description: Saved missed therapy session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MissedSession" }
+        "400": { description: Invalid missed session }
+        "403": { description: SLP and assigned child access required }
+  /missed-sessions/{sessionId}:
+    patch:
+      operationId: updateMissedSession
+      tags: [sessions]
+      summary: Update the reason, note, or makeup status for a missed session
+      parameters:
+        - in: path
+          name: sessionId
+          required: true
+          schema: { type: number }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MissedSessionUpdateInput" }
+      responses:
+        "200":
+          description: Updated missed session
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MissedSession" }
+        "400": { description: Invalid missed session update }
+        "403": { description: SLP and assigned child access required }
+        "404": { description: Missed session not found }
   /iep-service-requirements:
     get:
       operationId: listIepServiceRequirements
@@ -211,6 +280,24 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/IepServiceRequirement" }
         "400": { description: Invalid requirement }
+        "403": { description: SLP and assigned child access required }
+  /children/{childId}/iep-services/{requirementId}:
+    delete:
+      operationId: archiveIepServiceRequirement
+      tags: [sessions]
+      summary: Remove an IEP therapy service from active tracking
+      parameters:
+        - in: path
+          name: childId
+          required: true
+          schema: { type: number }
+        - in: path
+          name: requirementId
+          required: true
+          schema: { type: number }
+      responses:
+        "204": { description: Service removed from active tracking }
+        "404": { description: Active service not found }
         "403": { description: SLP and assigned child access required }
   /caseload-service-settings:
     put:
@@ -733,6 +820,71 @@ paths:
               schema: { $ref: "#/components/schemas/Viewer" }
         "401": { description: Authentication required }
         "403": { description: Verified invited care-team account required }
+  /settings:
+    get:
+      operationId: getSettings
+      tags: [security]
+      summary: Get settings for the authenticated ChildLed user
+      description: Resolves identity, role, workspace, and student access exclusively from the authenticated server session.
+      responses:
+        "200":
+          description: Role-specific settings for the current user
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/UserSettings" }
+        "401": { description: Authentication required }
+        "403": { description: Verified invited care-team account required }
+    patch:
+      operationId: updateSettings
+      tags: [security]
+      summary: Update notification preferences for the authenticated user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NotificationPreferences" }
+      responses:
+        "200":
+          description: Updated notification preferences
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NotificationPreferences" }
+        "400": { description: Invalid preferences }
+        "401": { description: Authentication required }
+        "403": { description: Verified invited care-team account required }
+  /slp-onboarding:
+    get:
+      operationId: getSlpOnboarding
+      tags: [security]
+      summary: Get the invited SLP account setup state
+      responses:
+        "200":
+          description: SLP setup profile and current required agreements
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlpOnboarding" }
+        "401": { description: Authentication required }
+        "403": { description: Invited SLP account required }
+    post:
+      operationId: completeSlpOnboarding
+      tags: [security]
+      summary: Complete an invited SLP profile and agreement acknowledgments
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SlpOnboardingInput" }
+      responses:
+        "200":
+          description: Activated SLP account
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SlpOnboardingCompletion" }
+        "400": { description: Required profile or agreements missing }
+        "401": { description: Authentication required }
+        "403": { description: Invited SLP account required }
+        "409": { description: SLP membership is no longer eligible for setup }
+        "500": { description: Account activation could not be completed }
   /admin/security-overview:
     get:
       operationId: getAdminSecurityOverview
@@ -822,7 +974,7 @@ paths:
     post:
       operationId: setRolePreview
       tags: [owner-tools]
-      summary: Start or change a Super Admin role preview
+      summary: Select a seeded persona in the authenticated development demo
       requestBody:
         required: true
         content:
@@ -905,6 +1057,10 @@ paths:
       parameters:
         - in: query
           name: childId
+          required: false
+          schema: { type: number }
+        - in: query
+          name: conversationId
           required: false
           schema: { type: number }
         - in: query
@@ -1223,6 +1379,10 @@ paths:
           required: false
           schema: { type: number }
         - in: query
+          name: conversationId
+          required: false
+          schema: { type: number }
+        - in: query
           name: search
           required: false
           schema: { type: string, maxLength: 240 }
@@ -1245,7 +1405,7 @@ paths:
     post:
       operationId: createTeamMessage
       tags: [collaboration]
-      summary: Send a message to the entire authorized child team
+      summary: Start or reply to an authorized child conversation
       requestBody:
         required: true
         content:
@@ -3028,18 +3188,6 @@ paths:
       summary: Approve a beta access request
       parameters:
         [{ in: path, name: id, required: true, schema: { type: number } }]
-      requestBody:
-        {
-          required: true,
-          content:
-            {
-              application/json:
-                {
-                  schema:
-                    { $ref: "#/components/schemas/BetaAccessApprovalInput" },
-                },
-            },
-        }
       responses:
         {
           "200":
@@ -3196,6 +3344,8 @@ components:
           isRolePreview,
           isDevelopmentDemo,
           previewRole,
+          accountStatus,
+          onboardingComplete,
         ]
       properties:
         userId: { type: string }
@@ -3213,6 +3363,183 @@ components:
             type: ["string", "null"],
             enum: [SLP, Parent, Teacher, Administrator, null],
           }
+        accountStatus: { type: string, enum: [onboarding, active] }
+        onboardingComplete: { type: boolean }
+    SlpProfile:
+      type: object
+      required:
+        [
+          firstName,
+          lastName,
+          professionalTitle,
+          school,
+          schoolDistrict,
+          licensureState,
+          licenseNumber,
+          licenseExpirationDate,
+          ashaCccSlpNumber,
+          licenseVerificationStatus,
+        ]
+      properties:
+        firstName: { type: string }
+        lastName: { type: string }
+        professionalTitle: { type: string }
+        school: { type: string }
+        schoolDistrict: { type: string }
+        licensureState: { type: string }
+        licenseNumber: { type: string }
+        licenseExpirationDate: { type: [string, "null"] }
+        ashaCccSlpNumber: { type: [string, "null"] }
+        licenseVerificationStatus:
+          { type: string, enum: [unverified, pending, verified] }
+    SettingsIdentity:
+      type: object
+      required:
+        [
+          name,
+          email,
+          role,
+          accountType,
+          organizationName,
+          isDevelopmentDemo,
+          isRolePreview,
+        ]
+      properties:
+        name: { type: string }
+        email: { type: string }
+        role: { type: string, enum: [SLP, Parent, Teacher, Administrator] }
+        accountType: { type: string }
+        organizationName: { type: string }
+        isDevelopmentDemo: { type: boolean }
+        isRolePreview: { type: boolean }
+    SettingsCareTeamMember:
+      type: object
+      required: [userId, name, role]
+      properties:
+        userId: { type: string }
+        name: { type: string }
+        role: { type: string }
+    SettingsStudent:
+      type: object
+      required: [id, childLedId, name, school, grade, careTeam]
+      properties:
+        id: { type: number }
+        childLedId:
+          { type: string, pattern: "^CLID-[A-Z0-9]{6}$", example: CLID-7F4K2Q }
+        name: { type: string }
+        school: { type: string }
+        grade: { type: string }
+        careTeam:
+          type: array
+          items: { $ref: "#/components/schemas/SettingsCareTeamMember" }
+    SettingsInvitation:
+      type: object
+      required: [id, childId, childName, email, role, createdAt]
+      properties:
+        id: { type: string }
+        childId: { type: [number, "null"] }
+        childName: { type: [string, "null"] }
+        email: { type: string }
+        role: { type: string }
+        createdAt: { type: string, format: date-time }
+    NotificationPreferences:
+      type: object
+      required: [messages, studentUpdates, communicationActivity, weeklySummary]
+      properties:
+        messages: { type: boolean }
+        studentUpdates: { type: boolean }
+        communicationActivity: { type: boolean }
+        weeklySummary: { type: boolean }
+    UserSettings:
+      type: object
+      required:
+        [identity, students, pendingInvitations, notificationPreferences]
+      properties:
+        identity: { $ref: "#/components/schemas/SettingsIdentity" }
+        professionalProfile: { $ref: "#/components/schemas/SlpProfile" }
+        students:
+          type: array
+          items: { $ref: "#/components/schemas/SettingsStudent" }
+        pendingInvitations:
+          type: array
+          items: { $ref: "#/components/schemas/SettingsInvitation" }
+        notificationPreferences:
+          { $ref: "#/components/schemas/NotificationPreferences" }
+    SlpAgreement:
+      type: object
+      required: [type, version, title, statement, documentPath, accepted]
+      properties:
+        type: { type: string }
+        version: { type: string }
+        title: { type: string }
+        statement: { type: string }
+        documentPath: { type: string }
+        accepted: { type: boolean }
+        acceptedAt: { type: [string, "null"], format: date-time }
+    SlpOnboarding:
+      type: object
+      required:
+        [
+          email,
+          organizationName,
+          profile,
+          agreements,
+          accountStatus,
+          onboardingComplete,
+        ]
+      properties:
+        email: { type: string }
+        organizationName: { type: string }
+        profile: { $ref: "#/components/schemas/SlpProfile" }
+        agreements:
+          type: array
+          items: { $ref: "#/components/schemas/SlpAgreement" }
+        accountStatus: { type: string, enum: [onboarding, active] }
+        onboardingComplete: { type: boolean }
+    SlpOnboardingProfileInput:
+      type: object
+      required:
+        [
+          firstName,
+          lastName,
+          professionalTitle,
+          school,
+          schoolDistrict,
+          licensureState,
+          licenseNumber,
+        ]
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 120 }
+        lastName: { type: string, minLength: 1, maxLength: 120 }
+        professionalTitle: { type: string, minLength: 1, maxLength: 160 }
+        school: { type: string, minLength: 1, maxLength: 240 }
+        schoolDistrict: { type: string, minLength: 1, maxLength: 240 }
+        licensureState: { type: string, minLength: 2, maxLength: 80 }
+        licenseNumber: { type: string, minLength: 1, maxLength: 120 }
+        licenseExpirationDate: { type: [string, "null"] }
+        ashaCccSlpNumber: { type: [string, "null"], maxLength: 120 }
+    SlpAgreementAcceptanceInput:
+      type: object
+      required: [type, version]
+      properties:
+        type: { type: string, minLength: 1, maxLength: 80 }
+        version: { type: string, minLength: 1, maxLength: 40 }
+    SlpOnboardingInput:
+      type: object
+      required: [profile, agreements]
+      properties:
+        profile: { $ref: "#/components/schemas/SlpOnboardingProfileInput" }
+        agreements:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/SlpAgreementAcceptanceInput" }
+    SlpOnboardingCompletion:
+      type: object
+      required: [completed, accountStatus, onboardingCompletedAt]
+      properties:
+        completed: { type: boolean }
+        accountStatus: { type: string, enum: [active] }
+        onboardingCompletedAt: { type: string, format: date-time }
     RolePreviewInput:
       type: object
       required: [role]
@@ -3625,6 +3952,7 @@ components:
       required:
         [
           id,
+          childLedId,
           name,
           firstName,
           lastName,
@@ -3639,6 +3967,8 @@ components:
         ]
       properties:
         id: { type: number }
+        childLedId:
+          { type: string, pattern: "^CLID-[A-Z0-9]{6}$", example: CLID-7F4K2Q }
         name: { type: string }
         firstName: { type: string }
         lastName: { type: string }
@@ -4594,6 +4924,23 @@ components:
           type: [string, "null"]
           enum: [independent, minimal, moderate, maximal, total, null]
         progressNote: { type: string, maxLength: 4000 }
+    SessionGoalReviewProgressStatus:
+      type: string
+      enum:
+        [progressed, progressing_gradually, regressed, goal_met, not_addressed]
+    SessionGoalReviewPromptingLevel:
+      type: string
+      enum: [independent, minimal, moderate, maximal, na]
+    SessionGoalReviewInput:
+      type: object
+      required: [goalId, progressStatus, promptingLevel, comments]
+      properties:
+        goalId: { type: number }
+        progressStatus:
+          { $ref: "#/components/schemas/SessionGoalReviewProgressStatus" }
+        promptingLevel:
+          { $ref: "#/components/schemas/SessionGoalReviewPromptingLevel" }
+        comments: { type: string, maxLength: 4000 }
     ManualSessionInput:
       type: object
       required:
@@ -4609,6 +4956,7 @@ components:
         ]
       properties:
         serviceRequirementId: { type: number }
+        makeupForSessionId: { type: [number, "null"] }
         sessionDate: { type: string, format: date }
         startedAt: { type: [string, "null"], format: date-time }
         endedAt: { type: [string, "null"], format: date-time }
@@ -4624,6 +4972,78 @@ components:
           maxItems: 50
           items: { $ref: "#/components/schemas/ManualSessionGoalProgressInput" }
         note: { type: string, minLength: 1, maxLength: 10000 }
+    MissedSessionReason:
+      type: string
+      enum:
+        [
+          student_absent,
+          student_illness,
+          school_event,
+          field_trip,
+          early_dismissal,
+          school_closure,
+          caregiver_cancellation,
+          student_refused,
+          clinician_unavailable,
+          scheduling_conflict,
+          other,
+        ]
+    MakeupStatus:
+      type: string
+      enum: [undetermined, not_required, needed, scheduled, completed]
+    MissedSessionInput:
+      type: object
+      required:
+        [serviceRequirementId, sessionDate, missedReason, note, makeupStatus]
+      properties:
+        serviceRequirementId: { type: number }
+        sessionDate: { type: string, format: date }
+        missedReason: { $ref: "#/components/schemas/MissedSessionReason" }
+        missedReasonDetail: { type: [string, "null"], maxLength: 500 }
+        note: { type: string, maxLength: 4000 }
+        makeupStatus: { $ref: "#/components/schemas/MakeupStatus" }
+    MissedSessionUpdateInput:
+      type: object
+      required: [sessionDate, missedReason, note, makeupStatus]
+      properties:
+        sessionDate: { type: string, format: date }
+        missedReason: { $ref: "#/components/schemas/MissedSessionReason" }
+        missedReasonDetail: { type: [string, "null"], maxLength: 500 }
+        note: { type: string, maxLength: 4000 }
+        makeupStatus: { $ref: "#/components/schemas/MakeupStatus" }
+    MissedSession:
+      type: object
+      required:
+        [
+          id,
+          childId,
+          serviceRequirementId,
+          serviceName,
+          serviceType,
+          sessionDate,
+          missedReason,
+          missedReasonDetail,
+          note,
+          makeupStatus,
+          makeupSessionId,
+          createdAt,
+          updatedAt,
+        ]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        serviceRequirementId: { type: number }
+        serviceName: { type: string }
+        serviceType:
+          { $ref: "#/components/schemas/CaseloadServiceDeliveryType" }
+        sessionDate: { type: string, format: date }
+        missedReason: { $ref: "#/components/schemas/MissedSessionReason" }
+        missedReasonDetail: { type: [string, "null"] }
+        note: { type: string }
+        makeupStatus: { $ref: "#/components/schemas/MakeupStatus" }
+        makeupSessionId: { type: [number, "null"] }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
     ManualSessionGoalProgress:
       type: object
       required:
@@ -4638,6 +5058,8 @@ components:
           totalAttempts,
           promptingLevel,
           progressNote,
+          progressStatus,
+          reviewedBy,
         ]
       properties:
         id: { type: number }
@@ -4650,6 +5072,11 @@ components:
         totalAttempts: { type: [number, "null"] }
         promptingLevel: { type: [string, "null"] }
         progressNote: { type: string }
+        progressStatus:
+          oneOf:
+            - $ref: "#/components/schemas/SessionGoalReviewProgressStatus"
+            - type: "null"
+        reviewedBy: { type: [string, "null"] }
     IepServiceRequirementInput:
       type: object
       required:
@@ -4692,7 +5119,9 @@ components:
           periodStart,
           periodEnd,
           sessionsCompleted,
+          sessionsMissed,
           sessionsRemaining,
+          outstandingMakeups,
           minutesCompleted,
           minutesRemaining,
           status,
@@ -4715,7 +5144,9 @@ components:
         periodStart: { type: string }
         periodEnd: { type: string }
         sessionsCompleted: { type: number, minimum: 0 }
+        sessionsMissed: { type: number, minimum: 0 }
         sessionsRemaining: { type: number, minimum: 0 }
+        outstandingMakeups: { type: number, minimum: 0 }
         minutesCompleted: { type: number, minimum: 0 }
         minutesRemaining: { type: number, minimum: 0 }
         status:
@@ -5124,6 +5555,7 @@ components:
         ]
       properties:
         serviceRequirementId: { type: number }
+        makeupForSessionId: { type: [number, "null"] }
         durationSeconds: { type: number, minimum: 0 }
         gestalts:
           {
@@ -5142,6 +5574,10 @@ components:
           maxItems: 2
           uniqueItems: true
           items: { type: string, minLength: 1 }
+        goalReviews:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/SessionGoalReviewInput" }
     SessionAudioUploadRequest:
       type: object
       required:
@@ -5317,6 +5753,8 @@ components:
       required: [audioId]
       properties:
         audioId: { type: string, minLength: 1 }
+        serviceRequirementId: { type: [number, "null"] }
+        makeupForSessionId: { type: [number, "null"] }
         retrySpeakerSeparation:
           type: boolean
           description: Explicit clinician retry. Ordinary transcript refreshes never restart speaker processing.
@@ -5942,6 +6380,8 @@ components:
         id: { type: number }
         childId: { type: number }
         audioId: { type: string }
+        serviceRequirementId: { type: [number, "null"] }
+        makeupForSessionId: { type: [number, "null"] }
         recordingConsentConfirmedAt:
           { type: ["string", "null"], format: date-time }
         status: { type: string, enum: [processing, complete, failed] }
@@ -6028,7 +6468,19 @@ components:
             type: ["object", "null"],
             $ref: "#/components/schemas/RecordingConsent",
           }
-        sessionMode: { type: string, enum: [recorded, manual] }
+        sessionMode: { type: string, enum: [recorded, manual, missed] }
+        sessionStatus: { type: string, enum: [completed, missed, scheduled] }
+        missedReason:
+          oneOf:
+            - $ref: "#/components/schemas/MissedSessionReason"
+            - type: "null"
+        missedReasonDetail: { type: [string, "null"] }
+        makeupStatus:
+          oneOf:
+            - $ref: "#/components/schemas/MakeupStatus"
+            - type: "null"
+        makeupForSessionId: { type: [number, "null"] }
+        makeupForSessionDate: { type: [string, "null"], format: date }
         sessionDate: { type: string, format: date }
         startedAt: { type: [string, "null"], format: date-time }
         endedAt: { type: [string, "null"], format: date-time }
@@ -6078,7 +6530,9 @@ components:
         childId: { type: number }
         childName: { type: string }
         sessionDate: { type: string, format: date-time }
-        sessionMode: { type: string, enum: [recorded, manual] }
+        sessionMode: { type: string, enum: [recorded, manual, missed] }
+        sessionStatus: { type: string, enum: [completed, missed, scheduled] }
+        makeupForSessionId: { type: [number, "null"] }
     SessionsDashboardDraftDocumentation:
       type: object
       required: [id, noteType, childId, childName, title, updatedAt]
@@ -6321,6 +6775,7 @@ components:
       required:
         [
           childId,
+          childLedId,
           childName,
           school,
           grade,
@@ -6337,6 +6792,8 @@ components:
         ]
       properties:
         childId: { type: number }
+        childLedId:
+          { type: string, pattern: "^CLID-[A-Z0-9]{6}$", example: CLID-7F4K2Q }
         childName: { type: string }
         school: { type: string }
         grade: { type: string }
@@ -6734,8 +7191,10 @@ components:
       required:
         [
           id,
+          conversationId,
           childId,
           childName,
+          senderUserId,
           senderName,
           senderRole,
           messageType,
@@ -6746,8 +7205,10 @@ components:
         ]
       properties:
         id: { type: number }
+        conversationId: { type: [number, "null"] }
         childId: { type: number }
         childName: { type: string }
+        senderUserId: { type: string }
         senderName: { type: string }
         senderRole: { type: string }
         messageType:
@@ -6774,18 +7235,66 @@ components:
         messageCount: { type: number }
         latestMessageAt: { type: [string, "null"], format: date-time }
         latestMessagePreview: { type: [string, "null"] }
+    TeamInboxParticipant:
+      type: object
+      required: [childId, userId, name, role]
+      properties:
+        childId: { type: number }
+        userId: { type: string }
+        name: { type: string }
+        role: { type: string }
+    TeamInboxConversation:
+      type: object
+      required:
+        [
+          id,
+          childId,
+          childName,
+          participants,
+          unreadCount,
+          messageCount,
+          latestMessageAt,
+          latestMessagePreview,
+          latestSenderName,
+        ]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        childName: { type: string }
+        participants:
+          type: array
+          items: { $ref: "#/components/schemas/TeamInboxParticipant" }
+        unreadCount: { type: number }
+        messageCount: { type: number }
+        latestMessageAt: { type: [string, "null"], format: date-time }
+        latestMessagePreview: { type: [string, "null"] }
+        latestSenderName: { type: [string, "null"] }
     TeamInbox:
       type: object
-      required: [childId, children, members, messages, totalUnread]
+      required:
+        [
+          currentUserId,
+          childId,
+          conversations,
+          children,
+          members,
+          messages,
+          totalUnread,
+        ]
       properties:
+        currentUserId: { type: string }
         childId: { type: [number, "null"] }
+        conversations:
+          type: array
+          items: { $ref: "#/components/schemas/TeamInboxConversation" }
         children:
           {
             type: array,
             items: { $ref: "#/components/schemas/TeamInboxChild" },
           }
         members:
-          { type: array, items: { $ref: "#/components/schemas/TeamMember" } }
+          type: array
+          items: { $ref: "#/components/schemas/TeamInboxParticipant" }
         messages:
           { type: array, items: { $ref: "#/components/schemas/TeamMessage" } }
         totalUnread: { type: number }
@@ -6856,11 +7365,17 @@ components:
       required: [childId, body]
       properties:
         childId: { type: number }
+        conversationId: { type: [number, "null"] }
+        recipientUserIds:
+          type: array
+          maxItems: 50
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 255 }
         body: { type: string, minLength: 1, maxLength: 4000 }
         messageType:
           {
             type: string,
-            enum: [message, question, notification],
+            enum: [message, question],
             default: message,
           }
     TeamMessageReadInput:
@@ -7384,12 +7899,6 @@ components:
         status: { type: string }
         invitationPath: { type: string }
         expiresAt: { type: string, format: date-time }
-    BetaAccessApprovalInput:
-      type: object
-      required: [organizationId, childId]
-      properties:
-        organizationId: { type: number }
-        childId: { type: number }
     BetaAccessControlResult:
       type: object
       required: [updated]

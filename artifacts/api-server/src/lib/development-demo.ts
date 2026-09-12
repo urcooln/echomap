@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import type { NextFunction, Request, Response } from "express";
-import { and, eq, isNull } from "drizzle-orm";
+import { getAuth } from "@clerk/express";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 import {
   aacProfileHistoryTable,
   aacProfilesTable,
@@ -13,6 +14,10 @@ import {
   organizationMembershipsTable,
   organizationsTable,
   sessionTranscriptsTable,
+  teamConversationParticipantsTable,
+  teamConversationsTable,
+  teamMessageReadsTable,
+  teamMessagesTable,
   therapySessionGestaltsTable,
   therapySessionsTable,
   transcriptSpeakerSegmentsTable,
@@ -23,22 +28,23 @@ import { buildChildProfileConsentRecord } from "./child-profile-consent";
 import { logger } from "./logger";
 import { runtimeConfig } from "./runtime-config";
 import { ensurePackagedClinicalKnowledge } from "./clinical-knowledge-bootstrap";
+import { canAttachDevelopmentDemoActor } from "./development-demo-actor";
+import type {
+  CareTeamRole,
+  DevelopmentDemoPersonaActor,
+} from "./auth-context";
+import { DEVELOPMENT_DEMO_PERSONAS } from "./development-demo-personas";
 
 export const DEVELOPMENT_DEMO_COOKIE = "childled_development_demo";
-export const DEVELOPMENT_DEMO_EMAIL = "demo.admin@childled.local";
-export const DEVELOPMENT_CLINICIAN_EMAIL = "demo.clinician@childled.local";
+export const DEVELOPMENT_DEMO_EMAIL =
+  DEVELOPMENT_DEMO_PERSONAS.Administrator.email;
+export const DEVELOPMENT_CLINICIAN_EMAIL = DEVELOPMENT_DEMO_PERSONAS.SLP.email;
 
 const demoOrganization = { slug: "childled-demo", name: "ChildLed Demo" };
-const demoAdmin = {
-  id: "childled-development-demo-admin",
-  displayName: "ChildLed Demo Administrator",
-  email: DEVELOPMENT_DEMO_EMAIL,
-};
-const demoClinician = {
-  id: "childled-development-demo-clinician",
-  displayName: "Dr. Lena Ortiz",
-  email: DEVELOPMENT_CLINICIAN_EMAIL,
-};
+const demoAdmin = DEVELOPMENT_DEMO_PERSONAS.Administrator;
+const demoClinician = DEVELOPMENT_DEMO_PERSONAS.SLP;
+const demoParent = DEVELOPMENT_DEMO_PERSONAS.Parent;
+const demoTeacher = DEVELOPMENT_DEMO_PERSONAS.Teacher;
 
 const sampleGestalts = [
   {
@@ -110,16 +116,30 @@ const ensureDevelopmentDemo = async (): Promise<DevelopmentDemo> => {
         .where(eq(organizationsTable.slug, demoOrganization.slug))
         .limit(1)
     )[0];
-    const organization =
-      existingOrganization ??
-      (
-        await tx.insert(organizationsTable).values(demoOrganization).returning()
-      )[0];
+    const organization = existingOrganization
+      ? (
+          await tx
+            .update(organizationsTable)
+            .set({
+              betaApprovedAt:
+                existingOrganization.betaApprovedAt ?? new Date(),
+              disabledAt: null,
+              disabledReason: null,
+            })
+            .where(eq(organizationsTable.id, existingOrganization.id))
+            .returning()
+        )[0]
+      : (
+          await tx
+            .insert(organizationsTable)
+            .values({ ...demoOrganization, betaApprovedAt: new Date() })
+            .returning()
+        )[0];
 
     if (!organization)
       throw new Error("Could not create the development demo organization.");
 
-    for (const user of [demoAdmin, demoClinician]) {
+    for (const user of [demoAdmin, demoClinician, demoParent, demoTeacher]) {
       await tx
         .insert(usersTable)
         .values({
@@ -145,6 +165,26 @@ const ensureDevelopmentDemo = async (): Promise<DevelopmentDemo> => {
         ],
         set: { role: "admin", active: true, updatedAt: new Date() },
       });
+    for (const member of [
+      { userId: demoParent.id, role: "parent" },
+      { userId: demoTeacher.id, role: "teacher" },
+    ]) {
+      await tx
+        .insert(organizationMembershipsTable)
+        .values({
+          organizationId: organization.id,
+          userId: member.userId,
+          role: member.role,
+          active: true,
+        })
+        .onConflictDoUpdate({
+          target: [
+            organizationMembershipsTable.organizationId,
+            organizationMembershipsTable.userId,
+          ],
+          set: { role: member.role, active: true, updatedAt: new Date() },
+        });
+    }
     await tx
       .insert(organizationMembershipsTable)
       .values({
@@ -324,6 +364,8 @@ const ensureDevelopmentDemo = async (): Promise<DevelopmentDemo> => {
     for (const member of [
       { userId: demoAdmin.id, role: "administrator" },
       { userId: demoClinician.id, role: "clinician" },
+      { userId: demoParent.id, role: "parent" },
+      { userId: demoTeacher.id, role: "teacher" },
     ]) {
       await tx
         .insert(childCareTeamMembershipsTable)
@@ -340,6 +382,103 @@ const ensureDevelopmentDemo = async (): Promise<DevelopmentDemo> => {
           ],
           set: { role: member.role, active: true, updatedAt: new Date() },
         });
+    }
+
+    for (const recipient of [
+      {
+        user: demoParent,
+        role: "parent",
+        body: "How has AAC use been going at home?",
+      },
+      {
+        user: demoTeacher,
+        role: "teacher",
+        body: "How has communication been going in class?",
+      },
+    ]) {
+      const participantKey = [demoClinician.id, recipient.user.id]
+        .sort()
+        .join(":");
+      const [insertedConversation] = await tx
+        .insert(teamConversationsTable)
+        .values({
+          organizationId: organization.id,
+          childId: child.id,
+          participantKey,
+          createdByUserId: demoClinician.id,
+        })
+        .onConflictDoNothing()
+        .returning();
+      const conversation =
+        insertedConversation ??
+        (
+          await tx
+            .select()
+            .from(teamConversationsTable)
+            .where(
+              and(
+                eq(teamConversationsTable.organizationId, organization.id),
+                eq(teamConversationsTable.childId, child.id),
+                eq(teamConversationsTable.participantKey, participantKey),
+              ),
+            )
+            .limit(1)
+        )[0];
+      if (!conversation) {
+        throw new Error("Could not create a development demo conversation.");
+      }
+      await tx
+        .insert(teamConversationParticipantsTable)
+        .values([
+          {
+            conversationId: conversation.id,
+            userId: demoClinician.id,
+            role: "clinician",
+            lastReadAt: new Date(),
+          },
+          {
+            conversationId: conversation.id,
+            userId: recipient.user.id,
+            role: recipient.role,
+          },
+        ])
+        .onConflictDoNothing();
+      const [existingMessage] = await tx
+        .select({ id: teamMessagesTable.id })
+        .from(teamMessagesTable)
+        .where(
+          and(
+            eq(teamMessagesTable.conversationId, conversation.id),
+            eq(teamMessagesTable.senderUserId, demoClinician.id),
+            eq(teamMessagesTable.body, recipient.body),
+          ),
+        )
+        .limit(1);
+      if (existingMessage) continue;
+      const [message] = await tx
+        .insert(teamMessagesTable)
+        .values({
+          organizationId: organization.id,
+          conversationId: conversation.id,
+          childId: child.id,
+          senderUserId: demoClinician.id,
+          recipientUserId: recipient.user.id,
+          senderRole: "clinician",
+          messageType: "message",
+          audience: "entire_team",
+          body: recipient.body,
+        })
+        .returning();
+      if (message) {
+        await tx.insert(teamMessageReadsTable).values({
+          messageId: message.id,
+          userId: demoClinician.id,
+        });
+        await tx
+          .update(teamConversationsTable)
+          .set({ updatedAt: message.createdAt })
+          .where(eq(teamConversationsTable.id, conversation.id));
+      }
     }
 
     const consent = (
@@ -610,36 +749,70 @@ export const seedDevelopmentSpeakerReviewFixture = async (target?: {
 
 export const attachDevelopmentDemoActor = async (
   request: Request,
-  _response: Response,
+  response: Response,
   next: NextFunction,
 ) => {
-  if (
-    !runtimeConfig.demoLogin.enabled ||
-    request.childledActor ||
-    request.cookies?.[DEVELOPMENT_DEMO_COOKIE] !== "active"
-  ) {
+  const clerkUserId = getAuth(request).userId;
+  if (clerkUserId) {
+    response.clearCookie(DEVELOPMENT_DEMO_COOKIE, {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: runtimeConfig.isProduction,
+      path: "/",
+    });
+  }
+  if (!canAttachDevelopmentDemoActor({
+    demoEnabled: runtimeConfig.demoLogin.enabled,
+    hasChildledActor: Boolean(request.childledActor),
+    clerkUserId,
+    demoCookie: request.cookies?.[DEVELOPMENT_DEMO_COOKIE],
+  })) {
     return next();
   }
 
   try {
     const demo = await seedDevelopmentDemo();
+    const personaEntries = Object.entries(DEVELOPMENT_DEMO_PERSONAS) as Array<
+      [CareTeamRole, (typeof DEVELOPMENT_DEMO_PERSONAS)[CareTeamRole]]
+    >;
     const assignedChildren = await db
-      .select({ childId: childCareTeamMembershipsTable.childId })
+      .select({
+        userId: childCareTeamMembershipsTable.userId,
+        childId: childCareTeamMembershipsTable.childId,
+      })
       .from(childCareTeamMembershipsTable)
       .where(
         and(
-          eq(childCareTeamMembershipsTable.userId, demoAdmin.id),
+          inArray(
+            childCareTeamMembershipsTable.userId,
+            personaEntries.map(([, persona]) => persona.id),
+          ),
           eq(childCareTeamMembershipsTable.active, true),
         ),
       );
+    const developmentDemoPersonas: Partial<
+      Record<CareTeamRole, DevelopmentDemoPersonaActor>
+    > = {};
+    for (const [role, persona] of personaEntries) {
+      developmentDemoPersonas[role] = {
+        userId: persona.id,
+        author: persona.displayName,
+        role,
+        childIds: assignedChildren
+          .filter((membership) => membership.userId === persona.id)
+          .map((membership) => membership.childId),
+        isAdmin: role === "Administrator",
+      };
+    }
     request.childledActor = {
       userId: demoAdmin.id,
       author: demoAdmin.displayName,
       role: "Administrator",
-      childIds: assignedChildren.map((membership) => membership.childId),
+      childIds: developmentDemoPersonas.Administrator?.childIds ?? [],
       isAdmin: true,
       isSuperAdmin: true,
       isDevelopmentDemo: true,
+      developmentDemoPersonas,
       organizationId: demo.organizationId,
       expiresAt: Date.now() + 12 * 60 * 60 * 1000,
     };

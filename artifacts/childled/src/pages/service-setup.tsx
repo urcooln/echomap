@@ -9,8 +9,9 @@ import {
   type Child,
   type IepServiceRequirement,
 } from "@workspace/api-client-react";
-import { ArrowLeft, Check, Plus, Settings2 } from "lucide-react";
+import { ArrowLeft, Check, Plus, Settings2, Trash2 } from "lucide-react";
 import {
+  ArchiveServiceDialog,
   ServiceRequirementForm,
   serviceTypeLabel,
 } from "@/components/service-requirement-form";
@@ -26,18 +27,16 @@ export function ServiceSetupPage({
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const [editing, setEditing] = useState<IepServiceRequirement>();
+  const [deleting, setDeleting] = useState<IepServiceRequirement>();
   const [formKey, setFormKey] = useState(0);
   const [savedService, setSavedService] = useState<IepServiceRequirement>();
   const serviceParams = { childId: child.id, includeInactive: true };
-  const servicesQuery = useListIepServiceRequirements(
-    serviceParams,
-    {
-      query: {
-        queryKey: getListIepServiceRequirementsQueryKey(serviceParams),
-        retry: false,
-      },
+  const servicesQuery = useListIepServiceRequirements(serviceParams, {
+    query: {
+      queryKey: getListIepServiceRequirementsQueryKey(serviceParams),
+      retry: false,
     },
-  );
+  });
 
   const refresh = async () => {
     await Promise.all([
@@ -126,13 +125,18 @@ export function ServiceSetupPage({
                     {service.periodLabel}
                   </p>
                 </div>
-                <Button
-                  variant="outline"
-                  className="w-full sm:w-auto"
-                  onClick={() => setEditing(service)}
-                >
-                  <Settings2 size={15} /> Edit
-                </Button>
+                <div className="grid grid-cols-2 gap-2 sm:flex">
+                  <Button variant="outline" onClick={() => setEditing(service)}>
+                    <Settings2 size={15} /> Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="text-destructive"
+                    onClick={() => setDeleting(service)}
+                  >
+                    <Trash2 size={15} /> Delete
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
@@ -161,6 +165,22 @@ export function ServiceSetupPage({
           />
         </div>
       </section>
+      {deleting ? (
+        <ArchiveServiceDialog
+          childId={child.id}
+          childName={child.name}
+          service={deleting}
+          open
+          onOpenChange={(open) => {
+            if (!open) setDeleting(undefined);
+          }}
+          onArchived={async () => {
+            if (editing?.id === deleting.id) setEditing(undefined);
+            setDeleting(undefined);
+            await refresh();
+          }}
+        />
+      ) : null}
     </main>
   );
 }

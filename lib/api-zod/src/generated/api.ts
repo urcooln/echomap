@@ -120,7 +120,11 @@ export const GetManualSessionSetupQueryParams = zod.object({
 
 export const getManualSessionSetupResponseServiceRequirementsItemSessionsCompletedMin = 0;
 
+export const getManualSessionSetupResponseServiceRequirementsItemSessionsMissedMin = 0;
+
 export const getManualSessionSetupResponseServiceRequirementsItemSessionsRemainingMin = 0;
+
+export const getManualSessionSetupResponseServiceRequirementsItemOutstandingMakeupsMin = 0;
 
 export const getManualSessionSetupResponseServiceRequirementsItemMinutesCompletedMin = 0;
 
@@ -159,7 +163,9 @@ export const GetManualSessionSetupResponse = zod.object({
   "periodStart": zod.string(),
   "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemSessionsCompletedMin),
+  "sessionsMissed": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemSessionsMissedMin),
   "sessionsRemaining": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemSessionsRemainingMin),
+  "outstandingMakeups": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemOutstandingMakeupsMin),
   "minutesCompleted": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemMinutesCompletedMin),
   "minutesRemaining": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
@@ -198,6 +204,7 @@ export const createManualSessionBodyNoteMax = 10000;
 
 export const CreateManualSessionBody = zod.object({
   "serviceRequirementId": zod.number(),
+  "makeupForSessionId": zod.number().nullish(),
   "sessionDate": zod.coerce.date(),
   "startedAt": zod.coerce.date().nullish(),
   "endedAt": zod.coerce.date().nullish(),
@@ -252,7 +259,13 @@ export const CreateManualSessionResponse = zod.object({
   "confirmedBy": zod.string(),
   "childId": zod.number()
 }).nullable(),
-  "sessionMode": zod.enum(['recorded', 'manual']).optional(),
+  "sessionMode": zod.enum(['recorded', 'manual', 'missed']).optional(),
+  "sessionStatus": zod.enum(['completed', 'missed', 'scheduled']).optional(),
+  "missedReason": zod.union([zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),zod.null()]).optional(),
+  "missedReasonDetail": zod.string().nullish(),
+  "makeupStatus": zod.union([zod.enum(['undetermined', 'not_required', 'needed', 'scheduled', 'completed']),zod.null()]).optional(),
+  "makeupForSessionId": zod.number().nullish(),
+  "makeupForSessionDate": zod.coerce.date().nullish(),
   "sessionDate": zod.coerce.date().optional(),
   "startedAt": zod.coerce.date().nullish(),
   "endedAt": zod.coerce.date().nullish(),
@@ -269,8 +282,113 @@ export const CreateManualSessionResponse = zod.object({
   "successfulAttempts": zod.number().nullable(),
   "totalAttempts": zod.number().nullable(),
   "promptingLevel": zod.string().nullable(),
-  "progressNote": zod.string()
+  "progressNote": zod.string(),
+  "progressStatus": zod.union([zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),zod.null()]),
+  "reviewedBy": zod.string().nullable()
 })).optional()
+})
+
+
+/**
+ * @summary List missed therapy sessions for one child service
+ */
+export const ListMissedSessionsQueryParams = zod.object({
+  "childId": zod.coerce.number(),
+  "serviceRequirementId": zod.coerce.number()
+})
+
+export const ListMissedSessionsResponseItem = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "serviceRequirementId": zod.number(),
+  "serviceName": zod.string(),
+  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "sessionDate": zod.coerce.date(),
+  "missedReason": zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),
+  "missedReasonDetail": zod.string().nullable(),
+  "note": zod.string(),
+  "makeupStatus": zod.enum(['undetermined', 'not_required', 'needed', 'scheduled', 'completed']),
+  "makeupSessionId": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+export const ListMissedSessionsResponse = zod.array(ListMissedSessionsResponseItem)
+
+
+/**
+ * @summary Save an absent or missed therapy session
+ */
+export const CreateMissedSessionQueryParams = zod.object({
+  "childId": zod.coerce.number()
+})
+
+export const createMissedSessionBodyMissedReasonDetailMax = 500;
+
+export const createMissedSessionBodyNoteMax = 4000;
+
+
+
+export const CreateMissedSessionBody = zod.object({
+  "serviceRequirementId": zod.number(),
+  "sessionDate": zod.coerce.date(),
+  "missedReason": zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),
+  "missedReasonDetail": zod.string().max(createMissedSessionBodyMissedReasonDetailMax).nullish(),
+  "note": zod.string().max(createMissedSessionBodyNoteMax),
+  "makeupStatus": zod.enum(['undetermined', 'not_required', 'needed', 'scheduled', 'completed'])
+})
+
+export const CreateMissedSessionResponse = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "serviceRequirementId": zod.number(),
+  "serviceName": zod.string(),
+  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "sessionDate": zod.coerce.date(),
+  "missedReason": zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),
+  "missedReasonDetail": zod.string().nullable(),
+  "note": zod.string(),
+  "makeupStatus": zod.enum(['undetermined', 'not_required', 'needed', 'scheduled', 'completed']),
+  "makeupSessionId": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Update the reason, note, or makeup status for a missed session
+ */
+export const UpdateMissedSessionParams = zod.object({
+  "sessionId": zod.coerce.number()
+})
+
+export const updateMissedSessionBodyMissedReasonDetailMax = 500;
+
+export const updateMissedSessionBodyNoteMax = 4000;
+
+
+
+export const UpdateMissedSessionBody = zod.object({
+  "sessionDate": zod.coerce.date(),
+  "missedReason": zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),
+  "missedReasonDetail": zod.string().max(updateMissedSessionBodyMissedReasonDetailMax).nullish(),
+  "note": zod.string().max(updateMissedSessionBodyNoteMax),
+  "makeupStatus": zod.enum(['undetermined', 'not_required', 'needed', 'scheduled', 'completed'])
+})
+
+export const UpdateMissedSessionResponse = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "serviceRequirementId": zod.number(),
+  "serviceName": zod.string(),
+  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "sessionDate": zod.coerce.date(),
+  "missedReason": zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),
+  "missedReasonDetail": zod.string().nullable(),
+  "note": zod.string(),
+  "makeupStatus": zod.enum(['undetermined', 'not_required', 'needed', 'scheduled', 'completed']),
+  "makeupSessionId": zod.number().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
 })
 
 
@@ -286,7 +404,11 @@ export const ListIepServiceRequirementsQueryParams = zod.object({
 
 export const listIepServiceRequirementsResponseSessionsCompletedMin = 0;
 
+export const listIepServiceRequirementsResponseSessionsMissedMin = 0;
+
 export const listIepServiceRequirementsResponseSessionsRemainingMin = 0;
+
+export const listIepServiceRequirementsResponseOutstandingMakeupsMin = 0;
 
 export const listIepServiceRequirementsResponseMinutesCompletedMin = 0;
 
@@ -310,7 +432,9 @@ export const ListIepServiceRequirementsResponseItem = zod.object({
   "periodStart": zod.string(),
   "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(listIepServiceRequirementsResponseSessionsCompletedMin),
+  "sessionsMissed": zod.number().min(listIepServiceRequirementsResponseSessionsMissedMin),
   "sessionsRemaining": zod.number().min(listIepServiceRequirementsResponseSessionsRemainingMin),
+  "outstandingMakeups": zod.number().min(listIepServiceRequirementsResponseOutstandingMakeupsMin),
   "minutesCompleted": zod.number().min(listIepServiceRequirementsResponseMinutesCompletedMin),
   "minutesRemaining": zod.number().min(listIepServiceRequirementsResponseMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
@@ -350,7 +474,11 @@ export const UpsertIepServiceRequirementBody = zod.object({
 
 export const upsertIepServiceRequirementResponseSessionsCompletedMin = 0;
 
+export const upsertIepServiceRequirementResponseSessionsMissedMin = 0;
+
 export const upsertIepServiceRequirementResponseSessionsRemainingMin = 0;
+
+export const upsertIepServiceRequirementResponseOutstandingMakeupsMin = 0;
 
 export const upsertIepServiceRequirementResponseMinutesCompletedMin = 0;
 
@@ -374,12 +502,25 @@ export const UpsertIepServiceRequirementResponse = zod.object({
   "periodStart": zod.string(),
   "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(upsertIepServiceRequirementResponseSessionsCompletedMin),
+  "sessionsMissed": zod.number().min(upsertIepServiceRequirementResponseSessionsMissedMin),
   "sessionsRemaining": zod.number().min(upsertIepServiceRequirementResponseSessionsRemainingMin),
+  "outstandingMakeups": zod.number().min(upsertIepServiceRequirementResponseOutstandingMakeupsMin),
   "minutesCompleted": zod.number().min(upsertIepServiceRequirementResponseMinutesCompletedMin),
   "minutesRemaining": zod.number().min(upsertIepServiceRequirementResponseMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
   "updatedAt": zod.coerce.date()
 })
+
+
+/**
+ * @summary Remove an IEP therapy service from active tracking
+ */
+export const ArchiveIepServiceRequirementParams = zod.object({
+  "childId": zod.coerce.number(),
+  "requirementId": zod.coerce.number()
+})
+
+export const ArchiveIepServiceRequirementResponse = zod.void()
 
 
 /**
@@ -416,9 +557,13 @@ export const GetDashboardQueryParams = zod.object({
   "childId": zod.coerce.number()
 })
 
+export const getDashboardResponseChildChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+
+
 export const GetDashboardResponse = zod.object({
   "child": zod.object({
   "id": zod.number(),
+  "childLedId": zod.string().regex(getDashboardResponseChildChildLedIdRegExp),
   "name": zod.string(),
   "firstName": zod.string(),
   "lastName": zod.string(),
@@ -589,9 +734,14 @@ export const GetClinicianOverviewQueryParams = zod.object({
   "since": zod.coerce.string().optional().describe('ISO timestamp marking the clinician\'s previous signed-in overview visit.')
 })
 
+export const getClinicianOverviewResponseChildrenItemChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
 export const getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin = 0;
 
+export const getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsMissedMin = 0;
+
 export const getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin = 0;
+
+export const getClinicianOverviewResponseChildrenItemServiceRequirementsItemOutstandingMakeupsMin = 0;
 
 export const getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin = 0;
 
@@ -624,6 +774,7 @@ export const GetClinicianOverviewResponse = zod.object({
 })),
   "children": zod.array(zod.object({
   "childId": zod.number(),
+  "childLedId": zod.string().regex(getClinicianOverviewResponseChildrenItemChildLedIdRegExp),
   "childName": zod.string(),
   "school": zod.string(),
   "grade": zod.string(),
@@ -652,7 +803,9 @@ export const GetClinicianOverviewResponse = zod.object({
   "periodStart": zod.string(),
   "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin),
+  "sessionsMissed": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsMissedMin),
   "sessionsRemaining": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin),
+  "outstandingMakeups": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemOutstandingMakeupsMin),
   "minutesCompleted": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin),
   "minutesRemaining": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
@@ -678,9 +831,14 @@ export const GetTeacherOverviewQueryParams = zod.object({
   "since": zod.coerce.string().optional().describe('ISO timestamp marking the teacher\'s previous signed-in overview visit.')
 })
 
+export const getTeacherOverviewResponseChildrenItemChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
 export const getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin = 0;
 
+export const getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsMissedMin = 0;
+
 export const getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin = 0;
+
+export const getTeacherOverviewResponseChildrenItemServiceRequirementsItemOutstandingMakeupsMin = 0;
 
 export const getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin = 0;
 
@@ -713,6 +871,7 @@ export const GetTeacherOverviewResponse = zod.object({
 })),
   "children": zod.array(zod.object({
   "childId": zod.number(),
+  "childLedId": zod.string().regex(getTeacherOverviewResponseChildrenItemChildLedIdRegExp),
   "childName": zod.string(),
   "school": zod.string(),
   "grade": zod.string(),
@@ -741,7 +900,9 @@ export const GetTeacherOverviewResponse = zod.object({
   "periodStart": zod.string(),
   "periodEnd": zod.string(),
   "sessionsCompleted": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsCompletedMin),
+  "sessionsMissed": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsMissedMin),
   "sessionsRemaining": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin),
+  "outstandingMakeups": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemOutstandingMakeupsMin),
   "minutesCompleted": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin),
   "minutesRemaining": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
@@ -1252,7 +1413,169 @@ export const GetViewerResponse = zod.object({
   "isSuperAdmin": zod.boolean(),
   "isRolePreview": zod.boolean(),
   "isDevelopmentDemo": zod.boolean(),
-  "previewRole": zod.union([zod.literal('SLP'),zod.literal('Parent'),zod.literal('Teacher'),zod.literal('Administrator'),zod.literal(null)]).nullable()
+  "previewRole": zod.union([zod.literal('SLP'),zod.literal('Parent'),zod.literal('Teacher'),zod.literal('Administrator'),zod.literal(null)]).nullable(),
+  "accountStatus": zod.enum(['onboarding', 'active']),
+  "onboardingComplete": zod.boolean()
+})
+
+
+/**
+ * Resolves identity, role, workspace, and student access exclusively from the authenticated server session.
+ * @summary Get settings for the authenticated ChildLed user
+ */
+export const getSettingsResponseStudentsItemChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+
+
+export const GetSettingsResponse = zod.object({
+  "identity": zod.object({
+  "name": zod.string(),
+  "email": zod.string(),
+  "role": zod.enum(['SLP', 'Parent', 'Teacher', 'Administrator']),
+  "accountType": zod.string(),
+  "organizationName": zod.string(),
+  "isDevelopmentDemo": zod.boolean(),
+  "isRolePreview": zod.boolean()
+}),
+  "professionalProfile": zod.object({
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "professionalTitle": zod.string(),
+  "school": zod.string(),
+  "schoolDistrict": zod.string(),
+  "licensureState": zod.string(),
+  "licenseNumber": zod.string(),
+  "licenseExpirationDate": zod.string().nullable(),
+  "ashaCccSlpNumber": zod.string().nullable(),
+  "licenseVerificationStatus": zod.enum(['unverified', 'pending', 'verified'])
+}).optional(),
+  "students": zod.array(zod.object({
+  "id": zod.number(),
+  "childLedId": zod.string().regex(getSettingsResponseStudentsItemChildLedIdRegExp),
+  "name": zod.string(),
+  "school": zod.string(),
+  "grade": zod.string(),
+  "careTeam": zod.array(zod.object({
+  "userId": zod.string(),
+  "name": zod.string(),
+  "role": zod.string()
+}))
+})),
+  "pendingInvitations": zod.array(zod.object({
+  "id": zod.string(),
+  "childId": zod.number().nullable(),
+  "childName": zod.string().nullable(),
+  "email": zod.string(),
+  "role": zod.string(),
+  "createdAt": zod.coerce.date()
+})),
+  "notificationPreferences": zod.object({
+  "messages": zod.boolean(),
+  "studentUpdates": zod.boolean(),
+  "communicationActivity": zod.boolean(),
+  "weeklySummary": zod.boolean()
+})
+})
+
+
+/**
+ * @summary Update notification preferences for the authenticated user
+ */
+export const UpdateSettingsBody = zod.object({
+  "messages": zod.boolean(),
+  "studentUpdates": zod.boolean(),
+  "communicationActivity": zod.boolean(),
+  "weeklySummary": zod.boolean()
+})
+
+export const UpdateSettingsResponse = zod.object({
+  "messages": zod.boolean(),
+  "studentUpdates": zod.boolean(),
+  "communicationActivity": zod.boolean(),
+  "weeklySummary": zod.boolean()
+})
+
+
+/**
+ * @summary Get the invited SLP account setup state
+ */
+export const GetSlpOnboardingResponse = zod.object({
+  "email": zod.string(),
+  "organizationName": zod.string(),
+  "profile": zod.object({
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "professionalTitle": zod.string(),
+  "school": zod.string(),
+  "schoolDistrict": zod.string(),
+  "licensureState": zod.string(),
+  "licenseNumber": zod.string(),
+  "licenseExpirationDate": zod.string().nullable(),
+  "ashaCccSlpNumber": zod.string().nullable(),
+  "licenseVerificationStatus": zod.enum(['unverified', 'pending', 'verified'])
+}),
+  "agreements": zod.array(zod.object({
+  "type": zod.string(),
+  "version": zod.string(),
+  "title": zod.string(),
+  "statement": zod.string(),
+  "documentPath": zod.string(),
+  "accepted": zod.boolean(),
+  "acceptedAt": zod.coerce.date().nullish()
+})),
+  "accountStatus": zod.enum(['onboarding', 'active']),
+  "onboardingComplete": zod.boolean()
+})
+
+
+/**
+ * @summary Complete an invited SLP profile and agreement acknowledgments
+ */
+export const completeSlpOnboardingBodyProfileFirstNameMax = 120;
+
+export const completeSlpOnboardingBodyProfileLastNameMax = 120;
+
+export const completeSlpOnboardingBodyProfileProfessionalTitleMax = 160;
+
+export const completeSlpOnboardingBodyProfileSchoolMax = 240;
+
+export const completeSlpOnboardingBodyProfileSchoolDistrictMax = 240;
+
+export const completeSlpOnboardingBodyProfileLicensureStateMin = 2;
+export const completeSlpOnboardingBodyProfileLicensureStateMax = 80;
+
+export const completeSlpOnboardingBodyProfileLicenseNumberMax = 120;
+
+export const completeSlpOnboardingBodyProfileAshaCccSlpNumberMax = 120;
+
+export const completeSlpOnboardingBodyAgreementsItemTypeMax = 80;
+
+export const completeSlpOnboardingBodyAgreementsItemVersionMax = 40;
+
+
+
+
+export const CompleteSlpOnboardingBody = zod.object({
+  "profile": zod.object({
+  "firstName": zod.string().min(1).max(completeSlpOnboardingBodyProfileFirstNameMax),
+  "lastName": zod.string().min(1).max(completeSlpOnboardingBodyProfileLastNameMax),
+  "professionalTitle": zod.string().min(1).max(completeSlpOnboardingBodyProfileProfessionalTitleMax),
+  "school": zod.string().min(1).max(completeSlpOnboardingBodyProfileSchoolMax),
+  "schoolDistrict": zod.string().min(1).max(completeSlpOnboardingBodyProfileSchoolDistrictMax),
+  "licensureState": zod.string().min(completeSlpOnboardingBodyProfileLicensureStateMin).max(completeSlpOnboardingBodyProfileLicensureStateMax),
+  "licenseNumber": zod.string().min(1).max(completeSlpOnboardingBodyProfileLicenseNumberMax),
+  "licenseExpirationDate": zod.string().nullish(),
+  "ashaCccSlpNumber": zod.string().max(completeSlpOnboardingBodyProfileAshaCccSlpNumberMax).nullish()
+}),
+  "agreements": zod.array(zod.object({
+  "type": zod.string().min(1).max(completeSlpOnboardingBodyAgreementsItemTypeMax),
+  "version": zod.string().min(1).max(completeSlpOnboardingBodyAgreementsItemVersionMax)
+})).min(1)
+})
+
+export const CompleteSlpOnboardingResponse = zod.object({
+  "completed": zod.boolean(),
+  "accountStatus": zod.enum(['active']),
+  "onboardingCompletedAt": zod.coerce.date()
 })
 
 
@@ -1421,7 +1744,9 @@ export const SetRolePreviewResponse = zod.object({
   "isSuperAdmin": zod.boolean(),
   "isRolePreview": zod.boolean(),
   "isDevelopmentDemo": zod.boolean(),
-  "previewRole": zod.union([zod.literal('SLP'),zod.literal('Parent'),zod.literal('Teacher'),zod.literal('Administrator'),zod.literal(null)]).nullable()
+  "previewRole": zod.union([zod.literal('SLP'),zod.literal('Parent'),zod.literal('Teacher'),zod.literal('Administrator'),zod.literal(null)]).nullable(),
+  "accountStatus": zod.enum(['onboarding', 'active']),
+  "onboardingComplete": zod.boolean()
 })
 
 
@@ -1438,7 +1763,9 @@ export const ClearRolePreviewResponse = zod.object({
   "isSuperAdmin": zod.boolean(),
   "isRolePreview": zod.boolean(),
   "isDevelopmentDemo": zod.boolean(),
-  "previewRole": zod.union([zod.literal('SLP'),zod.literal('Parent'),zod.literal('Teacher'),zod.literal('Administrator'),zod.literal(null)]).nullable()
+  "previewRole": zod.union([zod.literal('SLP'),zod.literal('Parent'),zod.literal('Teacher'),zod.literal('Administrator'),zod.literal(null)]).nullable(),
+  "accountStatus": zod.enum(['onboarding', 'active']),
+  "onboardingComplete": zod.boolean()
 })
 
 
@@ -1519,6 +1846,7 @@ export const listClinicalDocumentationQuerySearchMax = 240;
 
 export const ListClinicalDocumentationQueryParams = zod.object({
   "childId": zod.coerce.number().optional(),
+  "conversationId": zod.coerce.number().optional(),
   "status": zod.enum(['all', 'draft', 'finalized', 'archived', 'recently_deleted']).optional(),
   "search": zod.coerce.string().max(listClinicalDocumentationQuerySearchMax).optional()
 })
@@ -2105,8 +2433,12 @@ export const UpdateSessionSoapNoteResponse = zod.object({
 /**
  * @summary List children
  */
+export const listChildrenResponseChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+
+
 export const ListChildrenResponseItem = zod.object({
   "id": zod.number(),
+  "childLedId": zod.string().regex(listChildrenResponseChildLedIdRegExp),
   "name": zod.string(),
   "firstName": zod.string(),
   "lastName": zod.string(),
@@ -2171,8 +2503,12 @@ export const CreateChildBody = zod.object({
   "legalAuthorityConfirmed": zod.boolean().describe('Required confirmation that the user has legal authority to collect and store this child\'s information.')
 })
 
+export const createChildResponseChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+
+
 export const CreateChildResponse = zod.object({
   "id": zod.number(),
+  "childLedId": zod.string().regex(createChildResponseChildLedIdRegExp),
   "name": zod.string(),
   "firstName": zod.string(),
   "lastName": zod.string(),
@@ -2267,12 +2603,30 @@ export const getTeamInboxQuerySearchMax = 240;
 
 export const GetTeamInboxQueryParams = zod.object({
   "childId": zod.coerce.number().optional(),
+  "conversationId": zod.coerce.number().optional(),
   "search": zod.coerce.string().max(getTeamInboxQuerySearchMax).optional(),
   "senderRole": zod.enum(['SLP', 'Parent', 'Teacher', 'OT', 'Administrator']).optional().describe('Filter messages by the displayed sender role.')
 })
 
 export const GetTeamInboxResponse = zod.object({
+  "currentUserId": zod.string(),
   "childId": zod.number().nullable(),
+  "conversations": zod.array(zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "childName": zod.string(),
+  "participants": zod.array(zod.object({
+  "childId": zod.number(),
+  "userId": zod.string(),
+  "name": zod.string(),
+  "role": zod.string()
+})),
+  "unreadCount": zod.number(),
+  "messageCount": zod.number(),
+  "latestMessageAt": zod.coerce.date().nullable(),
+  "latestMessagePreview": zod.string().nullable(),
+  "latestSenderName": zod.string().nullable()
+})),
   "children": zod.array(zod.object({
   "childId": zod.number(),
   "childName": zod.string(),
@@ -2282,15 +2636,17 @@ export const GetTeamInboxResponse = zod.object({
   "latestMessagePreview": zod.string().nullable()
 })),
   "members": zod.array(zod.object({
-  "id": zod.number(),
+  "childId": zod.number(),
+  "userId": zod.string(),
   "name": zod.string(),
-  "role": zod.string(),
-  "initials": zod.string()
+  "role": zod.string()
 })),
   "messages": zod.array(zod.object({
   "id": zod.number(),
+  "conversationId": zod.number().nullable(),
   "childId": zod.number(),
   "childName": zod.string(),
+  "senderUserId": zod.string(),
   "senderName": zod.string(),
   "senderRole": zod.string(),
   "messageType": zod.enum(['message', 'question', 'update', 'notification']),
@@ -2304,22 +2660,30 @@ export const GetTeamInboxResponse = zod.object({
 
 
 /**
- * @summary Send a message to the entire authorized child team
+ * @summary Start or reply to an authorized child conversation
  */
+export const createTeamMessageBodyRecipientUserIdsItemMax = 255;
+
+export const createTeamMessageBodyRecipientUserIdsMax = 50;
+
 export const createTeamMessageBodyBodyMax = 4000;
 
 export const createTeamMessageBodyMessageTypeDefault = `message`;
 
 export const CreateTeamMessageBody = zod.object({
   "childId": zod.number(),
+  "conversationId": zod.number().nullish(),
+  "recipientUserIds": zod.array(zod.string().min(1).max(createTeamMessageBodyRecipientUserIdsItemMax)).max(createTeamMessageBodyRecipientUserIdsMax).optional(),
   "body": zod.string().min(1).max(createTeamMessageBodyBodyMax),
-  "messageType": zod.enum(['message', 'question', 'notification']).default(createTeamMessageBodyMessageTypeDefault)
+  "messageType": zod.enum(['message', 'question']).default(createTeamMessageBodyMessageTypeDefault)
 })
 
 export const CreateTeamMessageResponse = zod.object({
   "id": zod.number(),
+  "conversationId": zod.number().nullable(),
   "childId": zod.number(),
   "childName": zod.string(),
+  "senderUserId": zod.string(),
   "senderName": zod.string(),
   "senderRole": zod.string(),
   "messageType": zod.enum(['message', 'question', 'update', 'notification']),
@@ -2753,8 +3117,12 @@ export const GetChildQueryParams = zod.object({
   "childId": zod.coerce.number()
 })
 
+export const getChildResponseChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+
+
 export const GetChildResponse = zod.object({
   "id": zod.number(),
+  "childLedId": zod.string().regex(getChildResponseChildLedIdRegExp),
   "name": zod.string(),
   "firstName": zod.string(),
   "lastName": zod.string(),
@@ -2824,8 +3192,12 @@ export const UpdateChildProfileBody = zod.object({
   "pronouns": zod.string().max(updateChildProfileBodyPronounsMax).nullish()
 })
 
+export const updateChildProfileResponseChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+
+
 export const UpdateChildProfileResponse = zod.object({
   "id": zod.number(),
+  "childLedId": zod.string().regex(updateChildProfileResponseChildLedIdRegExp),
   "name": zod.string(),
   "firstName": zod.string(),
   "lastName": zod.string(),
@@ -4170,7 +4542,13 @@ export const ListSessionsResponseItem = zod.object({
   "confirmedBy": zod.string(),
   "childId": zod.number()
 }).nullable(),
-  "sessionMode": zod.enum(['recorded', 'manual']).optional(),
+  "sessionMode": zod.enum(['recorded', 'manual', 'missed']).optional(),
+  "sessionStatus": zod.enum(['completed', 'missed', 'scheduled']).optional(),
+  "missedReason": zod.union([zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),zod.null()]).optional(),
+  "missedReasonDetail": zod.string().nullish(),
+  "makeupStatus": zod.union([zod.enum(['undetermined', 'not_required', 'needed', 'scheduled', 'completed']),zod.null()]).optional(),
+  "makeupForSessionId": zod.number().nullish(),
+  "makeupForSessionDate": zod.coerce.date().nullish(),
   "sessionDate": zod.coerce.date().optional(),
   "startedAt": zod.coerce.date().nullish(),
   "endedAt": zod.coerce.date().nullish(),
@@ -4187,7 +4565,9 @@ export const ListSessionsResponseItem = zod.object({
   "successfulAttempts": zod.number().nullable(),
   "totalAttempts": zod.number().nullable(),
   "promptingLevel": zod.string().nullable(),
-  "progressNote": zod.string()
+  "progressNote": zod.string(),
+  "progressStatus": zod.union([zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),zod.null()]),
+  "reviewedBy": zod.string().nullable()
 })).optional()
 })
 export const ListSessionsResponse = zod.array(ListSessionsResponseItem)
@@ -4208,10 +4588,15 @@ export const createSessionBodyDurationSecondsMin = 0;
 
 export const createSessionBodyCalibrationAudioIdsMax = 2;
 
+export const createSessionBodyGoalReviewsItemCommentsMax = 4000;
+
+export const createSessionBodyGoalReviewsMax = 50;
+
 
 
 export const CreateSessionBody = zod.object({
   "serviceRequirementId": zod.number(),
+  "makeupForSessionId": zod.number().nullish(),
   "durationSeconds": zod.number().min(createSessionBodyDurationSecondsMin),
   "gestalts": zod.array(zod.object({
   "phrase": zod.string().min(1),
@@ -4232,7 +4617,13 @@ export const CreateSessionBody = zod.object({
   "transcriptionId": zod.number().nullish(),
   "consentConfirmed": zod.boolean(),
   "consentConfirmedAt": zod.coerce.date(),
-  "calibrationAudioIds": zod.array(zod.string().min(1)).max(createSessionBodyCalibrationAudioIdsMax).optional()
+  "calibrationAudioIds": zod.array(zod.string().min(1)).max(createSessionBodyCalibrationAudioIdsMax).optional(),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(createSessionBodyGoalReviewsItemCommentsMax)
+})).max(createSessionBodyGoalReviewsMax).optional()
 })
 
 
@@ -4271,7 +4662,13 @@ export const CreateSessionResponse = zod.object({
   "confirmedBy": zod.string(),
   "childId": zod.number()
 }).nullable(),
-  "sessionMode": zod.enum(['recorded', 'manual']).optional(),
+  "sessionMode": zod.enum(['recorded', 'manual', 'missed']).optional(),
+  "sessionStatus": zod.enum(['completed', 'missed', 'scheduled']).optional(),
+  "missedReason": zod.union([zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),zod.null()]).optional(),
+  "missedReasonDetail": zod.string().nullish(),
+  "makeupStatus": zod.union([zod.enum(['undetermined', 'not_required', 'needed', 'scheduled', 'completed']),zod.null()]).optional(),
+  "makeupForSessionId": zod.number().nullish(),
+  "makeupForSessionDate": zod.coerce.date().nullish(),
   "sessionDate": zod.coerce.date().optional(),
   "startedAt": zod.coerce.date().nullish(),
   "endedAt": zod.coerce.date().nullish(),
@@ -4288,7 +4685,9 @@ export const CreateSessionResponse = zod.object({
   "successfulAttempts": zod.number().nullable(),
   "totalAttempts": zod.number().nullable(),
   "promptingLevel": zod.string().nullable(),
-  "progressNote": zod.string()
+  "progressNote": zod.string(),
+  "progressStatus": zod.union([zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),zod.null()]),
+  "reviewedBy": zod.string().nullable()
 })).optional()
 })
 
@@ -4333,7 +4732,9 @@ export const GetSessionsDashboardResponse = zod.object({
   "childId": zod.number(),
   "childName": zod.string(),
   "sessionDate": zod.coerce.date(),
-  "sessionMode": zod.enum(['recorded', 'manual'])
+  "sessionMode": zod.enum(['recorded', 'manual', 'missed']),
+  "sessionStatus": zod.enum(['completed', 'missed', 'scheduled']).optional(),
+  "makeupForSessionId": zod.number().nullish()
 })),
   "draftDocumentation": zod.array(zod.object({
   "id": zod.number(),
@@ -4594,6 +4995,8 @@ export const TranscribeSessionAudioQueryParams = zod.object({
 
 export const TranscribeSessionAudioBody = zod.object({
   "audioId": zod.string().min(1),
+  "serviceRequirementId": zod.number().nullish(),
+  "makeupForSessionId": zod.number().nullish(),
   "retrySpeakerSeparation": zod.boolean().optional().describe('Explicit clinician retry. Ordinary transcript refreshes never restart speaker processing.')
 })
 
@@ -4645,6 +5048,8 @@ export const TranscribeSessionAudioResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
   "audioId": zod.string(),
+  "serviceRequirementId": zod.number().nullish(),
+  "makeupForSessionId": zod.number().nullish(),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -4841,6 +5246,8 @@ export const GetSessionTranscriptionDraftResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
   "audioId": zod.string(),
+  "serviceRequirementId": zod.number().nullish(),
+  "makeupForSessionId": zod.number().nullish(),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -5061,6 +5468,8 @@ export const DeleteSessionTranscriptPhraseResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
   "audioId": zod.string(),
+  "serviceRequirementId": zod.number().nullish(),
+  "makeupForSessionId": zod.number().nullish(),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -5286,6 +5695,8 @@ export const UpdateTranscriptSpeakersResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
   "audioId": zod.string(),
+  "serviceRequirementId": zod.number().nullish(),
+  "makeupForSessionId": zod.number().nullish(),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -5499,6 +5910,8 @@ export const UpdateTranscriptChildUtterancesResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
   "audioId": zod.string(),
+  "serviceRequirementId": zod.number().nullish(),
+  "makeupForSessionId": zod.number().nullish(),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -5742,6 +6155,8 @@ export const UpdateChildPhraseInboxResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
   "audioId": zod.string(),
+  "serviceRequirementId": zod.number().nullish(),
+  "makeupForSessionId": zod.number().nullish(),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -5956,6 +6371,8 @@ export const UpdateTranscriptProvisionalPhrasesResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
   "audioId": zod.string(),
+  "serviceRequirementId": zod.number().nullish(),
+  "makeupForSessionId": zod.number().nullish(),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -6725,11 +7142,6 @@ export const UpdateBetaControlsResponse = zod.object({
  */
 export const ApproveBetaAccessRequestParams = zod.object({
   "id": zod.coerce.number()
-})
-
-export const ApproveBetaAccessRequestBody = zod.object({
-  "organizationId": zod.number(),
-  "childId": zod.number()
 })
 
 export const ApproveBetaAccessRequestResponse = zod.object({

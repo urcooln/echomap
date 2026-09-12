@@ -1,0 +1,3 @@
+ALTER TABLE "therapy_session_goal_progress" ADD COLUMN "progress_status" text;--> statement-breakpoint
+ALTER TABLE "therapy_session_goal_progress" ADD COLUMN "reviewed_by_user_id" text;--> statement-breakpoint
+ALTER TABLE "therapy_session_goal_progress" ADD CONSTRAINT "therapy_session_goal_progress_reviewed_by_user_id_users_id_fk" FOREIGN KEY ("reviewed_by_user_id") REFERENCES "public"."users"("id") ON DELETE restrict ON UPDATE no action;

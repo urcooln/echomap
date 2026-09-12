@@ -42,6 +42,14 @@ export const ViewerPreviewRole = {
   Administrator: 'Administrator',
 } as const;
 
+export type ViewerAccountStatus = typeof ViewerAccountStatus[keyof typeof ViewerAccountStatus];
+
+
+export const ViewerAccountStatus = {
+  onboarding: 'onboarding',
+  active: 'active',
+} as const;
+
 export interface Viewer {
   userId: string;
   name: string;
@@ -54,6 +62,199 @@ export interface Viewer {
   isDevelopmentDemo: boolean;
   /** @nullable */
   previewRole: ViewerPreviewRole;
+  accountStatus: ViewerAccountStatus;
+  onboardingComplete: boolean;
+}
+
+export type SlpProfileLicenseVerificationStatus = typeof SlpProfileLicenseVerificationStatus[keyof typeof SlpProfileLicenseVerificationStatus];
+
+
+export const SlpProfileLicenseVerificationStatus = {
+  unverified: 'unverified',
+  pending: 'pending',
+  verified: 'verified',
+} as const;
+
+export interface SlpProfile {
+  firstName: string;
+  lastName: string;
+  professionalTitle: string;
+  school: string;
+  schoolDistrict: string;
+  licensureState: string;
+  licenseNumber: string;
+  /** @nullable */
+  licenseExpirationDate: string | null;
+  /** @nullable */
+  ashaCccSlpNumber: string | null;
+  licenseVerificationStatus: SlpProfileLicenseVerificationStatus;
+}
+
+export type SettingsIdentityRole = typeof SettingsIdentityRole[keyof typeof SettingsIdentityRole];
+
+
+export const SettingsIdentityRole = {
+  SLP: 'SLP',
+  Parent: 'Parent',
+  Teacher: 'Teacher',
+  Administrator: 'Administrator',
+} as const;
+
+export interface SettingsIdentity {
+  name: string;
+  email: string;
+  role: SettingsIdentityRole;
+  accountType: string;
+  organizationName: string;
+  isDevelopmentDemo: boolean;
+  isRolePreview: boolean;
+}
+
+export interface SettingsCareTeamMember {
+  userId: string;
+  name: string;
+  role: string;
+}
+
+export interface SettingsStudent {
+  id: number;
+  /** @pattern ^CLID-[A-Z0-9]{6}$ */
+  childLedId: string;
+  name: string;
+  school: string;
+  grade: string;
+  careTeam: SettingsCareTeamMember[];
+}
+
+export interface SettingsInvitation {
+  id: string;
+  /** @nullable */
+  childId: number | null;
+  /** @nullable */
+  childName: string | null;
+  email: string;
+  role: string;
+  createdAt: string;
+}
+
+export interface NotificationPreferences {
+  messages: boolean;
+  studentUpdates: boolean;
+  communicationActivity: boolean;
+  weeklySummary: boolean;
+}
+
+export interface UserSettings {
+  identity: SettingsIdentity;
+  professionalProfile?: SlpProfile;
+  students: SettingsStudent[];
+  pendingInvitations: SettingsInvitation[];
+  notificationPreferences: NotificationPreferences;
+}
+
+export interface SlpAgreement {
+  type: string;
+  version: string;
+  title: string;
+  statement: string;
+  documentPath: string;
+  accepted: boolean;
+  /** @nullable */
+  acceptedAt?: string | null;
+}
+
+export type SlpOnboardingAccountStatus = typeof SlpOnboardingAccountStatus[keyof typeof SlpOnboardingAccountStatus];
+
+
+export const SlpOnboardingAccountStatus = {
+  onboarding: 'onboarding',
+  active: 'active',
+} as const;
+
+export interface SlpOnboarding {
+  email: string;
+  organizationName: string;
+  profile: SlpProfile;
+  agreements: SlpAgreement[];
+  accountStatus: SlpOnboardingAccountStatus;
+  onboardingComplete: boolean;
+}
+
+export interface SlpOnboardingProfileInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  firstName: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  lastName: string;
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  professionalTitle: string;
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  school: string;
+  /**
+     * @minLength 1
+     * @maxLength 240
+     */
+  schoolDistrict: string;
+  /**
+     * @minLength 2
+     * @maxLength 80
+     */
+  licensureState: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  licenseNumber: string;
+  /** @nullable */
+  licenseExpirationDate?: string | null;
+  /**
+     * @maxLength 120
+     * @nullable
+     */
+  ashaCccSlpNumber?: string | null;
+}
+
+export interface SlpAgreementAcceptanceInput {
+  /**
+     * @minLength 1
+     * @maxLength 80
+     */
+  type: string;
+  /**
+     * @minLength 1
+     * @maxLength 40
+     */
+  version: string;
+}
+
+export interface SlpOnboardingInput {
+  profile: SlpOnboardingProfileInput;
+  /** @minItems 1 */
+  agreements: SlpAgreementAcceptanceInput[];
+}
+
+export type SlpOnboardingCompletionAccountStatus = typeof SlpOnboardingCompletionAccountStatus[keyof typeof SlpOnboardingCompletionAccountStatus];
+
+
+export const SlpOnboardingCompletionAccountStatus = {
+  active: 'active',
+} as const;
+
+export interface SlpOnboardingCompletion {
+  completed: boolean;
+  accountStatus: SlpOnboardingCompletionAccountStatus;
+  onboardingCompletedAt: string;
 }
 
 export type RolePreviewInputRole = typeof RolePreviewInputRole[keyof typeof RolePreviewInputRole];
@@ -463,6 +664,8 @@ export interface TeamMember {
 
 export interface Child {
   id: number;
+  /** @pattern ^CLID-[A-Z0-9]{6}$ */
+  childLedId: string;
   name: string;
   firstName: string;
   lastName: string;
@@ -1462,6 +1665,36 @@ export interface ManualSessionGoalProgressInput {
   progressNote: string;
 }
 
+export type SessionGoalReviewProgressStatus = typeof SessionGoalReviewProgressStatus[keyof typeof SessionGoalReviewProgressStatus];
+
+
+export const SessionGoalReviewProgressStatus = {
+  progressed: 'progressed',
+  progressing_gradually: 'progressing_gradually',
+  regressed: 'regressed',
+  goal_met: 'goal_met',
+  not_addressed: 'not_addressed',
+} as const;
+
+export type SessionGoalReviewPromptingLevel = typeof SessionGoalReviewPromptingLevel[keyof typeof SessionGoalReviewPromptingLevel];
+
+
+export const SessionGoalReviewPromptingLevel = {
+  independent: 'independent',
+  minimal: 'minimal',
+  moderate: 'moderate',
+  maximal: 'maximal',
+  na: 'na',
+} as const;
+
+export interface SessionGoalReviewInput {
+  goalId: number;
+  progressStatus: SessionGoalReviewProgressStatus;
+  promptingLevel: SessionGoalReviewPromptingLevel;
+  /** @maxLength 4000 */
+  comments: string;
+}
+
 export type ManualSessionInputDurationSource = typeof ManualSessionInputDurationSource[keyof typeof ManualSessionInputDurationSource];
 
 
@@ -1473,6 +1706,8 @@ export const ManualSessionInputDurationSource = {
 
 export interface ManualSessionInput {
   serviceRequirementId: number;
+  /** @nullable */
+  makeupForSessionId?: number | null;
   sessionDate: string;
   /** @nullable */
   startedAt?: string | null;
@@ -1502,21 +1737,59 @@ export interface ManualSessionInput {
   note: string;
 }
 
-export interface ManualSessionGoalProgress {
-  id: number;
-  goalId: number;
-  goalVersion: number;
-  goalTitle: string;
-  goalArea: string;
-  /** @nullable */
-  accuracyPercent: number | null;
-  /** @nullable */
-  successfulAttempts: number | null;
-  /** @nullable */
-  totalAttempts: number | null;
-  /** @nullable */
-  promptingLevel: string | null;
-  progressNote: string;
+export type MissedSessionReason = typeof MissedSessionReason[keyof typeof MissedSessionReason];
+
+
+export const MissedSessionReason = {
+  student_absent: 'student_absent',
+  student_illness: 'student_illness',
+  school_event: 'school_event',
+  field_trip: 'field_trip',
+  early_dismissal: 'early_dismissal',
+  school_closure: 'school_closure',
+  caregiver_cancellation: 'caregiver_cancellation',
+  student_refused: 'student_refused',
+  clinician_unavailable: 'clinician_unavailable',
+  scheduling_conflict: 'scheduling_conflict',
+  other: 'other',
+} as const;
+
+export type MakeupStatus = typeof MakeupStatus[keyof typeof MakeupStatus];
+
+
+export const MakeupStatus = {
+  undetermined: 'undetermined',
+  not_required: 'not_required',
+  needed: 'needed',
+  scheduled: 'scheduled',
+  completed: 'completed',
+} as const;
+
+export interface MissedSessionInput {
+  serviceRequirementId: number;
+  sessionDate: string;
+  missedReason: MissedSessionReason;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  missedReasonDetail?: string | null;
+  /** @maxLength 4000 */
+  note: string;
+  makeupStatus: MakeupStatus;
+}
+
+export interface MissedSessionUpdateInput {
+  sessionDate: string;
+  missedReason: MissedSessionReason;
+  /**
+     * @maxLength 500
+     * @nullable
+     */
+  missedReasonDetail?: string | null;
+  /** @maxLength 4000 */
+  note: string;
+  makeupStatus: MakeupStatus;
 }
 
 export type CaseloadServiceDeliveryType = typeof CaseloadServiceDeliveryType[keyof typeof CaseloadServiceDeliveryType];
@@ -1532,6 +1805,44 @@ export const CaseloadServiceDeliveryType = {
   consult: 'consult',
   assistive_technology: 'assistive_technology',
 } as const;
+
+export interface MissedSession {
+  id: number;
+  childId: number;
+  serviceRequirementId: number;
+  serviceName: string;
+  serviceType: CaseloadServiceDeliveryType;
+  sessionDate: string;
+  missedReason: MissedSessionReason;
+  /** @nullable */
+  missedReasonDetail: string | null;
+  note: string;
+  makeupStatus: MakeupStatus;
+  /** @nullable */
+  makeupSessionId: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ManualSessionGoalProgress {
+  id: number;
+  goalId: number;
+  goalVersion: number;
+  goalTitle: string;
+  goalArea: string;
+  /** @nullable */
+  accuracyPercent: number | null;
+  /** @nullable */
+  successfulAttempts: number | null;
+  /** @nullable */
+  totalAttempts: number | null;
+  /** @nullable */
+  promptingLevel: string | null;
+  progressNote: string;
+  progressStatus: SessionGoalReviewProgressStatus | null;
+  /** @nullable */
+  reviewedBy: string | null;
+}
 
 export type ServiceFrequencyPeriod = typeof ServiceFrequencyPeriod[keyof typeof ServiceFrequencyPeriod];
 
@@ -1603,7 +1914,11 @@ export interface IepServiceRequirement {
   /** @minimum 0 */
   sessionsCompleted: number;
   /** @minimum 0 */
+  sessionsMissed: number;
+  /** @minimum 0 */
   sessionsRemaining: number;
+  /** @minimum 0 */
+  outstandingMakeups: number;
   /** @minimum 0 */
   minutesCompleted: number;
   /** @minimum 0 */
@@ -1925,6 +2240,8 @@ export interface SessionGestalt {
 
 export interface SessionInput {
   serviceRequirementId: number;
+  /** @nullable */
+  makeupForSessionId?: number | null;
   /** @minimum 0 */
   durationSeconds: number;
   gestalts: SessionGestalt[];
@@ -1943,6 +2260,8 @@ export interface SessionInput {
      * @items.minLength 1
      */
   calibrationAudioIds?: string[];
+  /** @maxItems 50 */
+  goalReviews?: SessionGoalReviewInput[];
 }
 
 export type SessionAudioUploadRequestPurpose = typeof SessionAudioUploadRequestPurpose[keyof typeof SessionAudioUploadRequestPurpose];
@@ -2169,6 +2488,10 @@ export interface RecordingDiagnosticError {
 export interface SessionTranscriptionInput {
   /** @minLength 1 */
   audioId: string;
+  /** @nullable */
+  serviceRequirementId?: number | null;
+  /** @nullable */
+  makeupForSessionId?: number | null;
   /** Explicit clinician retry. Ordinary transcript refreshes never restart speaker processing. */
   retrySpeakerSeparation?: boolean;
 }
@@ -2749,6 +3072,10 @@ export interface SessionTranscript {
   childId: number;
   audioId: string;
   /** @nullable */
+  serviceRequirementId?: number | null;
+  /** @nullable */
+  makeupForSessionId?: number | null;
+  /** @nullable */
   recordingConsentConfirmedAt: string | null;
   status: SessionTranscriptStatus;
   rawTranscript: string;
@@ -2907,6 +3234,16 @@ export type SessionSessionMode = typeof SessionSessionMode[keyof typeof SessionS
 export const SessionSessionMode = {
   recorded: 'recorded',
   manual: 'manual',
+  missed: 'missed',
+} as const;
+
+export type SessionSessionStatus = typeof SessionSessionStatus[keyof typeof SessionSessionStatus];
+
+
+export const SessionSessionStatus = {
+  completed: 'completed',
+  missed: 'missed',
+  scheduled: 'scheduled',
 } as const;
 
 export type SessionDurationSource = typeof SessionDurationSource[keyof typeof SessionDurationSource];
@@ -2948,6 +3285,15 @@ export interface Session {
   /** @nullable */
   consent: RecordingConsent | null;
   sessionMode?: SessionSessionMode;
+  sessionStatus?: SessionSessionStatus;
+  missedReason?: MissedSessionReason | null;
+  /** @nullable */
+  missedReasonDetail?: string | null;
+  makeupStatus?: MakeupStatus | null;
+  /** @nullable */
+  makeupForSessionId?: number | null;
+  /** @nullable */
+  makeupForSessionDate?: string | null;
   sessionDate?: string;
   /** @nullable */
   startedAt?: string | null;
@@ -2986,6 +3332,16 @@ export type SessionsDashboardCompletedSessionSessionMode = typeof SessionsDashbo
 export const SessionsDashboardCompletedSessionSessionMode = {
   recorded: 'recorded',
   manual: 'manual',
+  missed: 'missed',
+} as const;
+
+export type SessionsDashboardCompletedSessionSessionStatus = typeof SessionsDashboardCompletedSessionSessionStatus[keyof typeof SessionsDashboardCompletedSessionSessionStatus];
+
+
+export const SessionsDashboardCompletedSessionSessionStatus = {
+  completed: 'completed',
+  missed: 'missed',
+  scheduled: 'scheduled',
 } as const;
 
 export interface SessionsDashboardCompletedSession {
@@ -2994,6 +3350,9 @@ export interface SessionsDashboardCompletedSession {
   childName: string;
   sessionDate: string;
   sessionMode: SessionsDashboardCompletedSessionSessionMode;
+  sessionStatus?: SessionsDashboardCompletedSessionSessionStatus;
+  /** @nullable */
+  makeupForSessionId?: number | null;
 }
 
 export type SessionsDashboardDraftDocumentationNoteType = typeof SessionsDashboardDraftDocumentationNoteType[keyof typeof SessionsDashboardDraftDocumentationNoteType];
@@ -3161,6 +3520,8 @@ export interface Dashboard {
 
 export interface ClinicianOverviewChild {
   childId: number;
+  /** @pattern ^CLID-[A-Z0-9]{6}$ */
+  childLedId: string;
   childName: string;
   school: string;
   grade: string;
@@ -3483,8 +3844,11 @@ export const TeamMessageAudience = {
 
 export interface TeamMessage {
   id: number;
+  /** @nullable */
+  conversationId: number | null;
   childId: number;
   childName: string;
+  senderUserId: string;
   senderName: string;
   senderRole: string;
   messageType: TeamMessageMessageType;
@@ -3505,11 +3869,35 @@ export interface TeamInboxChild {
   latestMessagePreview: string | null;
 }
 
+export interface TeamInboxParticipant {
+  childId: number;
+  userId: string;
+  name: string;
+  role: string;
+}
+
+export interface TeamInboxConversation {
+  id: number;
+  childId: number;
+  childName: string;
+  participants: TeamInboxParticipant[];
+  unreadCount: number;
+  messageCount: number;
+  /** @nullable */
+  latestMessageAt: string | null;
+  /** @nullable */
+  latestMessagePreview: string | null;
+  /** @nullable */
+  latestSenderName: string | null;
+}
+
 export interface TeamInbox {
+  currentUserId: string;
   /** @nullable */
   childId: number | null;
+  conversations: TeamInboxConversation[];
   children: TeamInboxChild[];
-  members: TeamMember[];
+  members: TeamInboxParticipant[];
   messages: TeamMessage[];
   totalUnread: number;
 }
@@ -3574,11 +3962,18 @@ export type TeamMessageInputMessageType = typeof TeamMessageInputMessageType[key
 export const TeamMessageInputMessageType = {
   message: 'message',
   question: 'question',
-  notification: 'notification',
 } as const;
 
 export interface TeamMessageInput {
   childId: number;
+  /** @nullable */
+  conversationId?: number | null;
+  /**
+     * @maxItems 50
+     * @items.minLength 1
+     * @items.maxLength 255
+     */
+  recipientUserIds?: string[];
   /**
      * @minLength 1
      * @maxLength 4000
@@ -4068,11 +4463,6 @@ export interface BetaAccessRequestAction {
   expiresAt?: string;
 }
 
-export interface BetaAccessApprovalInput {
-  organizationId: number;
-  childId: number;
-}
-
 export interface BetaAccessControlResult {
   updated: boolean;
   revoked?: boolean;
@@ -4145,6 +4535,15 @@ childId: number;
 };
 
 export type CreateManualSessionParams = {
+childId: number;
+};
+
+export type ListMissedSessionsParams = {
+childId: number;
+serviceRequirementId: number;
+};
+
+export type CreateMissedSessionParams = {
 childId: number;
 };
 
@@ -4290,6 +4689,7 @@ childId: number;
 
 export type ListClinicalDocumentationParams = {
 childId?: number;
+conversationId?: number;
 status?: ListClinicalDocumentationStatus;
 /**
  * @maxLength 240
@@ -4320,6 +4720,7 @@ sessionId: number;
 
 export type GetTeamInboxParams = {
 childId?: number;
+conversationId?: number;
 /**
  * @maxLength 240
  */

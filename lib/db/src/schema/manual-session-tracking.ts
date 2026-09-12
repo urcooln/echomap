@@ -12,6 +12,7 @@ import {
   childProfilesTable,
   organizationsTable,
   therapySessionsTable,
+  usersTable,
 } from "./core-domain";
 import { communicationGoalsTable } from "./communication-goals";
 
@@ -37,8 +38,13 @@ export const therapySessionGoalProgressTable = pgTable(
     accuracyPercent: integer("accuracy_percent"),
     successfulAttempts: integer("successful_attempts"),
     totalAttempts: integer("total_attempts"),
+    progressStatus: text("progress_status"),
     promptingLevel: text("prompting_level"),
     progressNote: text("progress_note").notNull().default(""),
+    reviewedByUserId: text("reviewed_by_user_id").references(
+      () => usersTable.id,
+      { onDelete: "restrict" },
+    ),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

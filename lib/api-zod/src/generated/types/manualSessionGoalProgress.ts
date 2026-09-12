@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { SessionGoalReviewProgressStatus } from './sessionGoalReviewProgressStatus';
 
 export interface ManualSessionGoalProgress {
   id: number;
@@ -21,4 +22,7 @@ export interface ManualSessionGoalProgress {
   /** @nullable */
   promptingLevel: string | null;
   progressNote: string;
+  progressStatus: SessionGoalReviewProgressStatus | null;
+  /** @nullable */
+  reviewedBy: string | null;
 }

@@ -64,6 +64,55 @@
       "when": 1789161961360,
       "tag": "0008_service_based_caseload",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1789169460446,
+      "tag": "0009_slp_invitation_onboarding",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789230290417,
+      "tag": "0010_missed-session-makeup-tracking",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1789231681867,
+      "tag": "0011_recorded_makeup_draft_link",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789235644244,
+      "tag": "0012_recorded_session_goal_review",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789238230478,
+      "tag": "0013_child-led-id",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789239063373,
+      "tag": "0014_user-notification-preferences",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1789240743766,
+      "tag": "0015_kind_zuras",
+      "breakpoints": true
     }
   ]
 }

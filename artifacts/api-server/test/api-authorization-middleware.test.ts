@@ -12,6 +12,8 @@ const actor = {
   childIds: [11],
   isAdmin: false,
   organizationId: 2,
+  accountStatus: "active" as const,
+  onboardingComplete: true,
   expiresAt: Date.now() + 60_000,
 };
 
@@ -76,6 +78,40 @@ test("protected API routes continue only for a valid ChildLed actor", () => {
       childledActor: actor,
     }).nextCalled,
     true,
+  );
+});
+
+test("an invited SLP in onboarding can only use viewer and setup routes", () => {
+  const onboardingActor = {
+    ...actor,
+    accountStatus: "onboarding" as const,
+    onboardingComplete: false,
+  };
+  for (const [method, path] of [
+    ["GET", "/auth/viewer"],
+    ["GET", "/slp-onboarding"],
+    ["POST", "/slp-onboarding"],
+  ]) {
+    assert.equal(
+      runBoundary({ method, path, childledActor: onboardingActor }).nextCalled,
+      true,
+    );
+  }
+  assert.equal(
+    runBoundary({
+      method: "POST",
+      path: "/sessions/transcription",
+      childledActor: onboardingActor,
+    }).statusCode,
+    403,
+  );
+  assert.equal(
+    runBoundary({
+      method: "GET",
+      path: "/children",
+      childledActor: onboardingActor,
+    }).statusCode,
+    403,
   );
 });
 

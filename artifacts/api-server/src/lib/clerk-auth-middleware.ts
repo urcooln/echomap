@@ -13,9 +13,17 @@ import {
 } from "@workspace/db";
 import { isPortableRole, type PortableRole } from "./identity";
 import { logger } from "./logger";
-import { hasVerifiedEmailAddress, isSuperAdminIdentity } from "./auth-authorization";
+import {
+  hasVerifiedEmailAddress,
+  isSuperAdminIdentity,
+} from "./auth-authorization";
+import { provisionClerkInvitation } from "./clerk-invitation-provisioning";
+import { clerkInvitationReferenceFromMetadata } from "./clerk-invitation-metadata";
 
-const roleMap: Record<PortableRole, "SLP" | "Parent" | "Teacher" | "Administrator"> = {
+const roleMap: Record<
+  PortableRole,
+  "SLP" | "Parent" | "Teacher" | "Administrator"
+> = {
   clinician: "SLP",
   parent: "Parent",
   teacher: "Teacher",
@@ -31,7 +39,11 @@ const requestedOrganizationId = (request: Request) => {
  * Resolves a Clerk-authenticated request to an explicitly invited ChildLed care
  * team member. The browser never supplies roles, organizations, or child IDs.
  */
-export const attachClerkActor = async (request: Request, _response: Response, next: NextFunction) => {
+export const attachClerkActor = async (
+  request: Request,
+  _response: Response,
+  next: NextFunction,
+) => {
   const auth = getAuth(request);
   if (!auth.userId) return next();
 
@@ -42,15 +54,36 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
       return next();
     }
 
-    const [user] = await db
-      .select()
-      .from(usersTable)
-      .where(and(
-        eq(usersTable.identityProvider, "clerk"),
-        eq(usersTable.providerSubject, auth.userId),
-        isNull(usersTable.archivedAt),
-      ))
-      .limit(1);
+    const findUser = async () =>
+      (
+        await db
+          .select()
+          .from(usersTable)
+          .where(
+            and(
+              eq(usersTable.identityProvider, "clerk"),
+              eq(usersTable.providerSubject, auth.userId),
+              isNull(usersTable.archivedAt),
+            ),
+          )
+          .limit(1)
+      )[0];
+    let user = await findUser();
+    if (!user) {
+      const reference = clerkInvitationReferenceFromMetadata(
+        clerkUser.publicMetadata,
+      );
+      if (reference) {
+        await provisionClerkInvitation({ clerkUser, reference });
+      }
+      if (!reference) {
+        await provisionClerkInvitation({
+          clerkUser,
+          allowVerifiedEmailLookup: true,
+        });
+      }
+      user = await findUser();
+    }
     if (!user) {
       request.childledAuthFailure = "not_invited";
       return next();
@@ -63,10 +96,21 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
     const memberships = await db
       .select()
       .from(organizationMembershipsTable)
-      .where(and(eq(organizationMembershipsTable.userId, user.id), eq(organizationMembershipsTable.active, true)));
-    const organizationId = requestedOrganizationId(request) ?? (memberships.length === 1 ? memberships[0]?.organizationId ?? null : null);
+      .where(
+        and(
+          eq(organizationMembershipsTable.userId, user.id),
+          eq(organizationMembershipsTable.active, true),
+        ),
+      );
+    const organizationId =
+      requestedOrganizationId(request) ??
+      (memberships.length === 1
+        ? (memberships[0]?.organizationId ?? null)
+        : null);
     const membership = organizationId
-      ? memberships.find((candidate) => candidate.organizationId === organizationId)
+      ? memberships.find(
+          (candidate) => candidate.organizationId === organizationId,
+        )
       : null;
     if (!membership || !isPortableRole(membership.role)) {
       request.childledAuthFailure = "not_invited";
@@ -74,44 +118,56 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
     }
     const isAdmin = membership.role === "admin";
     const isSuperAdmin = isSuperAdminIdentity({ userId: user.id, isAdmin });
+    const onboardingComplete =
+      membership.accountStatus === "active" &&
+      Boolean(membership.onboardingCompletedAt);
     if (!user.betaApprovedAt && !isSuperAdmin) {
       request.childledAuthFailure = "not_invited";
       return next();
     }
-    const [organization] = await db.select()
+    const [organization] = await db
+      .select()
       .from(organizationsTable)
       .where(eq(organizationsTable.id, membership.organizationId))
       .limit(1);
     if (
-      !organization
-      || organization.archivedAt
-      || (!isSuperAdmin && (organization.disabledAt || !organization.betaApprovedAt))
+      !organization ||
+      organization.archivedAt ||
+      (!isSuperAdmin &&
+        (organization.disabledAt || !organization.betaApprovedAt))
     ) {
       request.childledAuthFailure = "access_disabled";
       return next();
     }
-    const [controls] = await db.select().from(betaControlsTable).where(eq(betaControlsTable.id, 1)).limit(1);
+    const [controls] = await db
+      .select()
+      .from(betaControlsTable)
+      .where(eq(betaControlsTable.id, 1))
+      .limit(1);
     if ((!controls || !controls.enabled) && !isSuperAdmin) {
       request.childledAuthFailure = "access_disabled";
       return next();
     }
 
-    const childIds = (await db
-      .select({ childId: childCareTeamMembershipsTable.childId })
-      .from(childCareTeamMembershipsTable)
-      .innerJoin(
-        childProfilesTable,
-        and(
-          eq(childCareTeamMembershipsTable.childId, childProfilesTable.id),
-          eq(childProfilesTable.organizationId, membership.organizationId),
-          isNull(childProfilesTable.archivedAt),
-        ),
-      )
-      .where(and(
-        eq(childCareTeamMembershipsTable.userId, user.id),
-        eq(childCareTeamMembershipsTable.active, true),
-      )))
-      .map((child) => child.childId);
+    const childIds = (
+      await db
+        .select({ childId: childCareTeamMembershipsTable.childId })
+        .from(childCareTeamMembershipsTable)
+        .innerJoin(
+          childProfilesTable,
+          and(
+            eq(childCareTeamMembershipsTable.childId, childProfilesTable.id),
+            eq(childProfilesTable.organizationId, membership.organizationId),
+            isNull(childProfilesTable.archivedAt),
+          ),
+        )
+        .where(
+          and(
+            eq(childCareTeamMembershipsTable.userId, user.id),
+            eq(childCareTeamMembershipsTable.active, true),
+          ),
+        )
+    ).map((child) => child.childId);
 
     request.childledActor = {
       userId: user.id,
@@ -121,19 +177,30 @@ export const attachClerkActor = async (request: Request, _response: Response, ne
       isAdmin,
       isSuperAdmin,
       organizationId: membership.organizationId,
-      expiresAt: typeof auth.sessionClaims?.exp === "number"
-        ? auth.sessionClaims.exp * 1000
-        : Date.now() + 60_000,
+      accountStatus:
+        membership.accountStatus === "onboarding" ? "onboarding" : "active",
+      onboardingComplete,
+      expiresAt:
+        typeof auth.sessionClaims?.exp === "number"
+          ? auth.sessionClaims.exp * 1000
+          : Date.now() + 60_000,
     };
-    if (controls) {
-      const [acknowledgement] = await db.select({ userId: betaNoticeAcknowledgementsTable.userId })
+    if (controls && onboardingComplete) {
+      const [acknowledgement] = await db
+        .select({ userId: betaNoticeAcknowledgementsTable.userId })
         .from(betaNoticeAcknowledgementsTable)
-        .where(and(
-          eq(betaNoticeAcknowledgementsTable.userId, user.id),
-          eq(betaNoticeAcknowledgementsTable.noticeVersion, controls.currentNoticeVersion),
-        ))
+        .where(
+          and(
+            eq(betaNoticeAcknowledgementsTable.userId, user.id),
+            eq(
+              betaNoticeAcknowledgementsTable.noticeVersion,
+              controls.currentNoticeVersion,
+            ),
+          ),
+        )
         .limit(1);
-      if (!acknowledgement) request.childledAuthFailure = "beta_notice_unacknowledged";
+      if (!acknowledgement)
+        request.childledAuthFailure = "beta_notice_unacknowledged";
     }
   } catch (error) {
     request.childledAuthFailure = "session_invalid";

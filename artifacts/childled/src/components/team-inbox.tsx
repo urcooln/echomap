@@ -1,130 +1,63 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  Activity,
-  AlertCircle,
-  Bell,
+  ArrowLeft,
   Check,
-  ChevronDown,
-  ChevronUp,
-  CircleHelp,
   Loader2,
   MessageCircle,
+  Plus,
   Search,
   Send,
+  UserRound,
   Users,
   X,
 } from "lucide-react";
+import type {
+  TeamInbox,
+  TeamInboxConversation,
+  TeamMessage,
+  TeamMessageInput,
+} from "@workspace/api-client-react";
 
-export type MessageType = "message" | "question" | "update" | "notification";
-
-export interface TeamMember {
-  id: number;
-  name: string;
-  role: string;
-  initials: string;
-}
-
-export interface InboxMessage {
-  id: number;
-  childId: number;
-  childName: string;
-  senderName: string;
-  senderRole: string;
-  messageType: MessageType;
-  audience: "entire_team";
-  body: string;
-  read: boolean;
-  createdAt: string;
-}
-
-export interface InboxConversation {
-  childId: number;
-  childName: string;
-  unreadCount: number;
-  messageCount: number;
-  latestMessageAt: string | null;
-  latestMessagePreview: string | null;
-}
-
-export interface TeamInbox {
-  childId: number | null;
-  children: InboxConversation[];
-  members: TeamMember[];
-  messages: InboxMessage[];
-  totalUnread: number;
-}
+export type InboxMessage = TeamMessage;
 
 export interface TeamInboxPageProps {
+  selectedConversationId?: number;
   selectedChildId?: number;
   searchTerm: string;
   inbox?: TeamInbox;
   loading: boolean;
+  loadError?: string;
   sending: boolean;
   markingRead: boolean;
   sendError?: string;
-  onSelectChild: (childId?: number) => void;
+  onSelectConversation: (conversationId?: number, childId?: number) => void;
   onSearch: (search: string) => void;
+  onRetry: () => void;
   onMarkRead: (messageIds: number[]) => void;
-  onSend: (input: { childId: number; body: string }) => void;
+  onSend: (
+    input: TeamMessageInput,
+    callbacks?: { onSuccess?: (message: TeamMessage) => void },
+  ) => void;
   onOpenProfile: (childId: number) => void;
 }
 
-const TABS = [
-  "All",
-  "Messages",
-  "Questions",
-  "Updates",
-  "Notifications",
-] as const;
-type TabType = (typeof TABS)[number];
-
-const MESSAGE_TYPE_CONFIG = {
-  message: {
-    icon: MessageCircle,
-    label: "Team message",
-    card: "border-border/60 bg-card",
-    accent: "text-primary",
-  },
-  question: {
-    icon: CircleHelp,
-    label: "Question",
-    card: "border-accent/25 bg-accent/5",
-    accent: "text-accent-foreground",
-  },
-  update: {
-    icon: Activity,
-    label: "Student update",
-    card: "border-primary/20 bg-primary/5",
-    accent: "text-primary",
-  },
-  notification: {
-    icon: Bell,
-    label: "Notification",
-    card: "border-border bg-secondary/45",
-    accent: "text-muted-foreground",
-  },
-} satisfies Record<
-  MessageType,
-  {
-    icon: typeof MessageCircle;
-    label: string;
-    card: string;
-    accent: string;
+function formatConversationTime(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  if (date.toDateString() === new Date().toDateString()) {
+    return date.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+    });
   }
->;
+  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
 
-function formatDate(dateString: string) {
-  const parsed = new Date(dateString);
-  if (Number.isNaN(parsed.getTime())) return dateString;
-  const now = new Date();
-  const isToday =
-    parsed.getDate() === now.getDate() &&
-    parsed.getMonth() === now.getMonth() &&
-    parsed.getFullYear() === now.getFullYear();
-  if (isToday) {
-    return `Today at ${parsed.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}`;
-  }
-  return parsed.toLocaleDateString("en-US", {
+function formatMessageTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("en-US", {
     month: "short",
     day: "numeric",
     hour: "numeric",
@@ -132,1009 +65,783 @@ function formatDate(dateString: string) {
   });
 }
 
-function Avatar({ name }: { name: string }) {
-  const initials = name
-    .split(" ")
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
     .map((part) => part[0])
     .join("")
     .slice(0, 2)
     .toUpperCase();
-  return (
-    <div className="grid size-10 shrink-0 place-items-center rounded-full bg-secondary text-xs font-bold text-foreground shadow-sm ring-2 ring-card">
-      {initials}
-    </div>
+}
+
+function participantLabel(
+  conversation: TeamInboxConversation,
+  currentUserId: string,
+) {
+  const others = conversation.participants.filter(
+    (participant) => participant.userId !== currentUserId,
   );
+  if (!others.length) return "Care team";
+  if (others.length === 1) return `${others[0].name} · ${others[0].role}`;
+  return `${others[0].name} +${others.length - 1}`;
 }
 
 function LoadingState() {
   return (
     <div
-      className="grid gap-6 lg:grid-cols-[285px_minmax(0,1fr)]"
+      className="grid min-h-[32rem] gap-5 lg:grid-cols-[21rem_minmax(0,1fr)]"
       data-testid="status-loading"
     >
-      <div className="space-y-3 rounded-3xl border border-border bg-card p-4 soft-shadow">
+      <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
+        <div className="skeleton h-11 rounded-xl" />
         {[1, 2, 3].map((item) => (
-          <div key={item} className="skeleton h-20 rounded-2xl" />
+          <div key={item} className="skeleton h-24 rounded-xl" />
         ))}
       </div>
-      <div className="space-y-5 rounded-3xl border border-border bg-card p-6 soft-shadow">
-        <div className="skeleton h-10 w-full rounded-xl" />
-        {[1, 2, 3].map((item) => (
-          <div key={item} className="flex gap-4">
-            <div className="skeleton size-10 shrink-0 rounded-full" />
-            <div className="skeleton h-24 flex-1 rounded-2xl" />
-          </div>
-        ))}
+      <div className="space-y-5 rounded-2xl border border-border bg-card p-5">
+        <div className="skeleton h-14 rounded-xl" />
+        <div className="skeleton h-24 w-3/4 rounded-xl" />
+        <div className="skeleton ml-auto h-24 w-3/4 rounded-xl" />
       </div>
     </div>
   );
 }
 
-function UnreadBadge({ count }: { count: number }) {
-  if (!count) return null;
+function ConversationLoadingState() {
   return (
-    <span
-      data-testid="badge-unread-count"
-      className="inline-flex min-w-5 items-center justify-center rounded-full bg-accent px-1.5 py-0.5 text-[10px] font-bold text-accent-foreground"
+    <section className="min-h-[32rem] rounded-2xl border border-border bg-card p-5 soft-shadow">
+      <div className="skeleton h-14 rounded-xl" />
+      <div className="mt-6 space-y-4">
+        <div className="skeleton h-24 w-3/4 rounded-xl" />
+        <div className="skeleton ml-auto h-24 w-3/4 rounded-xl" />
+      </div>
+    </section>
+  );
+}
+
+function ConversationLoadError({
+  message,
+  onBack,
+  onRetry,
+}: {
+  message: string;
+  onBack: () => void;
+  onRetry: () => void;
+}) {
+  return (
+    <section
+      className="grid min-h-[32rem] place-items-center rounded-2xl border border-border bg-card p-6 text-center soft-shadow"
+      data-testid="inbox-conversation-error"
     >
-      {count > 99 ? "99+" : count}
-    </span>
+      <div className="max-w-sm">
+        <MessageCircle size={30} className="mx-auto text-muted-foreground/60" />
+        <h2 className="serif mt-4 text-2xl font-semibold">
+          Conversation unavailable
+        </h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          {message}
+        </p>
+        <div className="mt-5 flex flex-col-reverse justify-center gap-2 sm:flex-row">
+          <button
+            type="button"
+            onClick={onBack}
+            className="focus-ring min-h-11 rounded-xl border border-border px-4 text-sm font-semibold hover:bg-secondary"
+          >
+            Back to Inbox
+          </button>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="focus-ring min-h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+            data-testid="button-retry-conversation"
+          >
+            Try again
+          </button>
+        </div>
+      </div>
+    </section>
   );
 }
 
 function ConversationList({
   conversations,
-  selectedChildId,
-  onSelectChild,
+  currentUserId,
+  selectedConversationId,
+  unreadOnly,
+  search,
+  onSearchChange,
+  onSubmitSearch,
+  onUnreadChange,
+  onSelect,
+  onCompose,
+  hiddenOnMobile,
 }: {
-  conversations: InboxConversation[];
-  selectedChildId?: number;
-  onSelectChild: (childId?: number) => void;
+  conversations: TeamInboxConversation[];
+  currentUserId: string;
+  selectedConversationId?: number;
+  unreadOnly: boolean;
+  search: string;
+  onSearchChange: (value: string) => void;
+  onSubmitSearch: () => void;
+  onUnreadChange: (value: boolean) => void;
+  onSelect: (conversation: TeamInboxConversation) => void;
+  onCompose: () => void;
+  hiddenOnMobile: boolean;
 }) {
+  const visible = unreadOnly
+    ? conversations.filter((conversation) => conversation.unreadCount > 0)
+    : conversations;
   return (
     <aside
-      className="max-h-[42dvh] overflow-y-auto overscroll-contain rounded-3xl border border-border bg-card p-3 soft-shadow lg:max-h-none lg:overflow-visible"
+      className={`${hiddenOnMobile ? "hidden lg:flex" : "flex"} min-h-[32rem] flex-col overflow-hidden rounded-2xl border border-border bg-card soft-shadow lg:h-[calc(100dvh-13rem)] lg:max-h-[48rem]`}
       data-testid="inbox-conversation-list"
     >
-      <div className="mb-3 flex items-center justify-between gap-3 px-2 pt-2">
-        <div>
-          <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-            Conversations
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Each thread is shared with one child’s team.
-          </p>
-        </div>
-      </div>
-      <div className="space-y-1">
+      <div className="border-b border-border p-3 sm:p-4">
         <button
           type="button"
-          data-testid="button-inbox-all-conversations"
-          onClick={() => onSelectChild(undefined)}
-          className={`focus-ring flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition ${selectedChildId === undefined ? "bg-primary text-primary-foreground" : "hover:bg-secondary/70"}`}
+          onClick={onCompose}
+          className="focus-ring mb-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+          data-testid="button-new-conversation"
         >
-          <span
-            className={`grid size-9 place-items-center rounded-xl ${selectedChildId === undefined ? "bg-primary-foreground/15" : "bg-secondary text-primary"}`}
-          >
-            <MessageCircle size={17} />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block text-sm font-semibold">All messages</span>
-            <span
-              className={`mt-0.5 block text-xs ${selectedChildId === undefined ? "text-primary-foreground/70" : "text-muted-foreground"}`}
-            >
-              Across your authorized care teams
-            </span>
-          </span>
-          <UnreadBadge
-            count={conversations.reduce(
-              (total, conversation) => total + conversation.unreadCount,
-              0,
-            )}
-          />
+          <Plus size={17} /> New message
         </button>
-        {conversations.map((conversation) => {
-          const active = conversation.childId === selectedChildId;
-          return (
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmitSearch();
+          }}
+          className="relative"
+        >
+          <Search
+            size={16}
+            className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+          />
+          <input
+            value={search}
+            onChange={(event) => onSearchChange(event.target.value)}
+            placeholder="Search messages"
+            aria-label="Search messages, children, or participants"
+            data-testid="input-inbox-search"
+            className="focus-ring min-h-11 w-full rounded-xl border border-border bg-background pl-9 pr-9 text-sm"
+          />
+          {search ? (
             <button
-              key={conversation.childId}
               type="button"
-              data-testid={`button-inbox-conversation-${conversation.childId}`}
-              onClick={() => onSelectChild(conversation.childId)}
-              className={`focus-ring flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition ${active ? "bg-primary text-primary-foreground" : "hover:bg-secondary/70"}`}
+              onClick={() => onSearchChange("")}
+              aria-label="Clear search"
+              className="focus-ring absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground"
             >
-              <Avatar name={conversation.childName} />
-              <span className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span className="truncate text-sm font-semibold">
-                    {conversation.childName}
-                  </span>
-                  {conversation.unreadCount > 0 && (
-                    <span
-                      className={`size-2 shrink-0 rounded-full ${active ? "bg-accent" : "bg-primary"}`}
-                      aria-label={`${conversation.unreadCount} unread`}
-                    />
-                  )}
-                </span>
-                <span
-                  className={`mt-0.5 block truncate text-xs ${active ? "text-primary-foreground/70" : "text-muted-foreground"}`}
-                >
-                  {conversation.latestMessagePreview || "No messages yet"}
-                </span>
-              </span>
-              <UnreadBadge count={conversation.unreadCount} />
+              <X size={15} />
             </button>
-          );
-        })}
+          ) : null}
+        </form>
+        <div className="mt-3 grid grid-cols-2 rounded-xl bg-secondary/60 p-1">
+          {[false, true].map((value) => (
+            <button
+              key={String(value)}
+              type="button"
+              onClick={() => onUnreadChange(value)}
+              className={`focus-ring min-h-9 rounded-lg px-3 text-xs font-semibold ${unreadOnly === value ? "bg-card text-foreground shadow-sm" : "text-muted-foreground"}`}
+              data-testid={`filter-${value ? "unread" : "all"}`}
+            >
+              {value ? "Unread" : "All"}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-2">
+        {visible.length ? (
+          <div className="space-y-1">
+            {visible.map((conversation) => {
+              const selected = conversation.id === selectedConversationId;
+              return (
+                <button
+                  type="button"
+                  key={conversation.id}
+                  onClick={() => onSelect(conversation)}
+                  data-testid={`button-inbox-conversation-${conversation.id}`}
+                  className={`focus-ring flex min-h-[5.5rem] w-full gap-3 rounded-xl px-3 py-3 text-left transition ${selected ? "bg-primary text-primary-foreground" : conversation.unreadCount ? "bg-accent/10 hover:bg-accent/15" : "hover:bg-secondary/70"}`}
+                >
+                  <span
+                    className={`grid size-10 shrink-0 place-items-center rounded-full text-xs font-bold ${selected ? "bg-primary-foreground/15" : "bg-secondary text-primary"}`}
+                  >
+                    {initials(conversation.childName)}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex items-start justify-between gap-2">
+                      <span className="truncate text-sm font-bold">
+                        {conversation.childName}
+                      </span>
+                      <time
+                        className={`shrink-0 text-[10px] ${selected ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                      >
+                        {formatConversationTime(conversation.latestMessageAt)}
+                      </time>
+                    </span>
+                    <span
+                      className={`mt-0.5 block truncate text-xs ${selected ? "text-primary-foreground/75" : "text-muted-foreground"}`}
+                    >
+                      {participantLabel(conversation, currentUserId)}
+                    </span>
+                    <span className="mt-1 flex items-center gap-2">
+                      <span
+                        className={`min-w-0 flex-1 truncate text-xs ${conversation.unreadCount ? "font-semibold" : "font-normal"} ${selected ? "text-primary-foreground/85" : "text-foreground/80"}`}
+                      >
+                        {conversation.latestSenderName
+                          ? `${conversation.latestSenderName}: `
+                          : ""}
+                        {conversation.latestMessagePreview || "No messages yet"}
+                      </span>
+                      {conversation.unreadCount ? (
+                        <span
+                          className={`inline-flex min-w-5 shrink-0 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold ${selected ? "bg-accent text-accent-foreground" : "bg-primary text-primary-foreground"}`}
+                        >
+                          {conversation.unreadCount > 99
+                            ? "99+"
+                            : conversation.unreadCount}
+                        </span>
+                      ) : null}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid min-h-56 place-items-center px-5 text-center">
+            <div>
+              <MessageCircle
+                size={26}
+                className="mx-auto text-muted-foreground/60"
+              />
+              <p className="mt-3 text-sm font-semibold">
+                {unreadOnly ? "No unread messages" : "No messages yet"}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {unreadOnly
+                  ? "New care-team messages will appear here."
+                  : "Messages with your students’ care teams will appear here."}
+              </p>
+            </div>
+          </div>
+        )}
       </div>
     </aside>
   );
 }
 
-function MessageItem({
-  message,
-  childName,
-  onMarkRead,
-  markingRead,
-  onOpenProfile,
-}: {
-  message: InboxMessage;
-  childName: string;
-  onMarkRead: (messageId: number) => void;
-  markingRead: boolean;
-  onOpenProfile: (childId: number) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const config = MESSAGE_TYPE_CONFIG[message.messageType];
-  const Icon = config.icon;
-  const hasMore = message.body.length > 140 || message.body.includes("\n");
-  const toggleExpanded = () => {
-    const willExpand = !expanded;
-    setExpanded(willExpand);
-    if (willExpand && !message.read) onMarkRead(message.id);
-  };
-  return (
-    <article
-      data-testid={`message-item-${message.id}`}
-      className={`relative flex min-w-0 gap-3 overflow-hidden rounded-2xl border p-4 transition sm:gap-4 sm:p-5 ${message.read ? config.card : "border-primary/35 bg-secondary/35 shadow-sm"}`}
-    >
-      {!message.read && (
-        <span
-          aria-hidden="true"
-          className="absolute inset-y-0 left-0 w-1 bg-accent"
-        />
-      )}
-      <Avatar name={message.senderName} />
-      <div className="min-w-0 flex-1">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <span
-                className={`text-sm text-foreground ${message.read ? "font-semibold" : "font-bold"}`}
-              >
-                {message.senderName}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {message.senderRole}
-              </span>
-              {!message.read && (
-                <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-accent-foreground">
-                  Unread
-                </span>
-              )}
-            </div>
-            <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-2">
-              <span
-                className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase ${config.accent}`}
-              >
-                <Icon size={13} /> {config.label}
-              </span>
-              <button
-                type="button"
-                onClick={() => {
-                  if (!message.read) onMarkRead(message.id);
-                  onOpenProfile(message.childId);
-                }}
-                className="focus-ring max-w-full truncate rounded-full bg-secondary px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/10"
-                data-testid={`link-message-child-profile-${message.id}`}
-              >
-                {childName}
-              </button>
-            </div>
-          </div>
-          <time
-            dateTime={message.createdAt}
-            className="shrink-0 text-xs font-medium text-muted-foreground"
-          >
-            {formatDate(message.createdAt)}
-          </time>
-        </div>
-        <p
-          className={`mt-3 whitespace-pre-wrap text-sm leading-relaxed text-foreground ${!expanded && hasMore ? "line-clamp-2" : ""}`}
-        >
-          {message.body}
-        </p>
-        <div className="mt-4 flex flex-col gap-3 border-t border-border/50 pt-3 sm:flex-row sm:items-center sm:justify-between">
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Users size={13} /> {childName}'s care team
-          </span>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
-            {(hasMore || !message.read) && (
-              <button
-                type="button"
-                aria-expanded={expanded}
-                data-testid={`button-open-message-${message.id}`}
-                onClick={toggleExpanded}
-                className={`focus-ring inline-flex min-h-10 items-center justify-center gap-1 rounded-lg px-3 text-xs font-semibold text-foreground hover:bg-secondary ${message.read ? "col-span-2 sm:col-span-1" : ""}`}
-              >
-                {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                {expanded ? "Show less" : "Open message"}
-              </button>
-            )}
-            {!message.read && (
-              <button
-                type="button"
-                data-testid={`button-mark-message-read-${message.id}`}
-                onClick={() => onMarkRead(message.id)}
-                disabled={markingRead}
-                className="focus-ring inline-flex min-h-10 items-center justify-center gap-1 rounded-lg px-3 text-xs font-semibold text-primary hover:bg-secondary disabled:opacity-50"
-              >
-                <Check size={13} /> Mark read
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function Composer({
-  children,
-  selectedChildId,
+function NewConversation({
+  inbox,
   sending,
   error,
+  onCancel,
   onSend,
 }: {
-  children: InboxConversation[];
-  selectedChildId?: number;
+  inbox: TeamInbox;
   sending: boolean;
   error?: string;
-  onSend: (input: { childId: number; body: string }) => void;
+  onCancel: () => void;
+  onSend: TeamInboxPageProps["onSend"];
 }) {
-  const [text, setText] = useState("");
-  const [childId, setChildId] = useState<number | undefined>(selectedChildId);
-  useEffect(
-    () => setChildId(selectedChildId ?? children[0]?.childId),
-    [selectedChildId, children],
+  const [childId, setChildId] = useState(inbox.children[0]?.childId ?? 0);
+  const [recipientIds, setRecipientIds] = useState<string[]>([]);
+  const [body, setBody] = useState("");
+  const recipients = useMemo(
+    () => inbox.members.filter((member) => member.childId === childId),
+    [childId, inbox.members],
   );
-  const handleSubmit = (event?: React.FormEvent) => {
-    event?.preventDefault();
-    if (!text.trim() || !childId || sending) return;
-    onSend({ childId, body: text.trim() });
-    setText("");
-  };
+
+  useEffect(() => {
+    const slpIds = recipients
+      .filter((recipient) => recipient.role === "SLP")
+      .map((recipient) => recipient.userId);
+    setRecipientIds(slpIds);
+  }, [recipients]);
+
   return (
-    <section
-      className="rounded-3xl border border-border bg-card p-4 soft-shadow sm:p-6"
-      data-testid="composer-container"
-    >
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <section className="flex min-h-[32rem] flex-col rounded-2xl border border-border bg-card soft-shadow lg:h-[calc(100dvh-13rem)] lg:max-h-[48rem]">
+      <header className="flex items-center gap-3 border-b border-border p-4 sm:p-5">
+        <button
+          type="button"
+          onClick={onCancel}
+          aria-label="Back to conversations"
+          className="focus-ring grid size-11 shrink-0 place-items-center rounded-xl hover:bg-secondary lg:hidden"
+        >
+          <ArrowLeft size={19} />
+        </button>
         <div>
-          <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
-            Quick compose
+          <p className="mono text-[10px] font-bold uppercase text-muted-foreground">
+            Care-team message
           </p>
-          <h2 className="serif mt-1 text-xl font-semibold">
-            Message a care team
-          </h2>
+          <h2 className="serif mt-1 text-2xl font-semibold">New message</h2>
         </div>
-      </div>
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <label
-          className="text-sm font-semibold text-foreground"
-          htmlFor="message-child"
-        >
-          Share with
-        </label>
-        <select
-          id="message-child"
-          data-testid="select-compose-child"
-          value={childId ?? ""}
-          onChange={(event) => setChildId(Number(event.target.value))}
-          className="focus-ring w-full rounded-xl border border-border bg-background px-3 py-2.5 text-sm"
-          disabled={sending || !children.length}
-        >
-          {children.length ? (
-            children.map((child) => (
+      </header>
+      <form
+        className="flex flex-1 flex-col gap-5 overflow-y-auto p-4 sm:p-6"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!childId || !recipientIds.length || !body.trim()) return;
+          onSend(
+            {
+              childId,
+              recipientUserIds: recipientIds,
+              body: body.trim(),
+              messageType: "message",
+            },
+            { onSuccess: () => setBody("") },
+          );
+        }}
+      >
+        <label className="grid gap-2 text-sm font-semibold">
+          Student
+          <select
+            value={childId || ""}
+            onChange={(event) => setChildId(Number(event.target.value))}
+            className="focus-ring min-h-12 w-full rounded-xl border border-border bg-background px-3"
+            data-testid="select-message-child"
+          >
+            {inbox.children.map((child) => (
               <option key={child.childId} value={child.childId}>
-                {child.childName}'s entire care team
+                {child.childName}
               </option>
-            ))
-          ) : (
-            <option value="">No authorized child teams</option>
-          )}
-        </select>
-        <label htmlFor="message-input" className="sr-only">
-          Message the entire team
+            ))}
+          </select>
         </label>
-        <textarea
-          id="message-input"
-          data-testid="input-message-body"
-          value={text}
-          onChange={(event) => setText(event.target.value)}
-          placeholder="Share an update, ask a question, or celebrate progress…"
-          className="focus-ring min-h-[112px] w-full resize-none rounded-xl border border-border/50 bg-secondary/30 p-4 text-sm placeholder:text-muted-foreground hover:border-border focus:bg-background"
-          disabled={sending || !children.length}
-        />
-        <div className="flex flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-4">
-          <span className="flex items-center gap-2 rounded-lg border border-border/50 bg-secondary/50 px-3 py-1.5 text-xs text-muted-foreground">
-            <Users size={14} className="text-primary/70" /> Shared with the
-            entire selected care team
-          </span>
-          <div className="flex w-full items-center gap-3 sm:w-auto">
-            {error && (
-              <span className="flex items-center gap-1.5 rounded-lg bg-destructive/10 px-3 py-1.5 text-xs font-medium text-destructive">
-                <AlertCircle size={14} /> Failed to send
-              </span>
-            )}
-            <button
-              type="submit"
-              data-testid="button-send-message"
-              disabled={!text.trim() || !childId || sending}
-              className="focus-ring inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_10px_20px_-14px_hsl(var(--brand-forest-950)/.9)] transition hover:-translate-y-0.5 hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50 sm:w-auto"
-            >
-              {sending ? (
-                <Loader2 size={16} className="animate-spin" />
-              ) : (
-                <Send size={16} />
-              )}{" "}
-              Send message
-            </button>
-          </div>
+        <fieldset className="grid gap-2">
+          <legend className="mb-2 text-sm font-semibold">To</legend>
+          {recipients.length ? (
+            <div className="grid gap-2 sm:grid-cols-2">
+              {recipients.map((recipient) => {
+                const checked = recipientIds.includes(recipient.userId);
+                return (
+                  <label
+                    key={recipient.userId}
+                    className={`flex min-h-12 cursor-pointer items-center gap-3 rounded-xl border px-3 py-2 ${checked ? "border-primary bg-secondary/70" : "border-border bg-background"}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() =>
+                        setRecipientIds((current) =>
+                          checked
+                            ? current.filter((id) => id !== recipient.userId)
+                            : [...current, recipient.userId],
+                        )
+                      }
+                      className="size-5 accent-primary"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">
+                        {recipient.name}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {recipient.role}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          ) : (
+            <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+              No authorized recipients are assigned to this student yet.
+            </p>
+          )}
+        </fieldset>
+        <label className="grid flex-1 gap-2 text-sm font-semibold">
+          Message
+          <textarea
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            placeholder="Write a message…"
+            className="focus-ring min-h-36 w-full resize-none rounded-xl border border-border bg-background p-3 text-sm font-normal"
+            data-testid="textarea-new-message"
+          />
+        </label>
+        {error ? <p className="text-sm font-medium text-destructive">{error}</p> : null}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="focus-ring min-h-11 rounded-xl px-4 text-sm font-semibold hover:bg-secondary"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            disabled={sending || !childId || !recipientIds.length || !body.trim()}
+            className="focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+            data-testid="button-send-new-message"
+          >
+            {sending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+            Send
+          </button>
         </div>
       </form>
     </section>
   );
 }
 
+function ConversationThread({
+  conversation,
+  messages,
+  currentUserId,
+  sending,
+  error,
+  refreshError,
+  onRetry,
+  onBack,
+  onOpenProfile,
+  onSend,
+}: {
+  conversation: TeamInboxConversation;
+  messages: TeamMessage[];
+  currentUserId: string;
+  sending: boolean;
+  error?: string;
+  refreshError?: string;
+  onRetry: () => void;
+  onBack: () => void;
+  onOpenProfile: (childId: number) => void;
+  onSend: TeamInboxPageProps["onSend"];
+}) {
+  const [body, setBody] = useState("");
+  const endRef = useRef<HTMLDivElement>(null);
+  const others = conversation.participants.filter(
+    (participant) => participant.userId !== currentUserId,
+  );
+
+  useEffect(() => {
+    endRef.current?.scrollIntoView({ block: "end" });
+  }, [conversation.id, messages.length]);
+
+  return (
+    <section
+      className="flex min-h-[32rem] flex-col overflow-hidden rounded-2xl border border-border bg-card soft-shadow lg:h-[calc(100dvh-13rem)] lg:max-h-[48rem]"
+      data-testid="inbox-conversation-thread"
+    >
+      <header className="flex items-center gap-3 border-b border-border p-3 sm:p-4">
+        <button
+          type="button"
+          onClick={onBack}
+          aria-label="Back to conversations"
+          className="focus-ring grid size-11 shrink-0 place-items-center rounded-xl hover:bg-secondary lg:hidden"
+          data-testid="button-back-to-inbox"
+        >
+          <ArrowLeft size={19} />
+        </button>
+        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-secondary text-xs font-bold text-primary">
+          {initials(conversation.childName)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h2 className="truncate text-base font-bold">{conversation.childName}</h2>
+          <p className="truncate text-xs text-muted-foreground">
+            {others.length
+              ? others.map((participant) => `${participant.name} (${participant.role})`).join(", ")
+              : "Care team"}
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() => onOpenProfile(conversation.childId)}
+          className="focus-ring grid size-11 shrink-0 place-items-center rounded-xl border border-border hover:bg-secondary"
+          aria-label={`View ${conversation.childName}'s profile`}
+          title="View student profile"
+        >
+          <UserRound size={18} />
+        </button>
+      </header>
+      {refreshError ? (
+        <div
+          className="flex flex-wrap items-center justify-between gap-2 border-b border-destructive/20 bg-destructive/5 px-3 py-2 text-xs text-destructive sm:px-4"
+          role="status"
+        >
+          <span>{refreshError} The open conversation and your draft were preserved.</span>
+          <button
+            type="button"
+            onClick={onRetry}
+            className="focus-ring min-h-9 rounded-lg px-3 font-semibold hover:bg-destructive/10"
+          >
+            Try again
+          </button>
+        </div>
+      ) : null}
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-secondary/20 p-3 sm:p-5">
+        {messages.length ? (
+          <div className="space-y-4">
+            {messages.map((message) => {
+              const mine = message.senderUserId === currentUserId;
+              return (
+                <article
+                  key={message.id}
+                  className={`flex ${mine ? "justify-end" : "justify-start"}`}
+                  data-testid={`thread-message-${message.id}`}
+                >
+                  <div
+                    className={`max-w-[88%] rounded-2xl px-4 py-3 sm:max-w-[75%] ${mine ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm border border-border bg-card text-foreground"}`}
+                  >
+                    <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+                      <span className="text-xs font-bold">{mine ? "You" : message.senderName}</span>
+                      {!mine ? <span className="text-[10px] text-muted-foreground">{message.senderRole}</span> : null}
+                    </div>
+                    <p className="mt-1 whitespace-pre-wrap break-words text-sm leading-6">{message.body}</p>
+                    <time
+                      dateTime={message.createdAt}
+                      className={`mt-1.5 block text-right text-[10px] ${mine ? "text-primary-foreground/70" : "text-muted-foreground"}`}
+                    >
+                      {formatMessageTime(message.createdAt)}
+                    </time>
+                  </div>
+                </article>
+              );
+            })}
+            <div ref={endRef} />
+          </div>
+        ) : (
+          <div className="grid h-full min-h-52 place-items-center text-center">
+            <div>
+              <MessageCircle size={27} className="mx-auto text-muted-foreground/60" />
+              <p className="mt-3 text-sm font-semibold">No messages yet</p>
+              <p className="mt-1 text-xs text-muted-foreground">Start the conversation below.</p>
+            </div>
+          </div>
+        )}
+      </div>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!body.trim() || sending) return;
+          onSend(
+            {
+              childId: conversation.childId,
+              conversationId: conversation.id,
+              body: body.trim(),
+              messageType: "message",
+            },
+            { onSuccess: () => setBody("") },
+          );
+        }}
+        className="border-t border-border bg-card p-3 sm:p-4"
+      >
+        <label htmlFor="thread-reply" className="sr-only">Write a message</label>
+        <div className="flex items-end gap-2">
+          <textarea
+            id="thread-reply"
+            value={body}
+            onChange={(event) => setBody(event.target.value)}
+            placeholder="Write a message…"
+            rows={1}
+            className="focus-ring min-h-11 max-h-32 min-w-0 flex-1 resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-sm"
+            data-testid="textarea-thread-reply"
+          />
+          <button
+            type="submit"
+            disabled={!body.trim() || sending}
+            className="focus-ring grid size-11 shrink-0 place-items-center rounded-xl bg-primary text-primary-foreground disabled:opacity-50"
+            aria-label="Send message"
+            title="Send message"
+            data-testid="button-send-thread-reply"
+          >
+            {sending ? <Loader2 size={17} className="animate-spin" /> : <Send size={17} />}
+          </button>
+        </div>
+        {error ? <p className="mt-2 text-xs font-medium text-destructive">{error}</p> : null}
+      </form>
+    </section>
+  );
+}
+
+function EmptyThread({ onCompose }: { onCompose: () => void }) {
+  return (
+    <section className="hidden min-h-[32rem] place-items-center rounded-2xl border border-border bg-card p-6 text-center soft-shadow lg:grid lg:h-[calc(100dvh-13rem)] lg:max-h-[48rem]">
+      <div className="max-w-sm">
+        <span className="mx-auto grid size-12 place-items-center rounded-2xl bg-secondary text-primary">
+          <Users size={22} />
+        </span>
+        <h2 className="serif mt-4 text-2xl font-semibold">Select a conversation</h2>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Open a thread to read and reply, or start a message with an authorized member of a student’s care team.
+        </p>
+        <button
+          type="button"
+          onClick={onCompose}
+          className="focus-ring mt-5 inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+        >
+          <Plus size={17} /> New message
+        </button>
+      </div>
+    </section>
+  );
+}
+
 export function TeamInboxPage({
+  selectedConversationId,
   selectedChildId,
   searchTerm,
   inbox,
   loading,
+  loadError,
   sending,
   markingRead,
   sendError,
-  onSelectChild,
+  onSelectConversation,
   onSearch,
+  onRetry,
   onMarkRead,
   onSend,
   onOpenProfile,
 }: TeamInboxPageProps) {
-  const [activeTab, setActiveTab] = useState<TabType>("All");
   const [search, setSearch] = useState(searchTerm);
+  const [unreadOnly, setUnreadOnly] = useState(false);
+  const [composing, setComposing] = useState(false);
   useEffect(() => setSearch(searchTerm), [searchTerm]);
-  const childNameById = useMemo(
+
+  const activeConversation = useMemo(
     () =>
-      new Map(
-        (inbox?.children ?? []).map((child) => [
-          child.childId,
-          child.childName,
-        ]),
+      inbox?.conversations.find(
+        (conversation) => conversation.id === selectedConversationId,
       ),
-    [inbox?.children],
+    [inbox?.conversations, selectedConversationId],
   );
-  const filteredMessages = useMemo(
+  const activeMessages = useMemo(
     () =>
       (inbox?.messages ?? []).filter(
-        (message) =>
-          activeTab === "All" ||
-          message.messageType === activeTab.slice(0, -1).toLowerCase(),
+        (message) => message.conversationId === activeConversation?.id,
       ),
-    [activeTab, inbox?.messages],
+    [activeConversation?.id, inbox?.messages],
   );
-  const unreadInView = filteredMessages
-    .filter((message) => !message.read)
+  const unreadMessageIds = activeMessages
+    .filter(
+      (message) =>
+        !message.read && message.senderUserId !== inbox?.currentUserId,
+    )
     .map((message) => message.id);
-  const chooseConversation = (childId?: number) => onSelectChild(childId);
+  const unreadSignature = unreadMessageIds.join(":");
+
+  useEffect(() => {
+    if (activeConversation && unreadMessageIds.length && !markingRead) {
+      onMarkRead(unreadMessageIds);
+    }
+    // The ID signature prevents another call after the read-state refetch.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConversation?.id, unreadSignature]);
+
   if (loading && !inbox) return <LoadingState />;
-  return (
-    <div
-      className="mx-auto max-w-7xl animate-rise"
-      data-testid="team-inbox-page"
-    >
-      <div className="mb-7 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <p className="mono mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
-            Care coordination
-          </p>
-          <h1 className="serif text-3xl font-semibold tracking-tight text-foreground md:text-4xl">
-            Messages
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            A private Inbox for your authorized child care teams. Every
-            conversation stays attached to one child.
-          </p>
-        </div>
-        {(inbox?.totalUnread ?? 0) > 0 ? (
-          <div className="rounded-2xl border border-primary/15 bg-secondary/40 px-4 py-3 text-sm">
-            <span className="font-semibold text-primary">
-              {inbox?.totalUnread}
-            </span>{" "}
-            <span className="text-muted-foreground">
-              unread message{inbox?.totalUnread === 1 ? "" : "s"}
-            </span>
-          </div>
-        ) : (
-          <div className="inline-flex items-center gap-2 rounded-xl bg-secondary/35 px-3 py-2 text-xs font-semibold text-muted-foreground">
-            <Check size={14} className="text-primary" /> All caught up
-          </div>
-        )}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[285px_minmax(0,1fr)]">
-        <ConversationList
-          conversations={inbox?.children ?? []}
-          selectedChildId={selectedChildId}
-          onSelectChild={chooseConversation}
-        />
-        <div className="min-w-0 space-y-6">
-          <section className="rounded-3xl border border-border bg-card p-4 soft-shadow sm:p-6">
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                onSearch(search.trim());
-              }}
-              className="flex flex-col gap-2 sm:flex-row"
-            >
-              <label htmlFor="inbox-search" className="sr-only">
-                Search messages
-              </label>
-              <div className="relative min-w-0 flex-1">
-                <Search
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-                  size={17}
-                />
-                <input
-                  id="inbox-search"
-                  data-testid="input-inbox-search"
-                  value={search}
-                  onChange={(event) => setSearch(event.target.value)}
-                  placeholder="Search messages, child, or sender"
-                  className="focus-ring w-full rounded-xl border border-border bg-background py-2.5 pl-10 pr-9 text-sm"
-                />
-                <button
-                  type="button"
-                  aria-label="Clear message search"
-                  onClick={() => {
-                    setSearch("");
-                    onSearch("");
-                  }}
-                  className={`focus-ring absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary ${search ? "" : "invisible"}`}
-                >
-                  <X size={15} />
-                </button>
-              </div>
-              <button
-                type="submit"
-                data-testid="button-search-inbox"
-                className="focus-ring min-h-11 w-full rounded-xl bg-secondary px-4 text-sm font-semibold text-primary hover:bg-secondary/75 sm:w-auto"
-              >
-                Search
-              </button>
-            </form>
-            <div
-              role="tablist"
-              aria-label="Message filters"
-              className="mt-5 flex gap-2 overflow-x-auto border-b border-border/50 pb-4 scrollbar-none"
-            >
-              {TABS.map((tab) => (
-                <button
-                  key={tab}
-                  role="tab"
-                  aria-selected={activeTab === tab}
-                  data-testid={`tab-filter-${tab.toLowerCase()}`}
-                  onClick={() => setActiveTab(tab)}
-                  className={`focus-ring whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${activeTab === tab ? "bg-primary text-primary-foreground" : "bg-secondary/50 text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
-                >
-                  {tab}
-                </button>
-              ))}
-            </div>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-              <p className="text-sm text-muted-foreground">
-                {selectedChildId
-                  ? `Showing ${childNameById.get(selectedChildId) ?? "selected child"}’s team messages`
-                  : "Showing messages across your authorized children"}
-              </p>
-              {unreadInView.length > 0 && (
-                <button
-                  type="button"
-                  data-testid="button-mark-visible-read"
-                  onClick={() => onMarkRead(unreadInView)}
-                  disabled={markingRead}
-                  className="focus-ring inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg px-3 text-xs font-semibold text-primary hover:bg-secondary disabled:opacity-50 sm:w-auto"
-                >
-                  <Check size={14} /> Mark shown as read
-                </button>
-              )}
-            </div>
-            <div className="mt-6 space-y-5" data-testid="inbox-message-list">
-              {filteredMessages.length ? (
-                filteredMessages.map((message) => (
-                  <MessageItem
-                    key={message.id}
-                    message={message}
-                    childName={
-                      childNameById.get(message.childId) ?? "Child care team"
-                    }
-                    onMarkRead={(messageId) => onMarkRead([messageId])}
-                    markingRead={markingRead}
-                    onOpenProfile={onOpenProfile}
-                  />
-                ))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-border py-14 text-center text-muted-foreground">
-                  <MessageCircle
-                    className="mx-auto mb-3 opacity-50"
-                    size={25}
-                  />
-                  <p className="text-sm font-semibold text-foreground">
-                    No messages found
-                  </p>
-                  <p className="mt-1 text-xs">
-                    {searchTerm
-                      ? "Try another search term."
-                      : "When the team shares a message, it will appear here."}
-                  </p>
-                </div>
-              )}
-            </div>
-          </section>
-          <Composer
-            children={inbox?.children ?? []}
-            selectedChildId={selectedChildId}
-            sending={sending}
-            error={sendError}
-            onSend={onSend}
-          />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export interface CaseloadTeamInboxProps {
-  title?: string;
-  inbox?: TeamInbox;
-  loading: boolean;
-  error?: string;
-  sending: boolean;
-  markingRead: boolean;
-  searchTerm: string;
-  selectedChildId?: number;
-  selectedRole?: string;
-  onSelectChild: (childId?: number) => void;
-  onSelectRole: (role?: string) => void;
-  onSearch: (search: string) => void;
-  onMarkRead: (messageIds: number[]) => void;
-  onReply: (input: { childId: number; body: string }) => void;
-  onOpenProfile: (childId: number) => void;
-}
-
-const CASELOAD_ROLE_OPTIONS = [
-  "SLP",
-  "Parent",
-  "Teacher",
-  "OT",
-  "Administrator",
-] as const;
-
-function CompactMessageItem({
-  message,
-  childName,
-  markingRead,
-  onMarkRead,
-  onReply,
-  onOpenProfile,
-  sending,
-  error,
-}: {
-  message: InboxMessage;
-  childName: string;
-  markingRead: boolean;
-  onMarkRead: (id: number) => void;
-  onReply: (input: { childId: number; body: string }) => void;
-  onOpenProfile: (childId: number) => void;
-  sending: boolean;
-  error?: string;
-}) {
-  const [isReplying, setIsReplying] = useState(false);
-  const [replyText, setReplyText] = useState("");
-
-  const handleReplySubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!replyText.trim() || sending) return;
-    onReply({ childId: message.childId, body: replyText.trim() });
-    setReplyText("");
-    setIsReplying(false);
-  };
-
-  const config = MESSAGE_TYPE_CONFIG[message.messageType];
-  const Icon = config.icon;
-
-  return (
-    <article
-      data-testid={`compact-message-${message.id}`}
-      className={`flex flex-col gap-3 rounded-2xl border p-4 transition ${message.read ? "bg-card border-border/50 hover:border-border" : "bg-accent/5 border-accent/20 hover:border-accent/40"}`}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex items-start gap-3 min-w-0">
-          <Avatar name={message.senderName} />
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="text-sm font-semibold truncate text-foreground">
-                {message.senderName}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {message.senderRole}
-              </span>
-            </div>
-            <div className="flex flex-wrap items-center gap-2 mt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  if (!message.read) onMarkRead(message.id);
-                  onOpenProfile(message.childId);
-                }}
-                className="focus-ring rounded bg-secondary px-2 py-0.5 text-[10px] font-bold text-primary hover:bg-primary/10 transition truncate max-w-[140px]"
-                data-testid={`link-child-profile-${message.id}`}
-              >
-                {childName}
-              </button>
-              <span className="text-xs font-medium text-muted-foreground">
-                {formatDate(message.createdAt)}
-              </span>
-              {!message.read && (
-                <span className="rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-accent-foreground uppercase tracking-wider">
-                  Unread
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        {message.messageType !== "message" && (
-          <div
-            className={`shrink-0 flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest ${config.accent}`}
-          >
-            <Icon size={14} />
-            <span className="hidden sm:inline">{config.label}</span>
-          </div>
-        )}
-      </div>
-
-      <div className="text-sm leading-relaxed text-foreground whitespace-pre-wrap sm:pl-13">
-        {message.body}
-      </div>
-
-      <div className="flex flex-wrap items-center justify-between gap-3 pt-3 mt-1 border-t border-border/50 sm:pl-13">
-        <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Users size={13} className="opacity-70" />
-          {message.messageType === "notification"
-            ? "Child update"
-            : "Team visible"}
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              if (!message.read) onMarkRead(message.id);
-              setIsReplying(!isReplying);
-            }}
-            className={`focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition ${isReplying ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary hover:text-foreground"}`}
-            data-testid={`button-reply-${message.id}`}
-          >
-            <MessageCircle size={14} /> Reply
-          </button>
-          {!message.read && (
-            <button
-              type="button"
-              data-testid={`button-mark-read-${message.id}`}
-              onClick={() => onMarkRead(message.id)}
-              disabled={markingRead}
-              className="focus-ring inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-primary hover:bg-secondary disabled:opacity-50 transition"
-            >
-              <Check size={14} /> Mark read
-            </button>
-          )}
-        </div>
-      </div>
-
-      {isReplying && (
-        <form
-          onSubmit={handleReplySubmit}
-          className="mt-2 sm:pl-13 flex flex-col gap-3 animate-rise"
-        >
-          <label htmlFor={`reply-input-${message.id}`} className="sr-only">
-            Reply to {message.senderName}
-          </label>
-          <textarea
-            id={`reply-input-${message.id}`}
-            autoFocus
-            value={replyText}
-            onChange={(e) => setReplyText(e.target.value)}
-            placeholder={`Reply to ${message.senderName}...`}
-            className="focus-ring min-h-[80px] w-full resize-none rounded-xl border border-border/50 bg-secondary/30 p-3 text-sm placeholder:text-muted-foreground hover:border-border focus:bg-background"
-            disabled={sending}
-            data-testid={`input-reply-${message.id}`}
-          />
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[10px] uppercase tracking-widest font-bold text-muted-foreground hidden sm:inline">
-              Shared with {childName}'s team
-            </span>
-            <div className="flex items-center justify-end gap-2 flex-1">
-              {error && (
-                <span className="text-xs text-destructive flex items-center gap-1 font-medium bg-destructive/10 px-2 py-1 rounded-md">
-                  <AlertCircle size={12} /> Error
-                </span>
-              )}
-              <button
-                type="button"
-                onClick={() => setIsReplying(false)}
-                className="focus-ring px-3 py-2 text-xs font-semibold text-muted-foreground hover:text-foreground rounded-lg transition hover:bg-secondary"
-                data-testid={`button-cancel-reply-${message.id}`}
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={!replyText.trim() || sending}
-                className="focus-ring inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-xs font-semibold text-primary-foreground hover:bg-primary/90 disabled:opacity-50 shadow-sm transition hover:-translate-y-0.5"
-                data-testid={`button-send-reply-${message.id}`}
-              >
-                {sending ? (
-                  <Loader2 size={14} className="animate-spin" />
-                ) : (
-                  <Send size={14} />
-                )}{" "}
-                Send
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
-    </article>
-  );
-}
-
-export function CaseloadTeamInbox({
-  title = "Team Inbox",
-  inbox,
-  loading,
-  error,
-  sending,
-  markingRead,
-  searchTerm,
-  selectedChildId,
-  selectedRole,
-  onSelectChild,
-  onSelectRole,
-  onSearch,
-  onMarkRead,
-  onReply,
-  onOpenProfile,
-}: CaseloadTeamInboxProps) {
-  const [localSearch, setLocalSearch] = useState(searchTerm);
-  useEffect(() => setLocalSearch(searchTerm), [searchTerm]);
-
-  const childNameById = useMemo(
-    () =>
-      new Map(
-        (inbox?.children ?? []).map((child) => [
-          child.childId,
-          child.childName,
-        ]),
-      ),
-    [inbox?.children],
-  );
-
-  const filteredMessages = useMemo(() => {
-    return (inbox?.messages ?? []).filter((m) => {
-      if (selectedChildId && m.childId !== selectedChildId) return false;
-      if (selectedRole && m.senderRole !== selectedRole) return false;
-      if (searchTerm) {
-        const term = searchTerm.toLowerCase();
-        return (
-          m.body.toLowerCase().includes(term) ||
-          m.senderName.toLowerCase().includes(term) ||
-          (childNameById.get(m.childId) ?? "").toLowerCase().includes(term)
-        );
-      }
-      return true;
-    });
-  }, [
-    inbox?.messages,
-    selectedChildId,
-    selectedRole,
-    searchTerm,
-    childNameById,
-  ]);
-
-  if (loading && !inbox) {
+  if (loadError && !inbox) {
     return (
-      <div
-        className="flex flex-col rounded-3xl border border-border bg-card soft-shadow h-[500px] p-6"
-        data-testid="caseload-inbox-loading"
-      >
-        <div className="flex items-center justify-between mb-6">
-          <div className="skeleton h-8 w-48 rounded-lg" />
-          <div className="flex gap-2">
-            <div className="skeleton h-8 w-32 rounded-lg" />
-            <div className="skeleton h-8 w-32 rounded-lg" />
-          </div>
-        </div>
-        <div className="skeleton h-10 w-full rounded-xl mb-6" />
-        <div className="space-y-4 flex-1 overflow-hidden">
-          {[1, 2, 3].map((i) => (
-            <div key={i} className="skeleton h-32 w-full rounded-2xl" />
-          ))}
-        </div>
+      <div className="mx-auto max-w-3xl animate-rise">
+        <ConversationLoadError
+          message={loadError}
+          onBack={() => onSelectConversation(undefined)}
+          onRetry={onRetry}
+        />
       </div>
     );
   }
+  const data: TeamInbox = inbox ?? {
+    currentUserId: "",
+    childId: selectedChildId ?? null,
+    conversations: [],
+    children: [],
+    members: [],
+    messages: [],
+    totalUnread: 0,
+  };
+  const showDetail = Boolean(
+    selectedConversationId || activeConversation || composing,
+  );
 
   return (
-    <section
-      className="flex h-[min(600px,78dvh)] min-h-[28rem] flex-col rounded-3xl border border-border bg-card soft-shadow"
-      data-testid="caseload-team-inbox"
-    >
-      <header className="border-b border-border/50 p-4 sm:p-5">
-        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <h2 className="serif text-xl font-semibold text-foreground">
-              {title}
-            </h2>
-            {inbox && inbox.totalUnread > 0 && (
-              <span
-                className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-bold text-accent-foreground tracking-wider uppercase"
-                data-testid="badge-total-unread"
-              >
-                {inbox.totalUnread} new
-              </span>
-            )}
-          </div>
-          <div className="grid w-full grid-cols-1 gap-2 sm:w-auto sm:grid-cols-2">
-            <select
-              value={selectedChildId ?? ""}
-              onChange={(e) =>
-                onSelectChild(
-                  e.target.value ? Number(e.target.value) : undefined,
-                )
-              }
-              className="focus-ring min-h-11 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium transition hover:border-border/80"
-              data-testid="select-caseload-child"
-            >
-              <option value="">All children</option>
-              {inbox?.children.map((c) => (
-                <option key={c.childId} value={c.childId}>
-                  {c.childName}
-                </option>
-              ))}
-            </select>
-
-            <select
-              value={selectedRole ?? ""}
-              onChange={(e) =>
-                onSelectRole(e.target.value ? e.target.value : undefined)
-              }
-              className="focus-ring min-h-11 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm font-medium transition hover:border-border/80"
-              data-testid="select-caseload-role"
-            >
-              <option value="">All roles</option>
-              {CASELOAD_ROLE_OPTIONS.map((role) => (
-                <option key={role} value={role}>
-                  {role}
-                </option>
-              ))}
-            </select>
-          </div>
+    <div className="mx-auto max-w-7xl animate-rise" data-testid="team-inbox-page">
+      <header className="mb-5 flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="mono text-[10px] font-bold uppercase text-muted-foreground">
+            Care coordination
+          </p>
+          <h1 className="serif mt-1 text-3xl font-semibold md:text-4xl">
+            Inbox
+          </h1>
         </div>
-
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            onSearch(localSearch.trim());
-          }}
-          className="flex flex-col gap-2 sm:flex-row"
-        >
-          <label htmlFor="caseload-search" className="sr-only">
-            Search messages
-          </label>
-          <div className="relative min-w-0 flex-1">
-            <Search
-              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
-              size={16}
-            />
-            <input
-              id="caseload-search"
-              data-testid="input-caseload-search"
-              value={localSearch}
-              onChange={(e) => setLocalSearch(e.target.value)}
-              placeholder="Search messages, child, or sender..."
-              className="focus-ring w-full rounded-xl border border-border bg-background py-2.5 pl-9 pr-9 text-sm transition hover:border-border/80"
-            />
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => {
-                setLocalSearch("");
-                onSearch("");
-              }}
-              className={`focus-ring absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:bg-secondary ${localSearch ? "" : "invisible"}`}
-            >
-              <X size={14} />
-            </button>
-          </div>
-          <button
-            type="submit"
-            data-testid="button-caseload-search"
-            className="focus-ring min-h-11 w-full rounded-xl bg-secondary px-4 py-2 text-sm font-semibold text-primary hover:bg-secondary/75 transition sm:w-auto"
-          >
-            Search
-          </button>
-        </form>
-      </header>
-
-      <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
-        {error && !inbox?.messages && (
-          <div
-            className="rounded-xl bg-destructive/5 p-4 text-sm text-destructive border border-destructive/20 mb-4"
-            data-testid="caseload-inbox-error"
-          >
-            <p className="font-semibold flex items-center gap-2">
-              <AlertCircle size={16} /> Failed to load messages
-            </p>
-            <p className="mt-1">{error}</p>
-          </div>
-        )}
-
-        {filteredMessages.length === 0 ? (
-          <div
-            className="flex h-full flex-col items-center justify-center text-center text-muted-foreground p-8 animate-rise"
-            data-testid="caseload-inbox-empty"
-          >
-            <div className="grid size-16 place-items-center rounded-2xl bg-secondary text-primary/40 mb-4">
-              <MessageCircle size={28} />
-            </div>
-            <p className="serif text-lg font-semibold text-foreground">
-              No messages found
-            </p>
-            <p className="mt-2 text-sm max-w-[250px] leading-relaxed">
-              {searchTerm || selectedChildId || selectedRole
-                ? "Try adjusting your filters or search term to see more."
-                : "When care teams share updates, they will appear here."}
-            </p>
-          </div>
+        {data.totalUnread ? (
+          <span className="rounded-full bg-accent px-3 py-1.5 text-xs font-bold text-accent-foreground">
+            {data.totalUnread} unread conversation{data.totalUnread === 1 ? "" : "s"}
+          </span>
         ) : (
-          filteredMessages.map((message) => (
-            <CompactMessageItem
-              key={message.id}
-              message={message}
-              childName={
-                message.childName ||
-                childNameById.get(message.childId) ||
-                "Child"
-              }
-              markingRead={markingRead}
-              onMarkRead={(id) => onMarkRead([id])}
-              onReply={onReply}
-              onOpenProfile={onOpenProfile}
-              sending={sending}
-              error={error}
-            />
-          ))
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-muted-foreground">
+            <Check size={15} className="text-primary" /> All caught up
+          </span>
+        )}
+      </header>
+      <div className="grid gap-5 lg:grid-cols-[21rem_minmax(0,1fr)]">
+        <ConversationList
+          conversations={data.conversations}
+          currentUserId={data.currentUserId}
+          selectedConversationId={selectedConversationId}
+          unreadOnly={unreadOnly}
+          search={search}
+          onSearchChange={(value) => {
+            setSearch(value);
+            if (!value) onSearch("");
+          }}
+          onSubmitSearch={() => onSearch(search.trim())}
+          onUnreadChange={setUnreadOnly}
+          onSelect={(conversation) => {
+            setComposing(false);
+            onSelectConversation(conversation.id, conversation.childId);
+          }}
+          onCompose={() => setComposing(true)}
+          hiddenOnMobile={showDetail}
+        />
+        {composing ? (
+          <NewConversation
+            inbox={data}
+            sending={sending}
+            error={sendError}
+            onCancel={() => setComposing(false)}
+            onSend={(input, callbacks) =>
+              onSend(input, {
+                onSuccess: (message) => {
+                  callbacks?.onSuccess?.(message);
+                  setComposing(false);
+                  if (message.conversationId) {
+                    onSelectConversation(
+                      message.conversationId,
+                      message.childId,
+                    );
+                  }
+                },
+              })
+            }
+          />
+        ) : activeConversation ? (
+          <ConversationThread
+            conversation={activeConversation}
+            messages={activeMessages}
+            currentUserId={data.currentUserId}
+            sending={sending}
+            error={sendError}
+            refreshError={loadError}
+            onRetry={onRetry}
+            onBack={() => onSelectConversation(undefined)}
+            onOpenProfile={onOpenProfile}
+            onSend={onSend}
+          />
+        ) : selectedConversationId && loading ? (
+          <ConversationLoadingState />
+        ) : selectedConversationId ? (
+          <ConversationLoadError
+            message={
+              loadError ??
+              "This conversation is no longer available or you do not have access to it."
+            }
+            onBack={() => onSelectConversation(undefined)}
+            onRetry={onRetry}
+          />
+        ) : (
+          <EmptyThread onCompose={() => setComposing(true)} />
         )}
       </div>
-    </section>
+    </div>
   );
 }

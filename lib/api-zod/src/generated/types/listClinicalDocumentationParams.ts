@@ -9,6 +9,7 @@ import type { ListClinicalDocumentationStatus } from './listClinicalDocumentatio
 
 export type ListClinicalDocumentationParams = {
 childId?: number;
+conversationId?: number;
 status?: ListClinicalDocumentationStatus;
 /**
  * @maxLength 240

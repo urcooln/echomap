@@ -9,6 +9,10 @@
 export interface SessionTranscriptionInput {
   /** @minLength 1 */
   audioId: string;
+  /** @nullable */
+  serviceRequirementId?: number | null;
+  /** @nullable */
+  makeupForSessionId?: number | null;
   /** Explicit clinician retry. Ordinary transcript refreshes never restart speaker processing. */
   retrySpeakerSeparation?: boolean;
 }

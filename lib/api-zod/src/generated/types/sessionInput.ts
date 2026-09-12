@@ -6,9 +6,12 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SessionGestalt } from './sessionGestalt';
+import type { SessionGoalReviewInput } from './sessionGoalReviewInput';
 
 export interface SessionInput {
   serviceRequirementId: number;
+  /** @nullable */
+  makeupForSessionId?: number | null;
   /** @minimum 0 */
   durationSeconds: number;
   gestalts: SessionGestalt[];
@@ -27,4 +30,6 @@ export interface SessionInput {
      * @items.minLength 1
      */
   calibrationAudioIds?: string[];
+  /** @maxItems 50 */
+  goalReviews?: SessionGoalReviewInput[];
 }

@@ -6,14 +6,17 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { TeamInboxChild } from './teamInboxChild';
-import type { TeamMember } from './teamMember';
+import type { TeamInboxConversation } from './teamInboxConversation';
+import type { TeamInboxParticipant } from './teamInboxParticipant';
 import type { TeamMessage } from './teamMessage';
 
 export interface TeamInbox {
+  currentUserId: string;
   /** @nullable */
   childId: number | null;
+  conversations: TeamInboxConversation[];
   children: TeamInboxChild[];
-  members: TeamMember[];
+  members: TeamInboxParticipant[];
   messages: TeamMessage[];
   totalUnread: number;
 }

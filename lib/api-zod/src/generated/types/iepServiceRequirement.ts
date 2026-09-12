@@ -29,7 +29,11 @@ export interface IepServiceRequirement {
   /** @minimum 0 */
   sessionsCompleted: number;
   /** @minimum 0 */
+  sessionsMissed: number;
+  /** @minimum 0 */
   sessionsRemaining: number;
+  /** @minimum 0 */
+  outstandingMakeups: number;
   /** @minimum 0 */
   minutesCompleted: number;
   /** @minimum 0 */

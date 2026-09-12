@@ -5,11 +5,14 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { MakeupStatus } from './makeupStatus';
 import type { ManualSessionGoalProgress } from './manualSessionGoalProgress';
+import type { MissedSessionReason } from './missedSessionReason';
 import type { RecordingConsent } from './recordingConsent';
 import type { SessionDurationSource } from './sessionDurationSource';
 import type { SessionGestalt } from './sessionGestalt';
 import type { SessionSessionMode } from './sessionSessionMode';
+import type { SessionSessionStatus } from './sessionSessionStatus';
 
 export interface Session {
   id: number;
@@ -33,6 +36,15 @@ export interface Session {
   /** @nullable */
   consent: RecordingConsent | null;
   sessionMode?: SessionSessionMode;
+  sessionStatus?: SessionSessionStatus;
+  missedReason?: MissedSessionReason | null;
+  /** @nullable */
+  missedReasonDetail?: string | null;
+  makeupStatus?: MakeupStatus | null;
+  /** @nullable */
+  makeupForSessionId?: number | null;
+  /** @nullable */
+  makeupForSessionDate?: Date | null;
   sessionDate?: Date;
   /** @nullable */
   startedAt?: Date | null;

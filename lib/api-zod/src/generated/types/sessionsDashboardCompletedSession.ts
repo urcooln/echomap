@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { SessionsDashboardCompletedSessionSessionMode } from './sessionsDashboardCompletedSessionSessionMode';
+import type { SessionsDashboardCompletedSessionSessionStatus } from './sessionsDashboardCompletedSessionSessionStatus';
 
 export interface SessionsDashboardCompletedSession {
   sessionId: number;
@@ -13,4 +14,7 @@ export interface SessionsDashboardCompletedSession {
   childName: string;
   sessionDate: Date;
   sessionMode: SessionsDashboardCompletedSessionSessionMode;
+  sessionStatus?: SessionsDashboardCompletedSessionSessionStatus;
+  /** @nullable */
+  makeupForSessionId?: number | null;
 }

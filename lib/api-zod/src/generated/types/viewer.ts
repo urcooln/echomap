@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { ViewerAccountStatus } from './viewerAccountStatus';
 import type { ViewerActualRole } from './viewerActualRole';
 import type { ViewerPreviewRole } from './viewerPreviewRole';
 import type { ViewerRole } from './viewerRole';
@@ -21,4 +22,6 @@ export interface Viewer {
   isDevelopmentDemo: boolean;
   /** @nullable */
   previewRole: ViewerPreviewRole;
+  accountStatus: ViewerAccountStatus;
+  onboardingComplete: boolean;
 }

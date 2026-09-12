@@ -31,7 +31,7 @@ export function SuperAdminRoleSwitcher({
   const setRolePreview = useSetRolePreview();
   const clearRolePreview = useClearRolePreview();
 
-  if (!viewer.isSuperAdmin) {
+  if (!viewer.isSuperAdmin || !viewer.isDevelopmentDemo) {
     return null;
   }
 
@@ -64,19 +64,19 @@ export function SuperAdminRoleSwitcher({
       <div className="relative min-w-0">
         <Eye size={15} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
         <select
-          aria-label="Select role to preview"
-          title="Preview the application as another role"
+          aria-label="Select development persona"
+          title={`Viewing as ${viewer.name} - ${viewer.role}`}
           data-testid="select-role-preview"
           value={isPreviewing ? viewer.role : ''}
           onChange={(event) => handleRoleChange(event.target.value)}
           disabled={setRolePreview.isPending}
-          className="h-11 w-[8.25rem] appearance-none rounded-md border border-input bg-card pl-8 pr-2 text-xs font-semibold text-foreground outline-none focus-ring disabled:opacity-50 sm:h-9 sm:w-[9.5rem]"
+          className="h-11 w-[11.75rem] appearance-none rounded-md border border-input bg-card pl-8 pr-2 text-xs font-semibold text-foreground outline-none focus-ring disabled:opacity-50 sm:h-9 sm:w-[14rem]"
         >
-          <option value="" disabled>Preview role</option>
-          <option value="SLP">SLP</option>
-          <option value="Parent">Parent</option>
-          <option value="Teacher">Teacher</option>
-          <option value="Administrator">Admin</option>
+          <option value="" disabled>Choose persona</option>
+          <option value="SLP">Dr. Lena Ortiz - SLP</option>
+          <option value="Teacher">Jordan Blake - Teacher</option>
+          <option value="Parent">Maya Chen - Parent</option>
+          <option value="Administrator">Demo Administrator - Admin</option>
         </select>
       </div>
       {isPreviewing && (
@@ -103,7 +103,8 @@ export function UxTestingCenter({
 }) {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
-  const canUseTestingCenter = viewer.isSuperAdmin && !viewer.isRolePreview;
+  const canUseTestingCenter =
+    viewer.isSuperAdmin && viewer.isDevelopmentDemo && !viewer.isRolePreview;
   const { data: uxTesting, isLoading, isError } = useGetAdminUxTesting({
     query: {
       queryKey: getGetAdminUxTestingQueryKey(),
@@ -147,14 +148,14 @@ export function UxTestingCenter({
     );
   }
 
-  if (!viewer.isSuperAdmin) {
+  if (!viewer.isSuperAdmin || !viewer.isDevelopmentDemo) {
     return (
       <section data-testid="status-role-restricted" className="mx-auto max-w-2xl rounded-3xl border border-border bg-card p-8 text-center soft-shadow animate-in fade-in slide-in-from-bottom-4 duration-500">
         <ShieldAlert className="mx-auto text-primary" size={30} />
         <p className="mono mt-5 text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">Restricted Access</p>
-        <h1 className="serif mt-2 text-3xl font-semibold">Super Admin Only</h1>
+        <h1 className="serif mt-2 text-3xl font-semibold">Development demo only</h1>
         <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          The UX Testing Center is only available to Super Admins for validating role experiences.
+          Persona testing is available only through the authenticated development demo session.
         </p>
         <Link href="/" data-testid="link-return-to-portal" className="mt-6 inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-[0_10px_20px_-14px_hsl(var(--brand-forest-950)/.9)] transition-all duration-200 hover:-translate-y-0.5 hover:bg-primary/90 hover:shadow-md focus-ring">
           Return to Dashboard
