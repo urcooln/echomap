@@ -2269,6 +2269,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Session"
+  /sessions/recording-detail:
+    get:
+      operationId: getSessionRecordingDetail
+      tags: [sessions]
+      summary: Get transcript metadata for a completed recorded session
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+        - in: query
+          name: sessionId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Recording and transcript details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionRecordingDetail"
+        "400": { description: Invalid child or session }
+        "403": { description: Clinician and child access required }
+        "404": { description: Recorded session not found }
   /sessions/dashboard:
     get:
       operationId: getSessionsDashboard
@@ -4922,7 +4946,7 @@ components:
         totalAttempts: { type: [number, "null"], minimum: 0 }
         promptingLevel:
           type: [string, "null"]
-          enum: [independent, minimal, moderate, maximal, total, null]
+          enum: [independent, minimal, moderate, maximal, total, na, null]
         progressNote: { type: string, maxLength: 4000 }
     SessionGoalReviewProgressStatus:
       type: string
@@ -6492,6 +6516,24 @@ components:
         goalProgress:
           type: array
           items: { $ref: "#/components/schemas/ManualSessionGoalProgress" }
+    SessionRecordingDetail:
+      type: object
+      required:
+        [
+          sessionId,
+          transcriptId,
+          transcript,
+          provider,
+          model,
+          transcriptionSucceeded,
+        ]
+      properties:
+        sessionId: { type: number }
+        transcriptId: { type: [number, "null"] }
+        transcript: { type: [string, "null"] }
+        provider: { type: [string, "null"] }
+        model: { type: [string, "null"] }
+        transcriptionSucceeded: { type: [boolean, "null"] }
     SessionReviewQueueWorkflowStatus:
       type: string
       enum:
@@ -6529,7 +6571,9 @@ components:
         sessionId: { type: number }
         childId: { type: number }
         childName: { type: string }
-        sessionDate: { type: string, format: date-time }
+        sessionDate:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
         sessionMode: { type: string, enum: [recorded, manual, missed] }
         sessionStatus: { type: string, enum: [completed, missed, scheduled] }
         makeupForSessionId: { type: [number, "null"] }
@@ -6556,7 +6600,9 @@ components:
           completedNotes,
         ]
       properties:
-        weekStart: { type: string, format: date }
+        weekStart:
+          type: string
+          pattern: '^\d{4}-\d{2}-\d{2}$'
         sessionsRecorded: { type: number, minimum: 0 }
         awaitingReview: { type: number, minimum: 0 }
         draftNotes: { type: number, minimum: 0 }
@@ -7373,11 +7419,7 @@ components:
           items: { type: string, minLength: 1, maxLength: 255 }
         body: { type: string, minLength: 1, maxLength: 4000 }
         messageType:
-          {
-            type: string,
-            enum: [message, question],
-            default: message,
-          }
+          { type: string, enum: [message, question], default: message }
     TeamMessageReadInput:
       type: object
       required: [messageIds]

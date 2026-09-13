@@ -18,4 +18,5 @@ export const ManualSessionGoalProgressInputPromptingLevel = {
   moderate: 'moderate',
   maximal: 'maximal',
   total: 'total',
+  na: 'na',
 } as const;

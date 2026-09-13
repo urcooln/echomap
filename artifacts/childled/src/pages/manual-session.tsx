@@ -3,15 +3,16 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   getGetManualSessionSetupQueryKey,
-  getGetClinicianOverviewQueryKey,
-  getGetSessionsDashboardQueryKey,
-  getListSessionsQueryKey,
   useCreateManualSession,
   useGetManualSessionSetup,
   type Child,
   type ManualSessionGoalProgressInput,
   type Session,
 } from "@workspace/api-client-react";
+import {
+  validateManualSessionGoalProgress,
+  type ManualSessionGoalProgressField,
+} from "@workspace/api-zod";
 import {
   ArrowLeft,
   Check,
@@ -29,6 +30,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { serviceTypeLabel } from "@/components/service-requirement-form";
+import { refreshSessionTrackingQueries } from "@/lib/session-query-refresh";
 
 type TimerStatus = "idle" | "running" | "paused" | "ended";
 
@@ -51,6 +53,8 @@ type GoalEntry = {
   promptingLevel: string;
   progressNote: string;
 };
+
+type GoalTouchedField = ManualSessionGoalProgressField | "promptingLevel";
 
 const emptyTimer = (
   childId: number,
@@ -94,11 +98,8 @@ const formattedDuration = (seconds: number) => {
     : `${String(minutes).padStart(2, "0")}:${String(remainingSeconds).padStart(2, "0")}`;
 };
 
-const numberOrNull = (value: string) => {
-  if (!value.trim()) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
+const goalFieldId = (goalId: number, field: ManualSessionGoalProgressField) =>
+  `manual-session-goal-${goalId}-${field}`;
 
 const statusStyle = {
   on_track: "bg-emerald-100 text-emerald-800",
@@ -142,6 +143,10 @@ export function ManualSessionTrackingPage({
   const [durationSeconds, setDurationSeconds] = useState(0);
   const [durationEdited, setDurationEdited] = useState(false);
   const [goalEntries, setGoalEntries] = useState<Record<number, GoalEntry>>({});
+  const [touchedGoalFields, setTouchedGoalFields] = useState<
+    Record<number, Partial<Record<GoalTouchedField, boolean>>>
+  >({});
+  const [showGoalErrors, setShowGoalErrors] = useState(false);
   const [note, setNote] = useState("");
   const [error, setError] = useState("");
   const [savedSession, setSavedSession] = useState<Session>();
@@ -344,6 +349,12 @@ export function ManualSessionTrackingPage({
       };
     });
 
+  const touchGoalField = (goalId: number, field: GoalTouchedField) =>
+    setTouchedGoalFields((current) => ({
+      ...current,
+      [goalId]: { ...current[goalId], [field]: true },
+    }));
+
   const completeSession = async () => {
     setError("");
     if (timer.status === "running" || timer.status === "paused") {
@@ -366,38 +377,45 @@ export function ManualSessionTrackingPage({
       setError("Add a general session note before saving.");
       return;
     }
-    const incompleteGoal = selectedGoals.find((goal) => {
-      const entry = goalEntries[goal.id]!;
-      const accuracy = numberOrNull(entry.accuracyPercent);
-      const successful = numberOrNull(entry.successfulAttempts);
-      const total = numberOrNull(entry.totalAttempts);
-      return (
-        (accuracy != null && (accuracy < 0 || accuracy > 100)) ||
-        (successful != null &&
-          (!Number.isInteger(successful) ||
-            total == null ||
-            successful > total)) ||
-        (total != null && !Number.isInteger(total)) ||
-        (accuracy == null &&
-          total == null &&
-          !entry.promptingLevel &&
-          !entry.progressNote.trim())
-      );
-    });
+    const validatedGoals = selectedGoals.map((goal) => ({
+      goal,
+      entry: goalEntries[goal.id]!,
+      validation: validateManualSessionGoalProgress(goalEntries[goal.id]!),
+    }));
+    const incompleteGoal = validatedGoals.find(
+      ({ validation }) => !validation.valid,
+    );
     if (incompleteGoal) {
+      setShowGoalErrors(true);
       setError(
-        `Add valid progress data for ${incompleteGoal.title}. Successful attempts need a whole-number total and cannot exceed it.`,
+        "Please fix the highlighted goal progress fields before saving this session.",
       );
+      const firstField = (
+        [
+          "successfulAttempts",
+          "totalAttempts",
+          "accuracyPercent",
+          "progressNote",
+        ] as const
+      ).find((field) => incompleteGoal.validation.errors[field]);
+      window.requestAnimationFrame(() => {
+        const input = firstField
+          ? document.getElementById(
+              goalFieldId(incompleteGoal.goal.id, firstField),
+            )
+          : null;
+        input?.scrollIntoView({ behavior: "smooth", block: "center" });
+        input?.focus({ preventScroll: true });
+      });
       return;
     }
-    const goals: ManualSessionGoalProgressInput[] = selectedGoals.map(
-      (goal) => {
-        const entry = goalEntries[goal.id]!;
+    const goals: ManualSessionGoalProgressInput[] = validatedGoals.map(
+      ({ goal, entry, validation }) => {
         return {
           goalId: goal.id,
-          accuracyPercent: numberOrNull(entry.accuracyPercent),
-          successfulAttempts: numberOrNull(entry.successfulAttempts),
-          totalAttempts: numberOrNull(entry.totalAttempts),
+          accuracyPercent: validation.values.accuracyPercent,
+          successfulAttempts: validation.values.successfulAttempts,
+          totalAttempts: validation.values.totalAttempts,
           promptingLevel: (entry.promptingLevel ||
             null) as ManualSessionGoalProgressInput["promptingLevel"],
           progressNote: entry.progressNote,
@@ -428,22 +446,9 @@ export function ManualSessionTrackingPage({
         },
       });
       window.localStorage.removeItem(timerStorageKey(childId));
-      setSavedSession(session);
+      await refreshSessionTrackingQueries(queryClient, childId);
       onSaved?.(session);
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: getListSessionsQueryKey({ childId }),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getGetSessionsDashboardQueryKey(),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getGetManualSessionSetupQueryKey({ childId }),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: getGetClinicianOverviewQueryKey(),
-        }),
-      ]);
+      setSavedSession(session);
     } catch (requestError: any) {
       setError(
         requestError?.data?.error ??
@@ -629,6 +634,39 @@ export function ManualSessionTrackingPage({
                 {setupQuery.data.goals.map((goal) => {
                   const entry = goalEntries[goal.id];
                   const selected = Boolean(entry?.selected);
+                  const validation = validateManualSessionGoalProgress(
+                    entry ?? {
+                      accuracyPercent: "",
+                      successfulAttempts: "",
+                      totalAttempts: "",
+                      promptingLevel: "",
+                      progressNote: "",
+                    },
+                  );
+                  const touched = touchedGoalFields[goal.id] ?? {};
+                  const attemptsTouched = Boolean(
+                    touched.successfulAttempts || touched.totalAttempts,
+                  );
+                  const showAccuracyError = Boolean(
+                    validation.errors.accuracyPercent &&
+                    (showGoalErrors || touched.accuracyPercent),
+                  );
+                  const showSuccessfulError = Boolean(
+                    validation.errors.successfulAttempts &&
+                    (showGoalErrors || attemptsTouched),
+                  );
+                  const showTotalError = Boolean(
+                    validation.errors.totalAttempts &&
+                    (showGoalErrors || attemptsTouched),
+                  );
+                  const showProgressError = Boolean(
+                    validation.errors.progressNote &&
+                    (showGoalErrors ||
+                      touched.accuracyPercent ||
+                      attemptsTouched ||
+                      touched.promptingLevel ||
+                      touched.progressNote),
+                  );
                   return (
                     <article
                       key={goal.id}
@@ -662,40 +700,109 @@ export function ManualSessionTrackingPage({
                                 Accuracy (%)
                               </span>
                               <Input
+                                id={goalFieldId(goal.id, "accuracyPercent")}
                                 type="number"
-                                inputMode="decimal"
+                                inputMode="numeric"
                                 min="0"
                                 max="100"
-                                placeholder="80"
-                                value={entry?.accuracyPercent ?? ""}
+                                step="1"
+                                placeholder={
+                                  validation.usesAttempts
+                                    ? "Calculated from attempts"
+                                    : "Enter accuracy"
+                                }
+                                value={
+                                  validation.usesAttempts
+                                    ? (validation.values.accuracyPercent ?? "")
+                                    : (entry?.accuracyPercent ?? "")
+                                }
+                                readOnly={validation.usesAttempts}
+                                aria-invalid={showAccuracyError}
+                                aria-describedby={
+                                  showAccuracyError
+                                    ? `${goalFieldId(goal.id, "accuracyPercent")}-error`
+                                    : undefined
+                                }
+                                className={
+                                  showAccuracyError
+                                    ? "border-destructive focus-visible:ring-destructive"
+                                    : undefined
+                                }
                                 onChange={(event) =>
+                                  !validation.usesAttempts &&
                                   updateGoal(goal.id, {
                                     accuracyPercent: event.target.value,
                                   })
                                 }
+                                onBlur={() =>
+                                  touchGoalField(goal.id, "accuracyPercent")
+                                }
                               />
+                              {validation.usesAttempts && (
+                                <span className="mt-1.5 block text-xs text-muted-foreground">
+                                  {validation.values.accuracyPercent == null
+                                    ? "Calculated when both attempt fields are valid."
+                                    : "Calculated automatically from attempts."}
+                                </span>
+                              )}
+                              {showAccuracyError && (
+                                <span
+                                  id={`${goalFieldId(goal.id, "accuracyPercent")}-error`}
+                                  className="mt-1.5 block text-xs font-medium text-destructive"
+                                  role="alert"
+                                >
+                                  {validation.errors.accuracyPercent}
+                                </span>
+                              )}
                             </label>
                             <label>
                               <span className="mb-1.5 block text-xs font-semibold">
                                 Prompting/support
                               </span>
                               <select
-                                className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                                className={`h-10 w-full rounded-md border border-input bg-background px-3 text-sm ${
+                                  entry?.promptingLevel
+                                    ? "text-foreground"
+                                    : "text-muted-foreground/60"
+                                }`}
                                 value={entry?.promptingLevel ?? ""}
                                 onChange={(event) =>
                                   updateGoal(goal.id, {
                                     promptingLevel: event.target.value,
                                   })
                                 }
+                                onBlur={() =>
+                                  touchGoalField(goal.id, "promptingLevel")
+                                }
                               >
-                                <option value="">Not recorded</option>
-                                <option value="independent">Independent</option>
-                                <option value="minimal">Minimal support</option>
-                                <option value="moderate">
+                                <option value="">Select prompting level</option>
+                                <option
+                                  value="independent"
+                                  className="text-foreground"
+                                >
+                                  Independent
+                                </option>
+                                <option
+                                  value="minimal"
+                                  className="text-foreground"
+                                >
+                                  Minimal support
+                                </option>
+                                <option
+                                  value="moderate"
+                                  className="text-foreground"
+                                >
                                   Moderate support
                                 </option>
-                                <option value="maximal">Maximal support</option>
-                                <option value="total">Total support</option>
+                                <option
+                                  value="maximal"
+                                  className="text-foreground"
+                                >
+                                  Maximal support
+                                </option>
+                                <option value="na" className="text-foreground">
+                                  N/A
+                                </option>
                               </select>
                             </label>
                             <label>
@@ -703,34 +810,84 @@ export function ManualSessionTrackingPage({
                                 Successful attempts
                               </span>
                               <Input
+                                id={goalFieldId(goal.id, "successfulAttempts")}
                                 type="number"
                                 inputMode="numeric"
                                 min="0"
-                                placeholder="7"
+                                step="1"
+                                placeholder="Enter successful attempts"
                                 value={entry?.successfulAttempts ?? ""}
+                                aria-invalid={showSuccessfulError}
+                                aria-describedby={
+                                  showSuccessfulError
+                                    ? `${goalFieldId(goal.id, "successfulAttempts")}-error`
+                                    : undefined
+                                }
+                                className={
+                                  showSuccessfulError
+                                    ? "border-destructive focus-visible:ring-destructive"
+                                    : undefined
+                                }
                                 onChange={(event) =>
                                   updateGoal(goal.id, {
                                     successfulAttempts: event.target.value,
                                   })
                                 }
+                                onBlur={() =>
+                                  touchGoalField(goal.id, "successfulAttempts")
+                                }
                               />
+                              {showSuccessfulError && (
+                                <span
+                                  id={`${goalFieldId(goal.id, "successfulAttempts")}-error`}
+                                  className="mt-1.5 block text-xs font-medium text-destructive"
+                                  role="alert"
+                                >
+                                  {validation.errors.successfulAttempts}
+                                </span>
+                              )}
                             </label>
                             <label>
                               <span className="mb-1.5 block text-xs font-semibold">
-                                Total attempts
+                                Total opportunities
                               </span>
                               <Input
+                                id={goalFieldId(goal.id, "totalAttempts")}
                                 type="number"
                                 inputMode="numeric"
                                 min="0"
-                                placeholder="10"
+                                step="1"
+                                placeholder="Enter total opportunities"
                                 value={entry?.totalAttempts ?? ""}
+                                aria-invalid={showTotalError}
+                                aria-describedby={
+                                  showTotalError
+                                    ? `${goalFieldId(goal.id, "totalAttempts")}-error`
+                                    : undefined
+                                }
+                                className={
+                                  showTotalError
+                                    ? "border-destructive focus-visible:ring-destructive"
+                                    : undefined
+                                }
                                 onChange={(event) =>
                                   updateGoal(goal.id, {
                                     totalAttempts: event.target.value,
                                   })
                                 }
+                                onBlur={() =>
+                                  touchGoalField(goal.id, "totalAttempts")
+                                }
                               />
+                              {showTotalError && (
+                                <span
+                                  id={`${goalFieldId(goal.id, "totalAttempts")}-error`}
+                                  className="mt-1.5 block text-xs font-medium text-destructive"
+                                  role="alert"
+                                >
+                                  {validation.errors.totalAttempts}
+                                </span>
+                              )}
                             </label>
                           </div>
                           <label className="mt-4 block">
@@ -738,6 +895,7 @@ export function ManualSessionTrackingPage({
                               Progress note
                             </span>
                             <Textarea
+                              id={goalFieldId(goal.id, "progressNote")}
                               rows={3}
                               maxLength={4000}
                               placeholder="Briefly document performance, context, or supports used."
@@ -747,7 +905,30 @@ export function ManualSessionTrackingPage({
                                   progressNote: event.target.value,
                                 })
                               }
+                              onBlur={() =>
+                                touchGoalField(goal.id, "progressNote")
+                              }
+                              aria-invalid={showProgressError}
+                              aria-describedby={
+                                showProgressError
+                                  ? `${goalFieldId(goal.id, "progressNote")}-error`
+                                  : undefined
+                              }
+                              className={
+                                showProgressError
+                                  ? "border-destructive focus-visible:ring-destructive"
+                                  : undefined
+                              }
                             />
+                            {showProgressError && (
+                              <span
+                                id={`${goalFieldId(goal.id, "progressNote")}-error`}
+                                className="mt-1.5 block text-xs font-medium text-destructive"
+                                role="alert"
+                              >
+                                {validation.errors.progressNote}
+                              </span>
+                            )}
                           </label>
                         </div>
                       )}

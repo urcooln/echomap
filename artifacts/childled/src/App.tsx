@@ -104,6 +104,7 @@ import {
   getGetRecurringLanguagePatternDetailQueryKey,
   getGetRecurringLanguagePatternsQueryKey,
   getGetSessionSoapNoteQueryKey,
+  getGetSessionRecordingDetailQueryKey,
   getGetSessionsDashboardQueryKey,
   getListSessionsQueryKey,
   getListChildrenQueryKey,
@@ -150,6 +151,7 @@ import {
   useGetRecurringLanguagePatternDetail,
   useGetRecurringLanguagePatterns,
   useGetSessionTranscriptionDraft,
+  useGetSessionRecordingDetail,
   useGetSessionsDashboard,
   useListChildren,
   useListDeletionRequests,
@@ -284,6 +286,18 @@ import {
   inboxSendFailureMessage,
   mergeInboxListWithSelectedConversation,
 } from "@/lib/inbox-state";
+import {
+  currentWeekStartKey,
+  formatSessionDate,
+  formatSessionWeek,
+  isCompletedSession,
+  isSessionInWeek,
+  sessionServiceLabel,
+  sessionSourceLabel,
+  sessionStatusLabel,
+  sortSessionsByDate,
+} from "@/lib/session-history";
+import { refreshSessionTrackingQueries } from "@/lib/session-query-refresh";
 import {
   emptySessionGoalReview,
   SessionGoalReview,
@@ -3914,19 +3928,6 @@ const makeupStatusLabel = (status: MakeupStatus) =>
     ? "Completed"
     : (makeupStatusOptions.find((option) => option.value === status)?.label ??
       status);
-
-const sessionHistoryLabel = (session: {
-  sessionMode?: string;
-  sessionStatus?: string;
-  makeupForSessionId?: number | null;
-}) =>
-  session.sessionStatus === "missed" || session.sessionMode === "missed"
-    ? "Missed Session"
-    : session.makeupForSessionId
-      ? "Makeup Session"
-      : session.sessionMode === "recorded"
-        ? "Recorded Session"
-        : "Completed Session";
 
 const inputDateToday = () => {
   const date = new Date();
@@ -8849,12 +8850,10 @@ function SettingsPage() {
     value: boolean,
   ) => {
     setSaved(false);
-    setPreferences((current) =>
-      ({
-        ...(current ?? settings.data.notificationPreferences),
-        [key]: value,
-      }),
-    );
+    setPreferences((current) => ({
+      ...(current ?? settings.data.notificationPreferences),
+      [key]: value,
+    }));
   };
   const savePreferences = () => {
     updatePreferences.mutate({ data: resolvedPreferences });
@@ -8893,7 +8892,8 @@ function SettingsPage() {
           <div>
             <p className="font-semibold text-primary">Development demo</p>
             <p className="mt-1 leading-6 text-muted-foreground">
-              This identity and its data are isolated from normal Clerk accounts.
+              This identity and its data are isolated from normal Clerk
+              accounts.
             </p>
           </div>
         </section>
@@ -8919,7 +8919,9 @@ function SettingsPage() {
           </p>
           <dl className="mt-6 grid gap-4 border-t border-primary-foreground/15 pt-5 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2">
             <div>
-              <dt className="text-xs text-primary-foreground/60">Account type</dt>
+              <dt className="text-xs text-primary-foreground/60">
+                Account type
+              </dt>
               <dd
                 data-testid="settings-account-type"
                 className="mt-1 font-semibold"
@@ -8929,7 +8931,9 @@ function SettingsPage() {
             </div>
             <div>
               <dt className="text-xs text-primary-foreground/60">Workspace</dt>
-              <dd className="mt-1 font-semibold">{identity.organizationName}</dd>
+              <dd className="mt-1 font-semibold">
+                {identity.organizationName}
+              </dd>
             </div>
           </dl>
           <p className="mt-5 text-xs leading-5 text-primary-foreground/60">
@@ -9096,7 +9100,9 @@ function SettingsPage() {
               >
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <h3 className="font-semibold text-primary">{student.name}</h3>
+                    <h3 className="font-semibold text-primary">
+                      {student.name}
+                    </h3>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       {student.childLedId}
                     </p>
@@ -9109,8 +9115,9 @@ function SettingsPage() {
                   </Link>
                 </div>
                 <p className="mt-3 text-sm text-muted-foreground">
-                  {[student.school, student.grade].filter(Boolean).join(" · ") ||
-                    "School details not provided"}
+                  {[student.school, student.grade]
+                    .filter(Boolean)
+                    .join(" · ") || "School details not provided"}
                 </p>
                 {isSlp && (
                   <div className="mt-4 border-t border-border pt-3">
@@ -9188,7 +9195,9 @@ function SettingsPage() {
             <FileText size={18} />
           </div>
           <div className="min-w-0 flex-1">
-            <h2 className="serif text-2xl font-semibold">Account and policies</h2>
+            <h2 className="serif text-2xl font-semibold">
+              Account and policies
+            </h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
               Review ChildLed policies or securely end your current session.
             </p>
@@ -18743,6 +18752,340 @@ function CareTeamInvitationForm({
   );
 }
 
+function HistoricalSessionDetail({
+  session,
+  childName,
+  loading,
+  error,
+  onBack,
+  onRetry,
+}: {
+  session?: Session;
+  childName?: string;
+  loading: boolean;
+  error: boolean;
+  onBack: () => void;
+  onRetry: () => void;
+}) {
+  const recordingDetailQuery = useGetSessionRecordingDetail(
+    {
+      childId: session?.childId ?? 0,
+      sessionId: session?.id ?? 0,
+    },
+    {
+      query: {
+        enabled: Boolean(
+          session?.childId &&
+          session.id &&
+          session.sessionMode === "recorded" &&
+          session.sessionStatus === "completed",
+        ),
+        queryKey: getGetSessionRecordingDetailQueryKey({
+          childId: session?.childId ?? 0,
+          sessionId: session?.id ?? 0,
+        }),
+        retry: false,
+        refetchOnWindowFocus: false,
+      },
+    },
+  );
+  return (
+    <main
+      className="mx-auto min-w-0 max-w-5xl space-y-5 animate-rise"
+      data-testid="opened-historical-recording"
+    >
+      <Button variant="quiet" className="min-h-11 px-0" onClick={onBack}>
+        <ArrowLeft size={17} /> Back to Sessions
+      </Button>
+      <section className="rounded-3xl border border-primary/20 bg-card p-5 soft-shadow md:p-8">
+        {loading ? (
+          <p className="text-sm text-muted-foreground">
+            Opening session details…
+          </p>
+        ) : error || !session ? (
+          <div className="space-y-4">
+            <p className="rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
+              This session could not be opened. Return to Sessions and try
+              again.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Button variant="primary" onClick={onRetry}>
+                <RefreshCw size={16} /> Try again
+              </Button>
+              <Button variant="outline" onClick={onBack}>
+                <ArrowLeft size={16} /> Back to Sessions
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <header className="flex flex-col gap-4 border-b border-border pb-5 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary">
+                  Session history
+                </p>
+                <h1 className="serif mt-2 text-3xl font-semibold md:text-4xl">
+                  {sessionStatusLabel(session)} Session
+                </h1>
+                <p className="mt-2 text-sm text-muted-foreground">
+                  Read-only session record
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <span
+                  className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-bold ${
+                    session.sessionStatus === "missed"
+                      ? "bg-amber-100 text-amber-900"
+                      : "bg-primary/10 text-primary"
+                  }`}
+                >
+                  {session.sessionStatus === "missed" ? (
+                    <CalendarX size={14} />
+                  ) : (
+                    <Check size={14} />
+                  )}
+                  {sessionStatusLabel(session)}
+                </span>
+                <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-secondary-foreground">
+                  {sessionSourceLabel(session)}
+                </span>
+              </div>
+            </header>
+
+            <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              {[
+                ["Student", childName ?? "Assigned child"],
+                [
+                  "Date",
+                  formatSessionDate(session.sessionDate ?? session.createdAt),
+                ],
+                ["Service", sessionServiceLabel(session)],
+                ["Clinician", session.slpName || "SLP"],
+                [
+                  "Duration",
+                  session.sessionStatus === "missed"
+                    ? "Not delivered"
+                    : `${Math.max(1, Math.ceil(session.durationSeconds / 60))} min`,
+                ],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-xl bg-muted/40 p-4">
+                  <p className="text-[10px] font-bold uppercase text-muted-foreground">
+                    {label}
+                  </p>
+                  <p className="mt-1.5 text-sm font-semibold">{value}</p>
+                </div>
+              ))}
+            </div>
+
+            {session.sessionStatus === "missed" ? (
+              <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
+                <p className="font-bold">
+                  {session.missedReason
+                    ? missedReasonLabel(session.missedReason)
+                    : "Missed session"}
+                </p>
+                {session.missedReasonDetail ? (
+                  <p className="mt-1">{session.missedReasonDetail}</p>
+                ) : null}
+                <p className="mt-2 font-semibold">
+                  Makeup:{" "}
+                  {session.makeupStatus
+                    ? makeupStatusLabel(session.makeupStatus)
+                    : "Undetermined"}
+                </p>
+              </div>
+            ) : session.makeupForSessionId ? (
+              <p className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800">
+                Makeup for missed session on{" "}
+                {session.makeupForSessionDate ?? "the linked date"}
+              </p>
+            ) : null}
+
+            {session.sessionMode === "recorded" ? (
+              <section className="mt-6 border-t border-border pt-5">
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-sm font-bold uppercase text-muted-foreground">
+                      Recording review
+                    </h2>
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Transcript and clinician-selected language from this
+                      completed recording.
+                    </p>
+                  </div>
+                  {recordingDetailQuery.data?.provider ? (
+                    <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
+                      {recordingDetailQuery.data.provider}
+                      {recordingDetailQuery.data.model
+                        ? ` · ${recordingDetailQuery.data.model}`
+                        : ""}
+                    </span>
+                  ) : null}
+                </div>
+                {recordingDetailQuery.isLoading ? (
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Loading transcript…
+                  </p>
+                ) : recordingDetailQuery.isError ? (
+                  <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+                    <p className="text-sm text-destructive">
+                      Recording details could not be loaded. The saved session
+                      was not changed.
+                    </p>
+                    <Button
+                      variant="outline"
+                      className="min-h-11"
+                      onClick={() => void recordingDetailQuery.refetch()}
+                    >
+                      <RefreshCw size={15} /> Retry
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-xl bg-muted/35 p-4">
+                      <h3 className="text-xs font-bold uppercase text-muted-foreground">
+                        Transcript
+                      </h3>
+                      <p className="mt-2 max-h-72 overflow-y-auto whitespace-pre-wrap text-sm leading-6">
+                        {recordingDetailQuery.data?.transcript ||
+                          "No transcript is available for this recording."}
+                      </p>
+                    </div>
+                    <div className="rounded-xl bg-muted/35 p-4">
+                      <h3 className="text-xs font-bold uppercase text-muted-foreground">
+                        Selected utterances
+                      </h3>
+                      {session.gestalts.length ? (
+                        <div className="mt-2 space-y-3">
+                          {session.gestalts.map((utterance, index) => (
+                            <div
+                              key={`${utterance.phrase}-${index}`}
+                              className="border-b border-border pb-3 last:border-0 last:pb-0"
+                            >
+                              <p className="text-sm font-semibold">
+                                “{utterance.phrase}”
+                              </p>
+                              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                                {[utterance.meaning, utterance.context]
+                                  .filter(Boolean)
+                                  .join(" · ") || "No review note entered."}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-sm text-muted-foreground">
+                          No selected utterances were saved with this session.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </section>
+            ) : null}
+
+            <section className="mt-6 border-t border-border pt-5">
+              <h2 className="text-sm font-bold uppercase text-muted-foreground">
+                IEP goals addressed
+              </h2>
+              {session.goalProgress?.length ? (
+                <div className="mt-3 grid gap-3 md:grid-cols-2">
+                  {session.goalProgress.map((progress) => (
+                    <article
+                      key={progress.id}
+                      className="rounded-xl bg-muted/40 p-4"
+                    >
+                      <p className="font-semibold">{progress.goalTitle}</p>
+                      <p className="mt-1 text-xs text-primary">
+                        {progress.goalArea}
+                      </p>
+                      <p className="mt-3 text-sm text-muted-foreground">
+                        {[
+                          progress.progressStatus
+                            ? sessionGoalProgressLabel(progress.progressStatus)
+                            : null,
+                          progress.accuracyPercent === null
+                            ? null
+                            : `${progress.accuracyPercent}% accuracy`,
+                          progress.totalAttempts === null
+                            ? null
+                            : `${progress.successfulAttempts ?? 0}/${progress.totalAttempts} attempts`,
+                          progress.promptingLevel
+                            ? `${progress.promptingLevel.charAt(0).toUpperCase()}${progress.promptingLevel.slice(1)} prompting`
+                            : null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ") || "Progress details not entered"}
+                      </p>
+                      {progress.progressNote ? (
+                        <p className="mt-2 text-sm leading-6">
+                          {progress.progressNote}
+                        </p>
+                      ) : null}
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-3 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
+                  No IEP goal progress was attached to this session.
+                </p>
+              )}
+            </section>
+
+            {session.sessionMode === "recorded" &&
+            (session.clinicalObservations || session.nextSteps) ? (
+              <section className="mt-6 grid gap-4 border-t border-border pt-5 md:grid-cols-2">
+                <div>
+                  <h2 className="text-sm font-bold uppercase text-muted-foreground">
+                    Clinical observations
+                  </h2>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                    {session.clinicalObservations || "None entered."}
+                  </p>
+                </div>
+                <div>
+                  <h2 className="text-sm font-bold uppercase text-muted-foreground">
+                    Next steps
+                  </h2>
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                    {session.nextSteps || "None entered."}
+                  </p>
+                </div>
+              </section>
+            ) : null}
+
+            <section className="mt-6 border-t border-border pt-5">
+              <h2 className="text-sm font-bold uppercase text-muted-foreground">
+                Final session note
+              </h2>
+              <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-foreground">
+                {session.note || "No general session note was entered."}
+              </p>
+            </section>
+
+            {session.audioUrl ? (
+              <audio
+                controls
+                preload="metadata"
+                className="mt-6 h-10 w-full"
+                src={`${basePath}${session.audioUrl}`}
+                data-testid="audio-opened-historical-recording"
+              />
+            ) : (
+              <p className="mt-6 rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">
+                {session.sessionMode === "manual" ||
+                session.sessionMode === "missed"
+                  ? "This session was tracked manually without audio."
+                  : "This completed session has no retained recording audio."}
+              </p>
+            )}
+          </>
+        )}
+      </section>
+    </main>
+  );
+}
+
 function SessionsLandingPage({
   children,
   initialChildId,
@@ -18805,21 +19148,25 @@ function SessionsLandingPage({
       },
     },
   );
-  const openedRecordingQuery = useListSessions(
-    { childId: openedRecording?.childId ?? 0 },
+  const selectedSessionsQuery = useListSessions(
+    { childId: selectedChildId ?? 0 },
     {
       query: {
         queryKey: getListSessionsQueryKey({
-          childId: openedRecording?.childId ?? 0,
+          childId: selectedChildId ?? 0,
         }),
-        enabled: Boolean(openedRecording),
+        enabled: Boolean(selectedChildId),
         retry: false,
         refetchOnWindowFocus: false,
       },
     },
   );
   const selectedChild = children.find((child) => child.id === selectedChildId);
-  const openedSession = openedRecordingQuery.data?.find(
+  const selectedChildSessions = useMemo(
+    () => sortSessionsByDate(selectedSessionsQuery.data ?? []),
+    [selectedSessionsQuery.data],
+  );
+  const openedSession = selectedChildSessions.find(
     (session) => session.id === openedRecording?.sessionId,
   );
   useEffect(() => {
@@ -18858,11 +19205,8 @@ function SessionsLandingPage({
       session_summary: "Session Summary draft incomplete",
     })[status];
   const requiringReview = sessionsDashboardQuery.data?.requiresReview ?? [];
-  const completedSessions =
-    sessionsDashboardQuery.data?.completedSessions ?? [];
-  const selectedChildRecordings = selectedChildId
-    ? completedSessions.filter((session) => session.childId === selectedChildId)
-    : [];
+  const selectedChildCompletedSessions =
+    selectedChildSessions.filter(isCompletedSession);
   const selectedChildDrafts = selectedChildId
     ? (sessionsDashboardQuery.data?.draftDocumentation ?? []).filter(
         (draft) => draft.childId === selectedChildId,
@@ -18871,23 +19215,23 @@ function SessionsLandingPage({
   const selectedChildReviews = selectedChildId
     ? requiringReview.filter((item) => item.childId === selectedChildId)
     : [];
-  const selectedChildLastSession = selectedChildRecordings[0];
-  const activeReviewItem = resumeTranscriptId
-    ? requiringReview.find((item) => item.transcriptId === resumeTranscriptId)
-    : undefined;
-  const currentWorkflowIndex = activeReviewItem
-    ? activeReviewItem.workflowStatus === "session_summary"
-      ? 3
-      : 2
-    : 0;
-  const workflowSteps = [
-    { label: "Start", icon: Play },
-    { label: "Record", icon: Mic },
-    { label: "Review", icon: ClipboardList },
-    { label: "Finalize", icon: FileText },
-    { label: "Complete", icon: Check },
-  ];
+  const selectedChildLastSession = selectedChildCompletedSessions[0];
+  const visibleReviews = selectedChildId
+    ? selectedChildReviews
+    : requiringReview;
   const weeklySnapshot = sessionsDashboardQuery.data?.weeklySnapshot;
+  const currentWeekStart = currentWeekStartKey();
+  const selectedServiceSessions = selectedChildSessions.filter(
+    (session) =>
+      !selectedServiceId || session.serviceRequirementId === selectedServiceId,
+  );
+  const sessionsThisWeek = selectedServiceSessions.filter((session) =>
+    isSessionInWeek(session, currentWeekStart),
+  );
+  const completedThisWeek = sessionsThisWeek.filter(isCompletedSession).length;
+  const missedThisWeek = sessionsThisWeek.filter(
+    (session) => session.sessionStatus === "missed",
+  ).length;
   const applyChildSelection = (childId?: number) => {
     setSelectedChildId(childId);
     setSelectedServiceId(undefined);
@@ -18966,9 +19310,18 @@ function SessionsLandingPage({
     selectedChild &&
     /aac|augmentative|device/i.test(selectedChild.communicationStyle),
   );
-  const heroSticks = Boolean(
-    selectedChild && !sessionActive && !resumeTranscriptId,
-  );
+  if (openedRecording) {
+    return (
+      <HistoricalSessionDetail
+        session={openedSession}
+        childName={selectedChild?.name}
+        loading={selectedSessionsQuery.isLoading}
+        error={selectedSessionsQuery.isError}
+        onBack={() => setOpenedRecording(undefined)}
+        onRetry={() => void selectedSessionsQuery.refetch()}
+      />
+    );
+  }
 
   return (
     <div className="min-w-0 max-w-full space-y-7 overflow-x-clip animate-rise">
@@ -19036,7 +19389,7 @@ function SessionsLandingPage({
         </div>
       ) : null}
       <section
-        className={`${sessionActive ? "hidden" : ""} ${heroSticks ? "lg:sticky lg:top-2 lg:z-20" : ""} overflow-hidden rounded-[2rem] border border-primary/15 bg-card soft-shadow`}
+        className={`${sessionActive ? "hidden" : ""} overflow-hidden rounded-[2rem] border border-primary/15 bg-card soft-shadow`}
         data-testid="recording-hero"
       >
         <div className="relative p-5 md:p-7 lg:p-8">
@@ -19054,7 +19407,7 @@ function SessionsLandingPage({
             <div className="flex flex-1 flex-col justify-between gap-6">
               <div>
                 <p className="mono text-[10px] font-bold uppercase tracking-[.2em] text-primary">
-                  Clinician Workspace · New Session
+                  Clinician Workspace · Session Hub
                 </p>
                 {selectedChild ? (
                   <div className="mt-5">
@@ -19078,7 +19431,7 @@ function SessionsLandingPage({
                               className="serif break-words text-2xl font-semibold sm:text-3xl md:text-4xl"
                               data-testid="recording-hero-title"
                             >
-                              Session for {selectedChild.name}
+                              Sessions for {selectedChild.name}
                             </h1>
                             <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
                               <span className="rounded-full bg-secondary px-2.5 py-1 text-secondary-foreground">
@@ -19136,14 +19489,17 @@ function SessionsLandingPage({
                             Last session
                           </p>
                           <p className="text-sm font-semibold">
-                            {selectedChildLastSession
-                              ? new Date(
-                                  selectedChildLastSession.sessionDate,
-                                ).toLocaleDateString("en-US", {
-                                  month: "short",
-                                  day: "numeric",
-                                })
-                              : "No session yet"}
+                            {selectedSessionsQuery.isLoading
+                              ? "Loading…"
+                              : selectedSessionsQuery.isError
+                                ? "Unavailable"
+                                : selectedChildLastSession
+                                  ? formatSessionDate(
+                                      selectedChildLastSession.sessionDate ??
+                                        selectedChildLastSession.createdAt,
+                                      { month: "short", day: "numeric" },
+                                    )
+                                  : "No session yet"}
                           </p>
                         </div>
                       </div>
@@ -19178,11 +19534,11 @@ function SessionsLandingPage({
                 ) : (
                   <div className="mt-5">
                     <h1 className="serif text-3xl font-semibold tracking-tight md:text-5xl">
-                      Start a Therapy Session
+                      Therapy Sessions
                     </h1>
                     <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-                      Choose an authorized child, then record the session or
-                      track IEP goal progress manually.
+                      Choose an authorized child to review session history,
+                      record, or track IEP goal progress manually.
                     </p>
                     <label className="mt-6 block max-w-sm">
                       <span className="mb-2 block text-xs font-bold uppercase tracking-[.14em] text-muted-foreground">
@@ -19209,36 +19565,6 @@ function SessionsLandingPage({
                     </label>
                   </div>
                 )}
-              </div>
-
-              {/* Workflow Trail */}
-              <div className="mt-2" aria-label="Session workflow">
-                <p className="sr-only">
-                  Current workflow step:{" "}
-                  {workflowSteps[currentWorkflowIndex].label}
-                </p>
-                <div className="grid grid-cols-5 gap-2">
-                  {workflowSteps.map((step, index) => {
-                    const complete = index < currentWorkflowIndex;
-                    const current = index === currentWorkflowIndex;
-                    return (
-                      <div
-                        key={step.label}
-                        aria-current={current ? "step" : undefined}
-                        className="min-w-0 text-center"
-                      >
-                        <span
-                          className={`block h-2 rounded-full ${current || complete ? "bg-primary" : "bg-muted"}`}
-                        />
-                        <span
-                          className={`mt-2 block truncate text-[9px] font-bold sm:text-[10px] ${current ? "text-primary" : "text-muted-foreground"}`}
-                        >
-                          {step.label}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
               </div>
             </div>
 
@@ -19382,22 +19708,20 @@ function SessionsLandingPage({
             </p>
             <h2 className="serif mt-2 text-2xl font-semibold">This Week</h2>
           </div>
-          {weeklySnapshot && (
-            <p className="text-xs text-muted-foreground">
-              Since{" "}
-              {new Date(
-                `${weeklySnapshot.weekStart}T00:00:00`,
-              ).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-            </p>
-          )}
+          <p className="text-xs text-muted-foreground">
+            {formatSessionWeek(currentWeekStart)}
+          </p>
         </div>
-        {sessionsDashboardQuery.isLoading ? (
+        {sessionsDashboardQuery.isLoading ||
+        (selectedChildId && selectedSessionsQuery.isLoading) ? (
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {[0, 1, 2, 3].map((item) => (
               <div key={item} className="skeleton h-24 rounded-2xl" />
             ))}
           </div>
-        ) : sessionsDashboardQuery.isError || !weeklySnapshot ? (
+        ) : sessionsDashboardQuery.isError ||
+          (selectedChildId && selectedSessionsQuery.isError) ||
+          !weeklySnapshot ? (
           <p className="mt-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
             This week’s operational snapshot is temporarily unavailable. Session
             tools remain ready.
@@ -19406,24 +19730,31 @@ function SessionsLandingPage({
           <div className="mt-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
             {[
               {
-                label: "Sessions Completed",
-                value: weeklySnapshot.sessionsRecorded,
+                label: "Delivered This Week",
+                value: completedThisWeek,
                 icon: AudioWaveform,
               },
               {
+                label: "Missed This Week",
+                value: missedThisWeek,
+                icon: CalendarX,
+              },
+              {
                 label: "Awaiting Review",
-                value: weeklySnapshot.awaitingReview,
+                value: selectedChildId
+                  ? selectedChildReviews.length
+                  : weeklySnapshot.awaitingReview,
                 icon: ClipboardList,
               },
               {
-                label: "Draft Notes",
-                value: weeklySnapshot.draftNotes,
-                icon: FileText,
-              },
-              {
-                label: "Completed Notes",
-                value: weeklySnapshot.completedNotes,
-                icon: Check,
+                label: "Open Makeups",
+                value: selectedService
+                  ? selectedService.outstandingMakeups
+                  : activeServices.reduce(
+                      (total, service) => total + service.outstandingMakeups,
+                      0,
+                    ),
+                icon: RotateCcw,
               },
             ].map((metric) => (
               <article
@@ -19443,219 +19774,52 @@ function SessionsLandingPage({
             ))}
           </div>
         )}
-        {selectedChildId &&
-          manualSessionSetupQuery.data?.serviceRequirements.map(
-            (requirement) => (
-              <div
-                key={requirement.id}
-                className="mt-5 border-t border-border pt-5"
-                data-testid={`service-status-${requirement.id}`}
+        {selectedChildId && selectedService ? (
+          <div
+            className="mt-5 border-t border-border pt-5"
+            data-testid={`service-status-${selectedService.id}`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">
+                  {selectedService.serviceName} · {selectedService.periodLabel}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  IEP service delivery status
+                </p>
+              </div>
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
+                  selectedService.status === "complete"
+                    ? "bg-primary/10 text-primary"
+                    : selectedService.status === "behind"
+                      ? "bg-amber-100 text-amber-900"
+                      : "bg-emerald-100 text-emerald-800"
+                }`}
               >
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold">
-                      {requirement.serviceName} · {requirement.periodLabel}
-                    </p>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      IEP service delivery status
-                    </p>
-                  </div>
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold uppercase ${
-                      requirement.status === "complete"
-                        ? "bg-primary/10 text-primary"
-                        : requirement.status === "behind"
-                          ? "bg-amber-100 text-amber-900"
-                          : "bg-emerald-100 text-emerald-800"
-                    }`}
-                  >
-                    {requirement.status.replace("_", " ")}
-                  </span>
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-8">
-                  {[
-                    ["Required sessions", requirement.requiredSessions],
-                    ["Delivered sessions", requirement.sessionsCompleted],
-                    ["Missed sessions", requirement.sessionsMissed],
-                    ["Sessions remaining", requirement.sessionsRemaining],
-                    ["Open makeups", requirement.outstandingMakeups],
-                    ["Required minutes", requirement.requiredMinutes],
-                    ["Completed minutes", requirement.minutesCompleted],
-                    ["Minutes remaining", requirement.minutesRemaining],
-                  ].map(([label, value]) => (
-                    <div key={label} className="bg-muted/40 p-3">
-                      <p className="text-lg font-bold">{value}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {label}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ),
-          )}
-      </section>
-      {openedRecording && (
-        <section
-          className="rounded-3xl border border-primary/20 bg-card p-5 soft-shadow md:p-7"
-          data-testid="opened-historical-recording"
-        >
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary">
-                Opened explicitly
-              </p>
-              <h2 className="serif mt-2 text-2xl font-semibold">
-                {openedSession
-                  ? sessionHistoryLabel(openedSession)
-                  : "Previous Session"}
-              </h2>
-              <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                This completed session is separate from the new-session
-                workspace above.
-              </p>
+                {selectedService.status.replace("_", " ")}
+              </span>
             </div>
-            <Button
-              variant="quiet"
-              onClick={() => setOpenedRecording(undefined)}
-            >
-              Close
-            </Button>
+            <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+              {[
+                ["Required sessions", selectedService.requiredSessions],
+                ["Delivered sessions", selectedService.sessionsCompleted],
+                ["Sessions remaining", selectedService.sessionsRemaining],
+                ["Minutes remaining", selectedService.minutesRemaining],
+              ].map(([label, value]) => (
+                <div key={label} className="bg-muted/40 p-3">
+                  <p className="text-lg font-bold">{value}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{label}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          {openedRecordingQuery.isLoading ? (
-            <p className="mt-5 text-sm text-muted-foreground">
-              Opening the selected recording…
-            </p>
-          ) : openedRecordingQuery.isError || !openedSession ? (
-            <p className="mt-5 rounded-xl border border-destructive/20 bg-destructive/5 p-4 text-sm text-destructive">
-              The selected recording could not be opened. The New Recording
-              workspace remains unchanged.
-            </p>
-          ) : (
-            <div className="mt-5 rounded-2xl border border-border bg-background p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="font-semibold">
-                    {children.find(
-                      (child) => child.id === openedSession.childId,
-                    )?.name ?? "Assigned child"}
-                  </p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    {new Date(
-                      openedSession.sessionDate
-                        ? `${openedSession.sessionDate.slice(0, 10)}T12:00:00`
-                        : openedSession.createdAt,
-                    ).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}{" "}
-                    {openedSession.sessionStatus === "missed"
-                      ? ""
-                      : ` · ${Math.max(1, Math.ceil(openedSession.durationSeconds / 60))} min`}
-                    {openedSession.serviceName
-                      ? ` · ${openedSession.serviceName}`
-                      : " · Legacy session (service not assigned)"}
-                  </p>
-                </div>
-                <span className="rounded-full bg-secondary px-3 py-1 text-xs font-semibold text-secondary-foreground">
-                  {sessionHistoryLabel(openedSession)}
-                </span>
-              </div>
-              {openedSession.sessionStatus === "missed" ? (
-                <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">
-                  <p className="font-bold">
-                    {openedSession.missedReason
-                      ? missedReasonLabel(openedSession.missedReason)
-                      : "Missed session"}
-                  </p>
-                  {openedSession.missedReasonDetail ? (
-                    <p className="mt-1">{openedSession.missedReasonDetail}</p>
-                  ) : null}
-                  {openedSession.note ? (
-                    <p className="mt-2">{openedSession.note}</p>
-                  ) : null}
-                  <p className="mt-2 font-semibold">
-                    Makeup:{" "}
-                    {openedSession.makeupStatus
-                      ? makeupStatusLabel(openedSession.makeupStatus)
-                      : "Undetermined"}
-                  </p>
-                </div>
-              ) : openedSession.makeupForSessionId ? (
-                <p className="mt-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
-                  Makeup for missed session on{" "}
-                  {openedSession.makeupForSessionDate ?? "the linked date"}
-                </p>
-              ) : null}
-              {openedSession.goalProgress?.length ? (
-                <div className="mt-4 space-y-3 border-t border-border pt-4">
-                  <p className="text-xs font-bold uppercase text-muted-foreground">
-                    IEP goals addressed
-                  </p>
-                  {openedSession.goalProgress.map((progress) => (
-                    <div
-                      key={progress.id}
-                      className="rounded-xl bg-muted/40 p-3"
-                    >
-                      <p className="text-sm font-semibold">
-                        {progress.goalTitle}
-                      </p>
-                      <p className="mt-1 text-xs text-primary">
-                        {progress.goalArea}
-                      </p>
-                      <p className="mt-2 text-sm text-muted-foreground">
-                        {[
-                          progress.progressStatus
-                            ? sessionGoalProgressLabel(progress.progressStatus)
-                            : null,
-                          progress.accuracyPercent === null
-                            ? null
-                            : `${progress.accuracyPercent}% accuracy`,
-                          progress.totalAttempts === null
-                            ? null
-                            : `${progress.successfulAttempts ?? 0}/${progress.totalAttempts} attempts`,
-                          progress.promptingLevel
-                            ? `${progress.promptingLevel.charAt(0).toUpperCase()}${progress.promptingLevel.slice(1)} prompting`
-                            : null,
-                        ]
-                          .filter(Boolean)
-                          .join(" · ")}
-                      </p>
-                      {progress.progressNote && (
-                        <p className="mt-2 text-sm leading-6">
-                          {progress.progressNote}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                  {openedSession.note && (
-                    <p className="text-sm leading-6 text-muted-foreground">
-                      {openedSession.note}
-                    </p>
-                  )}
-                </div>
-              ) : null}
-              {openedSession.audioUrl ? (
-                <audio
-                  controls
-                  preload="metadata"
-                  className="mt-4 h-10 w-full"
-                  src={`${basePath}${openedSession.audioUrl}`}
-                  data-testid="audio-opened-historical-recording"
-                />
-              ) : (
-                <p className="mt-4 rounded-xl border border-dashed border-border p-3 text-sm text-muted-foreground">
-                  {openedSession.sessionMode === "manual" ||
-                  openedSession.sessionMode === "missed"
-                    ? "This session was tracked manually without audio."
-                    : "This completed session has no retained recording audio."}
-                </p>
-              )}
-            </div>
-          )}
-        </section>
-      )}
+        ) : selectedChildId && activeServices.length > 1 ? (
+          <p className="mt-5 border-t border-border pt-5 text-sm text-muted-foreground">
+            Select a service above to see its current requirement totals.
+          </p>
+        ) : null}
+      </section>
       <section
         className="rounded-3xl border border-border bg-card p-5 soft-shadow md:p-7"
         data-testid="sessions-review-queue"
@@ -19663,21 +19827,21 @@ function SessionsLandingPage({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-primary">
-              Historical work
+              Unfinished work
             </p>
             <h2 className="serif mt-2 text-2xl font-semibold">
-              Continue Previous Work
+              Sessions Needing Attention
             </h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Unfinished work stays separate from New Recording and opens only
-              when you choose Continue.
+              Continue recording reviews and documentation drafts without mixing
+              them into completed session history.
             </p>
           </div>
           <span
             className="inline-flex rounded-full bg-accent/15 px-3 py-1.5 text-xs font-bold text-primary"
             data-testid="sessions-attention-count"
           >
-            {requiringReview.length} Sessions Need Attention
+            {visibleReviews.length + selectedChildDrafts.length} Need Attention
           </span>
         </div>
         {sessionsDashboardQuery.isLoading ? (
@@ -19689,13 +19853,13 @@ function SessionsLandingPage({
             The review queue is temporarily unavailable. Recording controls
             remain ready.
           </p>
-        ) : requiringReview.length ? (
+        ) : visibleReviews.length ? (
           <div className="mt-5">
             <h3 className="text-sm font-bold text-foreground">
               Recordings Requiring Review
             </h3>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
-              {requiringReview.map((item) => {
+              {visibleReviews.map((item) => {
                 const visual =
                   item.workflowStatus === "child_language_review_not_started"
                     ? {
@@ -19789,33 +19953,21 @@ function SessionsLandingPage({
             </div>
           </div>
         ) : (
-          <EmptyState
-            icon={Sparkles}
-            title="All Caught Up"
-            body="You're all caught up. No recordings currently require review."
-            action={
-              <Button variant="primary" onClick={requestNewRecording}>
-                <Mic size={16} /> Start New Recording
-              </Button>
-            }
-          />
+          <div className="mt-5 flex items-center gap-3 rounded-xl border border-primary/10 bg-secondary/25 px-4 py-3 text-sm font-semibold text-primary">
+            <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary/10">
+              <Check size={16} />
+            </span>
+            No sessions awaiting review
+          </div>
         )}
-        <div
-          className="mt-6 border-t border-border pt-5"
-          data-testid="draft-documentation-section"
-        >
-          <h3 className="text-sm font-bold text-foreground">
-            Draft Documentation
-          </h3>
-          {!selectedChildId ? (
-            <p className="mt-3 rounded-xl border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-              Select a child to see draft documentation without opening it.
-            </p>
-          ) : sessionsDashboardQuery.isLoading ? (
-            <p className="mt-3 text-sm text-muted-foreground">
-              Checking for draft documentation…
-            </p>
-          ) : selectedChildDrafts.length ? (
+        {selectedChildDrafts.length ? (
+          <div
+            className="mt-6 border-t border-border pt-5"
+            data-testid="draft-documentation-section"
+          >
+            <h3 className="text-sm font-bold text-foreground">
+              Draft Documentation
+            </h3>
             <div className="mt-3 divide-y divide-border overflow-hidden rounded-2xl border border-border">
               {selectedChildDrafts.map((draft) => (
                 <div
@@ -19846,12 +19998,8 @@ function SessionsLandingPage({
                 </div>
               ))}
             </div>
-          ) : (
-            <p className="mt-3 rounded-xl border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
-              No draft documentation for this child.
-            </p>
-          )}
-        </div>
+          </div>
+        ) : null}
       </section>
       <section
         className="rounded-3xl border border-border bg-card p-5 soft-shadow md:p-7"
@@ -19871,28 +20019,43 @@ function SessionsLandingPage({
           <p className="mt-5 rounded-xl border border-dashed border-border bg-muted/30 p-4 text-sm text-muted-foreground">
             Select a child to see recent sessions.
           </p>
-        ) : sessionsDashboardQuery.isLoading ? (
+        ) : selectedSessionsQuery.isLoading ? (
           <p className="mt-5 text-sm text-muted-foreground">
-            Loading completed sessions…
+            Loading sessions…
           </p>
-        ) : selectedChildRecordings.length ? (
+        ) : selectedChildSessions.length ? (
           <div className="mt-5 divide-y divide-border overflow-hidden rounded-2xl border border-border">
-            {selectedChildRecordings.map((session) => (
+            {selectedChildSessions.map((session) => (
               <div
-                key={session.sessionId}
+                key={session.id}
                 className="flex flex-wrap items-center justify-between gap-4 bg-background px-4 py-3"
               >
-                <div>
-                  <p className="font-semibold">{session.childName}</p>
+                <div className="min-w-0">
+                  <p className="font-semibold">{selectedChild?.name}</p>
                   <p className="mt-1 text-sm text-muted-foreground">
-                    {new Date(session.sessionDate).toLocaleDateString("en-US", {
-                      month: "short",
-                      day: "numeric",
-                      year: "numeric",
-                    })}
+                    {formatSessionDate(
+                      session.sessionDate ?? session.createdAt,
+                    )}
                     {" · "}
-                    {sessionHistoryLabel(session)}
+                    {sessionServiceLabel(session)}
+                    {session.sessionStatus === "missed"
+                      ? ""
+                      : ` · ${Math.max(1, Math.ceil(session.durationSeconds / 60))} min`}
                   </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-secondary px-2.5 py-1 text-[11px] font-bold text-secondary-foreground">
+                      {sessionSourceLabel(session)}
+                    </span>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${
+                        session.sessionStatus === "missed"
+                          ? "bg-amber-100 text-amber-900"
+                          : "bg-primary/10 text-primary"
+                      }`}
+                    >
+                      {sessionStatusLabel(session)}
+                    </span>
+                  </div>
                 </div>
                 <Button
                   variant="outline"
@@ -19901,21 +20064,35 @@ function SessionsLandingPage({
                     setStartRequestToken(0);
                     setOpenedRecording({
                       childId: session.childId,
-                      sessionId: session.sessionId,
+                      sessionId: session.id,
                     });
                   }}
-                  data-testid={`button-open-session-${session.sessionId}`}
+                  data-testid={`button-open-session-${session.id}`}
                 >
-                  Open Session <ArrowRight size={15} />
+                  View Session <ArrowRight size={15} />
                 </Button>
               </div>
             ))}
           </div>
-        ) : !sessionsDashboardQuery.isError ? (
+        ) : selectedSessionsQuery.isError ? (
+          <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-destructive/20 bg-destructive/5 p-4">
+            <p className="text-sm text-destructive">
+              Session history could not be loaded. Your saved sessions have not
+              been changed.
+            </p>
+            <Button
+              variant="outline"
+              className="min-h-11"
+              onClick={() => void selectedSessionsQuery.refetch()}
+            >
+              <RefreshCw size={15} /> Retry
+            </Button>
+          </div>
+        ) : (
           <p className="mt-5 text-sm text-muted-foreground">
             No recent sessions for this child.
           </p>
-        ) : null}
+        )}
       </section>
       {pendingChildSelection && (
         <Modal
@@ -20203,8 +20380,8 @@ function Workspace() {
       ),
       enabled: Boolean(
         routePath === "/team-communication" &&
-          viewer?.userId &&
-          inboxConversationId,
+        viewer?.userId &&
+        inboxConversationId,
       ),
       placeholderData: (previousData) =>
         inboxPlaceholderForViewer(previousData, viewer?.userId),
@@ -20220,11 +20397,7 @@ function Workspace() {
         selectedTeamInboxQuery.data,
         inboxConversationId,
       ),
-    [
-      inboxConversationId,
-      selectedTeamInboxQuery.data,
-      teamInboxQuery.data,
-    ],
+    [inboxConversationId, selectedTeamInboxQuery.data, teamInboxQuery.data],
   );
   useEffect(() => {
     if (
@@ -20778,25 +20951,22 @@ function Workspace() {
       selectedChildId={inboxChildId}
       searchTerm={inboxSearch}
       inbox={
-        (inboxErrorStatus(teamInboxQuery.error) === 401 ||
-          inboxErrorStatus(teamInboxQuery.error) === 403)
+        inboxErrorStatus(teamInboxQuery.error) === 401 ||
+        inboxErrorStatus(teamInboxQuery.error) === 403
           ? undefined
           : combinedTeamInbox
       }
       loading={Boolean(
         teamInboxQuery.isLoading ||
-          teamInboxQuery.isFetching ||
-          (inboxConversationId && selectedTeamInboxQuery.isLoading),
+        teamInboxQuery.isFetching ||
+        (inboxConversationId && selectedTeamInboxQuery.isLoading),
       )}
       loadError={
         selectedTeamInboxQuery.isError
           ? inboxLoadFailureMessage(selectedTeamInboxQuery.error, true)
           : teamInboxQuery.isError
-          ? inboxLoadFailureMessage(
-              teamInboxQuery.error,
-              false,
-            )
-          : undefined
+            ? inboxLoadFailureMessage(teamInboxQuery.error, false)
+            : undefined
       }
       sending={createTeamMessage.isPending}
       markingRead={markTeamMessagesRead.isPending}
@@ -20919,6 +21089,7 @@ function Workspace() {
       initialMakeupForSessionId={validRequestedMakeupForSessionId}
       onSaved={(session) => {
         const savedChildId = session.childId;
+        void refreshSessionTrackingQueries(queryClient, savedChildId);
         queryClient.invalidateQueries({
           queryKey: getListGestaltsQueryKey({ childId: savedChildId }),
         });
@@ -20929,25 +21100,10 @@ function Workspace() {
           queryKey: getGetPhraseTrendsQueryKey({ childId: savedChildId }),
         });
         queryClient.invalidateQueries({
-          queryKey: getGetDashboardQueryKey({ childId: savedChildId }),
-        });
-        queryClient.invalidateQueries({
           queryKey: getGetFrequentScriptsQueryKey(),
         });
         queryClient.invalidateQueries({
           queryKey: getGetRecurringLanguagePatternsQueryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetChildQueryKey({ childId: savedChildId }),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getListSessionsQueryKey({ childId: savedChildId }),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetSessionsDashboardQueryKey(),
-        });
-        queryClient.invalidateQueries({
-          queryKey: getGetClinicianOverviewQueryKey(),
         });
         queryClient.invalidateQueries({
           queryKey: getGetSessionSoapNoteQueryKey({
@@ -21244,7 +21400,9 @@ function Workspace() {
           childId={activeId}
           viewerUserId={viewer?.userId ?? ""}
           viewerRole={viewer?.role ?? ""}
-          developmentLogging={Boolean(import.meta.env.DEV || viewer?.isDevelopmentDemo)}
+          developmentLogging={Boolean(
+            import.meta.env.DEV || viewer?.isDevelopmentDemo,
+          )}
           onClose={() => setModal(null)}
           onSent={(message) => {
             if (message.conversationId) {
@@ -21260,7 +21418,9 @@ function Workspace() {
           childId={activeId}
           viewerUserId={viewer?.userId ?? ""}
           viewerRole={viewer?.role ?? ""}
-          developmentLogging={Boolean(import.meta.env.DEV || viewer?.isDevelopmentDemo)}
+          developmentLogging={Boolean(
+            import.meta.env.DEV || viewer?.isDevelopmentDemo,
+          )}
           phrase={teacherActionPhrase}
           notifyClinician={teacherQuestionAudience === "clinician"}
           onSent={(message) => {

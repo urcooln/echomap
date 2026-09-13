@@ -217,7 +217,7 @@ export const CreateManualSessionBody = zod.object({
   "accuracyPercent": zod.number().min(createManualSessionBodyGoalsItemAccuracyPercentMin).max(createManualSessionBodyGoalsItemAccuracyPercentMax).nullish(),
   "successfulAttempts": zod.number().min(createManualSessionBodyGoalsItemSuccessfulAttemptsMin).nullish(),
   "totalAttempts": zod.number().min(createManualSessionBodyGoalsItemTotalAttemptsMin).nullish(),
-  "promptingLevel": zod.union([zod.literal('independent'),zod.literal('minimal'),zod.literal('moderate'),zod.literal('maximal'),zod.literal('total'),zod.literal(null)]).nullish(),
+  "promptingLevel": zod.union([zod.literal('independent'),zod.literal('minimal'),zod.literal('moderate'),zod.literal('maximal'),zod.literal('total'),zod.literal('na'),zod.literal(null)]).nullish(),
   "progressNote": zod.string().max(createManualSessionBodyGoalsItemProgressNoteMax)
 })).min(1).max(createManualSessionBodyGoalsMax),
   "note": zod.string().min(1).max(createManualSessionBodyNoteMax)
@@ -1728,7 +1728,7 @@ export const UpdateAdminChildPermissionResponse = zod.object({
 
 
 /**
- * @summary Start or change a Super Admin role preview
+ * @summary Select a seeded persona in the authenticated development demo
  */
 export const SetRolePreviewBody = zod.object({
   "role": zod.enum(['SLP', 'Parent', 'Teacher', 'Administrator'])
@@ -4693,10 +4693,30 @@ export const CreateSessionResponse = zod.object({
 
 
 /**
+ * @summary Get transcript metadata for a completed recorded session
+ */
+export const GetSessionRecordingDetailQueryParams = zod.object({
+  "childId": zod.coerce.number(),
+  "sessionId": zod.coerce.number()
+})
+
+export const GetSessionRecordingDetailResponse = zod.object({
+  "sessionId": zod.number(),
+  "transcriptId": zod.number().nullable(),
+  "transcript": zod.string().nullable(),
+  "provider": zod.string().nullable(),
+  "model": zod.string().nullable(),
+  "transcriptionSucceeded": zod.boolean().nullable()
+})
+
+
+/**
  * @summary List clinician-owned unfinished session reviews and completed caseload sessions
  */
 export const getSessionsDashboardResponseRequiresReviewItemActivePhraseInboxCountMin = 0;
 
+export const getSessionsDashboardResponseCompletedSessionsItemSessionDateRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
+export const getSessionsDashboardResponseWeeklySnapshotWeekStartRegExp = new RegExp('^\\d{4}-\\d{2}-\\d{2}$');
 export const getSessionsDashboardResponseWeeklySnapshotSessionsRecordedMin = 0;
 
 export const getSessionsDashboardResponseWeeklySnapshotAwaitingReviewMin = 0;
@@ -4731,7 +4751,7 @@ export const GetSessionsDashboardResponse = zod.object({
   "sessionId": zod.number(),
   "childId": zod.number(),
   "childName": zod.string(),
-  "sessionDate": zod.coerce.date(),
+  "sessionDate": zod.string().regex(getSessionsDashboardResponseCompletedSessionsItemSessionDateRegExp),
   "sessionMode": zod.enum(['recorded', 'manual', 'missed']),
   "sessionStatus": zod.enum(['completed', 'missed', 'scheduled']).optional(),
   "makeupForSessionId": zod.number().nullish()
@@ -4745,7 +4765,7 @@ export const GetSessionsDashboardResponse = zod.object({
   "updatedAt": zod.coerce.date()
 })),
   "weeklySnapshot": zod.object({
-  "weekStart": zod.coerce.date(),
+  "weekStart": zod.string().regex(getSessionsDashboardResponseWeeklySnapshotWeekStartRegExp),
   "sessionsRecorded": zod.number().min(getSessionsDashboardResponseWeeklySnapshotSessionsRecordedMin),
   "awaitingReview": zod.number().min(getSessionsDashboardResponseWeeklySnapshotAwaitingReviewMin),
   "draftNotes": zod.number().min(getSessionsDashboardResponseWeeklySnapshotDraftNotesMin),

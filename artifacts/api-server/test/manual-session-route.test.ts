@@ -21,6 +21,7 @@ import {
   organizationsTable,
   pool,
   securityAuditLogsTable,
+  sessionTranscriptsTable,
   therapySessionGoalProgressTable,
   therapySessionsTable,
   usersTable,
@@ -338,6 +339,83 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
       note: "Invalid attempts should not save.",
     });
     assert.equal(invalid.status, 400);
+    assert.equal(
+      invalid.body.error,
+      "Successful attempts cannot be greater than total opportunities.",
+    );
+
+    const missingTotal = await json(
+      "POST",
+      `/manual-sessions?childId=${child.id}`,
+      {
+        serviceRequirementId: requirement.body.id,
+        sessionDate: "2026-09-10",
+        startedAt: null,
+        endedAt: null,
+        durationSeconds: 1_800,
+        timerElapsedSeconds: 0,
+        durationSource: "manual",
+        durationEdited: false,
+        goals: [
+          {
+            goalId: goal.id,
+            accuracyPercent: null,
+            successfulAttempts: 8,
+            totalAttempts: null,
+            promptingLevel: null,
+            progressNote: "",
+          },
+        ],
+        note: "Partial attempt data should not save.",
+      },
+    );
+    assert.equal(missingTotal.status, 400);
+    assert.equal(
+      missingTotal.body.error,
+      "Enter the total number of opportunities.",
+    );
+
+    const decimalAttempts = await json(
+      "POST",
+      `/manual-sessions?childId=${child.id}`,
+      {
+        serviceRequirementId: requirement.body.id,
+        sessionDate: "2026-09-10",
+        startedAt: null,
+        endedAt: null,
+        durationSeconds: 1_800,
+        timerElapsedSeconds: 0,
+        durationSource: "manual",
+        durationEdited: false,
+        goals: [
+          {
+            goalId: goal.id,
+            accuracyPercent: null,
+            successfulAttempts: 7.5,
+            totalAttempts: 10,
+            promptingLevel: null,
+            progressNote: "",
+          },
+        ],
+        note: "Decimal attempt data should not save.",
+      },
+    );
+    assert.equal(decimalAttempts.status, 400);
+    assert.equal(
+      decimalAttempts.body.error,
+      "Successful attempts must be a whole number.",
+    );
+
+    const sessionsAfterInvalidSubmissions = await db
+      .select({ id: therapySessionsTable.id })
+      .from(therapySessionsTable)
+      .where(eq(therapySessionsTable.childId, child.id));
+    const progressAfterInvalidSubmissions = await db
+      .select({ id: therapySessionGoalProgressTable.id })
+      .from(therapySessionGoalProgressTable)
+      .where(eq(therapySessionGoalProgressTable.childId, child.id));
+    assert.equal(sessionsAfterInvalidSubmissions.length, 0);
+    assert.equal(progressAfterInvalidSubmissions.length, 0);
 
     const saved = await json("POST", `/manual-sessions?childId=${child.id}`, {
       serviceRequirementId: requirement.body.id,
@@ -351,10 +429,10 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
       goals: [
         {
           goalId: goal.id,
-          accuracyPercent: 80,
+          accuracyPercent: 75,
           successfulAttempts: 8,
           totalAttempts: 10,
-          promptingLevel: "minimal",
+          promptingLevel: "na",
           progressNote: "Requested during structured play.",
         },
       ],
@@ -367,6 +445,8 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     assert.equal(saved.body.durationSource, "timer_edited");
     assert.equal(saved.body.durationEdited, true);
     assert.equal(saved.body.goalProgress[0].goalTitle, goal.title);
+    assert.equal(saved.body.goalProgress[0].accuracyPercent, 80);
+    assert.equal(saved.body.goalProgress[0].promptingLevel, "na");
 
     const history = await request(`/sessions?childId=${child.id}`);
     assert.equal(history.status, 200);
@@ -417,6 +497,7 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     assert.deepEqual(overviewChild.teacherNames, []);
     assert.equal(overviewChild.nextSessionDate, null);
 
+    const expectedRecordedSessionDate = new Date().toISOString().slice(0, 10);
     const recordedBody = {
       serviceRequirementId: requirement.body.id,
       durationSeconds: 1_800,
@@ -535,6 +616,34 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
       ),
       false,
     );
+    await db.insert(sessionTranscriptsTable).values({
+      childId: child.id,
+      audioId: `recording-detail-${suffix}`,
+      sessionId: recordedSession.body.id,
+      serviceRequirementId: requirement.body.id,
+      createdBy: "Manual Session Clinician",
+      createdByUserId: userId,
+      status: "complete",
+      provider: "test-transcriber",
+      rawTranscript: "A saved transcript for historical session detail.",
+    });
+    const recordingDetail = await request(
+      `/sessions/recording-detail?childId=${child.id}&sessionId=${recordedSession.body.id}`,
+    );
+    assert.equal(recordingDetail.status, 200);
+    assert.equal(
+      recordingDetail.body.transcript,
+      "A saved transcript for historical session detail.",
+    );
+    assert.equal(recordingDetail.body.provider, "test-transcriber");
+    assert.equal(
+      (
+        await request(
+          `/sessions/recording-detail?childId=${child.id}&sessionId=${saved.body.id}`,
+        )
+      ).status,
+      404,
+    );
     const goalStatuses = await db
       .select({
         id: communicationGoalsTable.id,
@@ -586,7 +695,7 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     assert.equal(overviewCombinedIndividual.sessionsRemaining, 0);
     assert.equal(
       overviewChildWithRecordedSession.lastSessionDate,
-      "2026-09-12",
+      expectedRecordedSessionDate,
     );
 
     await db
@@ -752,6 +861,14 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     assert.equal(makeupHistoryRow.makeupForSessionId, missed.body.id);
 
     actor = { ...actor, role: "Parent" };
+    assert.equal(
+      (
+        await request(
+          `/sessions/recording-detail?childId=${child.id}&sessionId=${recordedSession.body.id}`,
+        )
+      ).status,
+      403,
+    );
     const unauthorizedArchive = await request(
       `/children/${child.id}/iep-services/${requirement.body.id}`,
       { method: "DELETE" },
@@ -814,6 +931,9 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     await db
       .delete(clinicalSoapNotesTable)
       .where(eq(clinicalSoapNotesTable.childId, child.id));
+    await db
+      .delete(sessionTranscriptsTable)
+      .where(eq(sessionTranscriptsTable.childId, child.id));
     const knowledgeSources = await db
       .select({ id: clinicalKnowledgeSourcesTable.id })
       .from(clinicalKnowledgeSourcesTable)

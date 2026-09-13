@@ -376,11 +376,14 @@ import {
   UpdateSessionSoapNoteBody,
   ListGestaltsQueryParams,
   ListSessionsQueryParams,
+  GetSessionRecordingDetailQueryParams,
+  GetSessionRecordingDetailResponse,
   GetManualSessionSetupQueryParams,
   GetManualSessionSetupResponse,
   CreateManualSessionQueryParams,
   CreateManualSessionBody,
   CreateManualSessionResponse,
+  validateManualSessionGoalProgress,
   ListMissedSessionsQueryParams,
   ListMissedSessionsResponse,
   CreateMissedSessionQueryParams,
@@ -1473,7 +1476,8 @@ const requireDevelopmentDemoSuperAdmin = (req: Request, res: any) => {
   if (!actor) return null;
   if (!actor.isDevelopmentDemo) {
     res.status(403).json({
-      error: "Persona switching is available only in the authenticated development demo.",
+      error:
+        "Persona switching is available only in the authenticated development demo.",
     });
     return null;
   }
@@ -13267,7 +13271,10 @@ router.get("/team-inbox", async (req, res) => {
             readAt: teamMessageReadsTable.readAt,
           })
           .from(teamMessagesTable)
-          .innerJoin(usersTable, eq(usersTable.id, teamMessagesTable.senderUserId))
+          .innerJoin(
+            usersTable,
+            eq(usersTable.id, teamMessagesTable.senderUserId),
+          )
           .innerJoin(
             childProfilesTable,
             eq(childProfilesTable.id, teamMessagesTable.childId),
@@ -13286,7 +13293,10 @@ router.get("/team-inbox", async (req, res) => {
               sql`lower(${teamMessagesTable.messageType}) <> 'notification'`,
             ),
           )
-          .orderBy(desc(teamMessagesTable.createdAt), desc(teamMessagesTable.id))
+          .orderBy(
+            desc(teamMessagesTable.createdAt),
+            desc(teamMessagesTable.id),
+          )
           .limit(1000)
       : Promise.resolve<
           Array<{
@@ -13484,8 +13494,7 @@ router.post("/team-inbox", async (req, res) => {
             ),
           )
           .limit(1);
-        if (!conversation)
-          throw new Error("CONVERSATION_ACCESS_DENIED");
+        if (!conversation) throw new Error("CONVERSATION_ACCESS_DENIED");
         const participants = await transaction
           .select({ userId: teamConversationParticipantsTable.userId })
           .from(teamConversationParticipantsTable)
@@ -13576,14 +13585,20 @@ router.post("/team-inbox", async (req, res) => {
         .set({ lastReadAt: savedMessage.createdAt })
         .where(
           and(
-            eq(teamConversationParticipantsTable.conversationId, conversationId),
+            eq(
+              teamConversationParticipantsTable.conversationId,
+              conversationId,
+            ),
             eq(teamConversationParticipantsTable.userId, actor.userId),
           ),
         );
       return savedMessage;
     });
   } catch (error) {
-    if (error instanceof Error && error.message === "CONVERSATION_ACCESS_DENIED") {
+    if (
+      error instanceof Error &&
+      error.message === "CONVERSATION_ACCESS_DENIED"
+    ) {
       req.log?.warn(
         {
           actorUserId: actor.userId,
@@ -17851,26 +17866,29 @@ router.post("/manual-sessions", async (req, res) => {
       res,
       "Edited timer duration must retain the original timer value.",
     );
-  const invalidGoalProgress = body.data.goals.some((goal) => {
-    const attemptsInvalid =
-      goal.successfulAttempts != null &&
-      (goal.totalAttempts == null ||
-        goal.successfulAttempts > goal.totalAttempts ||
-        !Number.isInteger(goal.successfulAttempts));
-    const totalInvalid =
-      goal.totalAttempts != null && !Number.isInteger(goal.totalAttempts);
-    const noData =
-      goal.accuracyPercent == null &&
-      goal.totalAttempts == null &&
-      goal.promptingLevel == null &&
-      !goal.progressNote.trim();
-    return attemptsInvalid || totalInvalid || noData;
-  });
-  if (invalidGoalProgress)
+  const validatedGoalProgress = body.data.goals.map((goal) => ({
+    goal,
+    validation: validateManualSessionGoalProgress(goal),
+  }));
+  const invalidGoalProgress = validatedGoalProgress.find(
+    ({ validation }) => !validation.valid,
+  );
+  if (invalidGoalProgress) {
+    const fieldError = (
+      [
+        "successfulAttempts",
+        "totalAttempts",
+        "accuracyPercent",
+        "progressNote",
+      ] as const
+    )
+      .map((field) => invalidGoalProgress.validation.errors[field])
+      .find(Boolean);
     return fail(
       res,
-      "Add valid progress data for every selected goal. Successful attempts cannot exceed total attempts.",
+      fieldError ?? "Add valid progress data for every selected goal.",
     );
+  }
   const activeGoals = await db
     .select()
     .from(communicationGoalsTable)
@@ -17933,7 +17951,7 @@ router.post("/manual-sessions", async (req, res) => {
     const progress = await transaction
       .insert(therapySessionGoalProgressTable)
       .values(
-        body.data.goals.map((entry) => {
+        validatedGoalProgress.map(({ goal: entry, validation }) => {
           const goal = goalById.get(entry.goalId)!;
           return {
             organizationId: actor.organizationId!,
@@ -17943,12 +17961,9 @@ router.post("/manual-sessions", async (req, res) => {
             goalVersion: goal.version,
             goalTitleSnapshot: goal.title,
             goalAreaSnapshot: goal.goalArea,
-            accuracyPercent:
-              entry.accuracyPercent == null
-                ? null
-                : Math.round(entry.accuracyPercent),
-            successfulAttempts: entry.successfulAttempts ?? null,
-            totalAttempts: entry.totalAttempts ?? null,
+            accuracyPercent: validation.values.accuracyPercent,
+            successfulAttempts: validation.values.successfulAttempts,
+            totalAttempts: validation.values.totalAttempts,
             progressStatus: null,
             promptingLevel: entry.promptingLevel ?? null,
             progressNote: entry.progressNote.trim(),
@@ -18045,7 +18060,11 @@ router.get("/sessions", async (req, res) => {
           isNull(therapySessionsTable.archivedAt),
         ),
       )
-      .orderBy(desc(therapySessionsTable.createdAt));
+      .orderBy(
+        desc(therapySessionsTable.sessionDate),
+        desc(therapySessionsTable.createdAt),
+        desc(therapySessionsTable.id),
+      );
     const sessionIds = rows.map((row) => row.id);
     const phrases = sessionIds.length
       ? await db
@@ -18190,6 +18209,86 @@ router.get("/sessions", async (req, res) => {
   );
 });
 
+router.get("/sessions/recording-detail", async (req, res) => {
+  const query = GetSessionRecordingDetailQueryParams.safeParse(req.query);
+  if (!query.success)
+    return fail(res, "A valid child and session are required.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = requireClinician(req, res);
+  if (!actor?.organizationId) return;
+
+  const [session] = await db
+    .select({
+      id: therapySessionsTable.id,
+      sessionMode: therapySessionsTable.sessionMode,
+      sessionStatus: therapySessionsTable.sessionStatus,
+    })
+    .from(therapySessionsTable)
+    .where(
+      and(
+        eq(therapySessionsTable.id, query.data.sessionId),
+        eq(therapySessionsTable.organizationId, actor.organizationId),
+        eq(therapySessionsTable.childId, query.data.childId),
+        isNull(therapySessionsTable.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (
+    !session ||
+    session.sessionMode !== "recorded" ||
+    session.sessionStatus !== "completed"
+  ) {
+    return res
+      .status(404)
+      .json({ error: "Completed recorded session not found." });
+  }
+
+  const [transcript] = await db
+    .select({
+      id: sessionTranscriptsTable.id,
+      rawTranscript: sessionTranscriptsTable.rawTranscript,
+      provider: sessionTranscriptsTable.provider,
+      status: sessionTranscriptsTable.status,
+    })
+    .from(sessionTranscriptsTable)
+    .where(
+      and(
+        eq(sessionTranscriptsTable.childId, query.data.childId),
+        eq(sessionTranscriptsTable.sessionId, session.id),
+        eq(sessionTranscriptsTable.status, "complete"),
+      ),
+    )
+    .orderBy(
+      desc(sessionTranscriptsTable.updatedAt),
+      desc(sessionTranscriptsTable.id),
+    )
+    .limit(1);
+
+  await writeSecurityAudit({
+    actor,
+    action: "RECORDED_SESSION_DETAIL_VIEWED",
+    targetType: "therapy_session",
+    targetId: session.id,
+    childId: query.data.childId,
+  });
+  return res.json(
+    GetSessionRecordingDetailResponse.parse({
+      sessionId: session.id,
+      transcriptId: transcript?.id ?? null,
+      transcript: transcript?.rawTranscript.trim() || null,
+      provider: transcript?.provider ?? null,
+      model: transcript
+        ? transcript.provider.includes(TRANSCRIPTION_MODEL)
+          ? TRANSCRIPTION_MODEL
+          : "not recorded"
+        : null,
+      transcriptionSucceeded: transcript
+        ? transcript.status === "complete"
+        : null,
+    }),
+  );
+});
+
 router.get("/sessions/dashboard", async (req, res) => {
   const actor = viewerFrom(req);
   if (!actor) return res.status(401).json({ error: authenticationError(req) });
@@ -18201,6 +18300,10 @@ router.get("/sessions/dashboard", async (req, res) => {
   const weekStart = new Date();
   weekStart.setHours(0, 0, 0, 0);
   weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+  const weekStartDate = dateString(weekStart);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekStart.getDate() + 6);
+  const weekEndDate = dateString(weekEnd);
 
   const authorizedChildIds = actor.childIds.length ? actor.childIds : [-1];
   const profiles = await db
@@ -18221,7 +18324,7 @@ router.get("/sessions/dashboard", async (req, res) => {
         completedSessions: [],
         draftDocumentation: [],
         weeklySnapshot: {
-          weekStart: weekStart.toISOString().slice(0, 10),
+          weekStart: weekStartDate,
           sessionsRecorded: 0,
           awaitingReview: 0,
           draftNotes: 0,
@@ -18256,6 +18359,7 @@ router.get("/sessions/dashboard", async (req, res) => {
           ),
         )
         .orderBy(
+          desc(therapySessionsTable.sessionDate),
           desc(therapySessionsTable.createdAt),
           desc(therapySessionsTable.id),
         ),
@@ -18427,10 +18531,11 @@ router.get("/sessions/dashboard", async (req, res) => {
           })),
       ].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt)),
       weeklySnapshot: {
-        weekStart: weekStart.toISOString().slice(0, 10),
+        weekStart: weekStartDate,
         sessionsRecorded: completedSessions.filter(
           (session) =>
-            session.createdAt >= weekStart &&
+            session.sessionDate >= weekStartDate &&
+            session.sessionDate <= weekEndDate &&
             session.sessionStatus === "completed",
         ).length,
         awaitingReview: requiresReview.length,

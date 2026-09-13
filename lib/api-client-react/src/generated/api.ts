@@ -121,6 +121,7 @@ import type {
   GetPhraseTrendsParams,
   GetRecurringLanguagePatternDetailParams,
   GetRecurringLanguagePatternsParams,
+  GetSessionRecordingDetailParams,
   GetSessionSoapNoteParams,
   GetSessionTranscriptionDraftParams,
   GetTeacherCommunicationHelperParams,
@@ -195,6 +196,7 @@ import type {
   SessionCalibration,
   SessionCalibrationCompletionRequest,
   SessionInput,
+  SessionRecordingDetail,
   SessionRecordingPreparation,
   SessionRecordingPreparationRequest,
   SessionSoapNote,
@@ -3588,7 +3590,7 @@ export const getSetRolePreviewUrl = () => {
 }
 
 /**
- * @summary Start or change a Super Admin role preview
+ * @summary Select a seeded persona in the authenticated development demo
  */
 export const setRolePreview = async (rolePreviewInput: RolePreviewInput, options?: Parameters<typeof customFetch>[1]): Promise<Viewer> => {
 
@@ -3637,7 +3639,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type SetRolePreviewMutationError = ErrorType<void>
 
     /**
- * @summary Start or change a Super Admin role preview
+ * @summary Select a seeded persona in the authenticated development demo
  */
 export const useSetRolePreview = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setRolePreview>>, TError,{data: BodyType<RolePreviewInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
@@ -8338,6 +8340,90 @@ export const useCreateSession = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getCreateSessionMutationOptions(options));
     }
+
+export const getGetSessionRecordingDetailUrl = (params: GetSessionRecordingDetailParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sessions/recording-detail?${stringifiedParams}` : `/api/sessions/recording-detail`
+}
+
+/**
+ * @summary Get transcript metadata for a completed recorded session
+ */
+export const getSessionRecordingDetail = async (params: GetSessionRecordingDetailParams, options?: Parameters<typeof customFetch>[1]): Promise<SessionRecordingDetail> => {
+
+  return customFetch<SessionRecordingDetail>(getGetSessionRecordingDetailUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSessionRecordingDetailQueryKey = (params?: GetSessionRecordingDetailParams,) => {
+    return [
+    `/api/sessions/recording-detail`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetSessionRecordingDetailQueryOptions = <TData = Awaited<ReturnType<typeof getSessionRecordingDetail>>, TError = ErrorType<void>>(params: GetSessionRecordingDetailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSessionRecordingDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSessionRecordingDetailQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSessionRecordingDetail>>> = ({ signal }) => getSessionRecordingDetail(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSessionRecordingDetail>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSessionRecordingDetailQueryResult = NonNullable<Awaited<ReturnType<typeof getSessionRecordingDetail>>>
+export type GetSessionRecordingDetailQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get transcript metadata for a completed recorded session
+ */
+
+export function useGetSessionRecordingDetail<TData = Awaited<ReturnType<typeof getSessionRecordingDetail>>, TError = ErrorType<void>>(
+ params: GetSessionRecordingDetailParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSessionRecordingDetail>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSessionRecordingDetailQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
 
 export const getGetSessionsDashboardUrl = () => {
 

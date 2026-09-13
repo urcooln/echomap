@@ -12,7 +12,8 @@ export interface SessionsDashboardCompletedSession {
   sessionId: number;
   childId: number;
   childName: string;
-  sessionDate: Date;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
+  sessionDate: string;
   sessionMode: SessionsDashboardCompletedSessionSessionMode;
   sessionStatus?: SessionsDashboardCompletedSessionSessionStatus;
   /** @nullable */

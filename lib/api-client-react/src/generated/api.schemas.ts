@@ -1639,6 +1639,7 @@ export const ManualSessionGoalProgressInputPromptingLevel = {
   moderate: 'moderate',
   maximal: 'maximal',
   total: 'total',
+  na: 'na',
 } as const;
 
 export interface ManualSessionGoalProgressInput {
@@ -3305,6 +3306,20 @@ export interface Session {
   goalProgress?: ManualSessionGoalProgress[];
 }
 
+export interface SessionRecordingDetail {
+  sessionId: number;
+  /** @nullable */
+  transcriptId: number | null;
+  /** @nullable */
+  transcript: string | null;
+  /** @nullable */
+  provider: string | null;
+  /** @nullable */
+  model: string | null;
+  /** @nullable */
+  transcriptionSucceeded: boolean | null;
+}
+
 export type SessionReviewQueueWorkflowStatus = typeof SessionReviewQueueWorkflowStatus[keyof typeof SessionReviewQueueWorkflowStatus];
 
 
@@ -3348,6 +3363,7 @@ export interface SessionsDashboardCompletedSession {
   sessionId: number;
   childId: number;
   childName: string;
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   sessionDate: string;
   sessionMode: SessionsDashboardCompletedSessionSessionMode;
   sessionStatus?: SessionsDashboardCompletedSessionSessionStatus;
@@ -3373,6 +3389,7 @@ export interface SessionsDashboardDraftDocumentation {
 }
 
 export interface SessionsDashboardWeeklySnapshot {
+  /** @pattern ^\d{4}-\d{2}-\d{2}$ */
   weekStart: string;
   /** @minimum 0 */
   sessionsRecorded: number;
@@ -4880,6 +4897,11 @@ childId: number;
 
 export type CreateSessionParams = {
 childId: number;
+};
+
+export type GetSessionRecordingDetailParams = {
+childId: number;
+sessionId: number;
 };
 
 export type ListUnclearVocalizationsParams = {
