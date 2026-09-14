@@ -7,7 +7,9 @@
  */
 
 export interface BetaNotice {
+  agreementType: string;
   version: string;
   text: string;
+  required: boolean;
   acknowledged: boolean;
 }

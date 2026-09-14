@@ -8,6 +8,9 @@ import {
 
 export const CLINICIAN_LEARNING_RESOURCE_KEY = "clinician-learning-center";
 export const CLINICIAN_LEARNING_CONTENT_VERSION = "1.0";
+export const CLINICIAN_LEARNING_HANDBOOK_FILENAME =
+  "childled-clinician-resources.pdf";
+export const CLINICIAN_LEARNING_HANDBOOK_VERSION = "1.0";
 export const CLINICIAN_LEARNING_DISCLAIMER =
   "Educational content only. This center does not make diagnoses. It does not assign NLA stages automatically. It does not generate treatment recommendations. Resources never modify child records, remain separate from clinical documentation, and do not replace clinician judgment.";
 export const CLINICIAN_LEARNING_SAFETY_POINTS = [

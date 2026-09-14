@@ -72,3 +72,31 @@ export const revokeApplicationInvitation = async (
   if (!runtimeConfig.clerkInvitations.enabled || !clerkInvitationId) return;
   await clerkClient.invitations.revokeInvitation(clerkInvitationId);
 };
+
+export const pendingApplicationInvitationUrls = async (
+  clerkInvitationIds: string[],
+) => {
+  const requestedIds = new Set(clerkInvitationIds.filter(Boolean));
+  const urls = new Map<string, string>();
+  if (!runtimeConfig.clerkInvitations.enabled || requestedIds.size === 0) {
+    return urls;
+  }
+
+  let offset = 0;
+  const limit = 100;
+  while (urls.size < requestedIds.size) {
+    const page = await clerkClient.invitations.getInvitationList({
+      status: "pending",
+      limit,
+      offset,
+    });
+    for (const invitation of page.data) {
+      if (requestedIds.has(invitation.id) && invitation.url) {
+        urls.set(invitation.id, invitation.url);
+      }
+    }
+    offset += page.data.length;
+    if (page.data.length === 0 || offset >= page.totalCount) break;
+  }
+  return urls;
+};

@@ -49,7 +49,7 @@ export const SLP_AGREEMENTS = [
 
 export type SlpAgreementType = (typeof SLP_AGREEMENTS)[number]["type"];
 
-export const invitationRequiresSlpOnboarding = ({
+export const invitationRequiresRoleOnboarding = ({
   membershipRole,
   existingMembership,
 }: {
@@ -60,11 +60,10 @@ export const invitationRequiresSlpOnboarding = ({
     onboardingCompletedAt: Date | null;
   };
 }) =>
-  membershipRole === "clinician" &&
-  (!existingMembership ||
-    existingMembership.role !== "clinician" ||
-    existingMembership.accountStatus !== "active" ||
-    !existingMembership.onboardingCompletedAt);
+  !existingMembership ||
+  existingMembership.role !== membershipRole ||
+  existingMembership.accountStatus !== "active" ||
+  !existingMembership.onboardingCompletedAt;
 
 export const hasEveryCurrentSlpAgreement = (
   submitted: Array<{ type: string; version: string }>,

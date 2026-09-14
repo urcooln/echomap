@@ -56,7 +56,6 @@ test("an invited SLP is restricted until profile and agreements activate the mem
       invitedEmail: email,
       invitedRole: "clinician",
       invitedByUserId: `test-inviter-${suffix}`,
-      clerkInvitationId: `invitation_${suffix}`,
       tokenHash: hashInvitationToken(token),
       expiresAt: new Date(Date.now() + 60_000),
       accessScope: "organization",

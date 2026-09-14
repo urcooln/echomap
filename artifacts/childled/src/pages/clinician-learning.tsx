@@ -62,7 +62,7 @@ export function ClinicianLearningPage() {
     try {
       const a = document.createElement('a');
       a.href = '/api/clinician-learning-center/download';
-      a.download = 'ChildLed-Clinician-Learning-Handbook.txt';
+      a.download = 'ChildLed-Clinician-Resources.pdf';
       document.body.appendChild(a);
       a.click();
       a.remove();

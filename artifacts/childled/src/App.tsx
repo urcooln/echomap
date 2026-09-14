@@ -39,10 +39,12 @@ import {
   CalendarX,
   AudioWaveform,
   ArrowLeft,
+  ArrowLeftRight,
   ArrowRight,
   Bell,
   BookOpen,
   Check,
+  CheckCircle,
   ChevronDown,
   Circle,
   CircleHelp,
@@ -113,6 +115,7 @@ import {
   getListAacPlanningQueryKey,
   getListChildInterestsQueryKey,
   getListCareTeamInvitationsQueryKey,
+  getListStudentTransfersQueryKey,
   getGetTeamInboxQueryKey,
   getListClinicalKnowledgeSourcesQueryKey,
   getListClinicalKnowledgeInsightsQueryKey,
@@ -127,6 +130,9 @@ import {
   useCreateChild,
   useCreateChildInterest,
   useCreateCareTeamInvitation,
+  useReplaceCareTeamInvitation,
+  useLookupExistingTeacher,
+  useAssignExistingTeacher,
   useCreateTeamMessage,
   useMarkTeamMessagesRead,
   useCreateDeletionRequest,
@@ -186,6 +192,10 @@ import {
   useGetViewer,
   useListChildInterests,
   useListCareTeamInvitations,
+  useListStudentTransfers,
+  useLookupStudentTransferSlp,
+  useCreateStudentTransfer,
+  useCancelStudentTransfer,
   useGetTeamInbox,
   useLogPhraseObservation,
   useUpdateChildInterest,
@@ -205,6 +215,9 @@ import type {
   Child,
   ChildInterest,
   CareTeamInvitation,
+  ExistingTeacherLookup,
+  ExistingTeacherAssignment,
+  StudentTransferSlpLookup,
   ChildSnapshot,
   ClinicalKnowledgeInsight,
   Comment,
@@ -257,6 +270,7 @@ import { TeacherResourcesPage } from "@/pages/teacher-resources";
 import NotFound from "@/pages/not-found";
 import { ClinicianUnclearSpeechPage } from "@/pages/unclear-speech";
 import { ClinicianLearningPage } from "@/pages/clinician-learning";
+import { CareTeamOnboardingPage } from "@/pages/care-team-onboarding";
 import { ManualSessionTrackingPage } from "@/pages/manual-session";
 import { ServiceSetupPage } from "@/pages/service-setup";
 import { CommunicationPassportPage } from "@/pages/communication-passport";
@@ -356,6 +370,14 @@ function clearOverviewSessionMarkers() {
   Object.keys(window.sessionStorage)
     .filter((key) => key.startsWith(overviewSessionStoragePrefix))
     .forEach((key) => window.sessionStorage.removeItem(key));
+}
+async function endDevelopmentDemoSession() {
+  await fetch("/api/development/logout", {
+    method: "POST",
+    credentials: "include",
+  }).catch(() => undefined);
+  window.localStorage.removeItem(developmentDemoStorageKey);
+  window.localStorage.removeItem(developmentDemoSessionStorageKey);
 }
 type IconType = typeof Home;
 
@@ -867,9 +889,9 @@ function ChildContextNav({
     },
     {
       label: "Team",
-      href: `/team-communication${childQuery}`,
+      href: childProfileHref("team"),
       icon: Users,
-      description: "Child-scoped communication with the care team.",
+      description: "People with approved access to this child's workspace.",
     },
     {
       label: "Session Notes",
@@ -1426,19 +1448,18 @@ function Shell({
 function AccountFooter() {
   const { user } = useUser();
   const { signOut } = useClerk();
-  const clearAndSignOut = () => {
+  const clearAndSignOut = async () => {
     queryClient.clear();
     clearOverviewSessionMarkers();
     markAuthLogout();
     const wasDevelopmentDemo =
       window.localStorage.getItem(developmentDemoStorageKey) === "active";
-    window.localStorage.removeItem(developmentDemoStorageKey);
-    window.localStorage.removeItem(developmentDemoSessionStorageKey);
     if (wasDevelopmentDemo) {
+      await endDevelopmentDemoSession();
       window.location.assign(basePath || "/");
       return;
     }
-    void signOut({ redirectUrl: basePath || "/" });
+    await signOut({ redirectUrl: basePath || "/" });
   };
   const name =
     user?.fullName ||
@@ -5436,6 +5457,7 @@ function ClinicianCaseloadPage({
   onAddStudent,
   onOpenStudent,
   onInvite,
+  onTransfer,
   onEditChild,
 }: {
   children: Child[];
@@ -5445,6 +5467,7 @@ function ClinicianCaseloadPage({
   onAddStudent: () => void;
   onOpenStudent: (child: Child) => void;
   onInvite: (child: Child) => void;
+  onTransfer: (child: Child) => void;
   onEditChild: (child: Child) => void;
 }) {
   const [search, setSearch] = useState("");
@@ -5574,6 +5597,13 @@ function ClinicianCaseloadPage({
                     data-testid={`button-invite-student-${child.id}`}
                   >
                     <UserPlus size={15} /> Invite
+                  </Button>
+                  <Button
+                    variant="quiet"
+                    onClick={() => onTransfer(child)}
+                    data-testid={`button-transfer-student-${child.id}`}
+                  >
+                    <ArrowLeftRight size={15} /> Transfer
                   </Button>
                 </div>
               </article>
@@ -5996,6 +6026,8 @@ function ClinicianChildProfilePage({
   onAddChild,
   onAddPhrase,
   onEditChild,
+  onInvite,
+  onTransfer,
 }: {
   child?: Child;
   dashboard?: Dashboard;
@@ -6003,6 +6035,8 @@ function ClinicianChildProfilePage({
   onAddChild: () => void;
   onAddPhrase: () => void;
   onEditChild: (child: Child) => void;
+  onInvite: (child: Child) => void;
+  onTransfer: (child: Child) => void;
 }) {
   const [location] = useLocation();
   const section = new URLSearchParams(window.location.search).get("section");
@@ -6029,6 +6063,16 @@ function ClinicianChildProfilePage({
         }
       />
     );
+
+  if (section === "team") {
+    return (
+      <ChildTeamPage
+        child={child}
+        onInvite={() => onInvite(child)}
+        onTransfer={() => onTransfer(child)}
+      />
+    );
+  }
 
   const newPhrases = dashboard?.recentlyAdded ?? [];
   const recentActivity = dashboard?.activity ?? [];
@@ -8764,6 +8808,373 @@ function ActivityPage({
   );
 }
 
+function ChildTeamPage({
+  child,
+  onInvite,
+  onTransfer,
+}: {
+  child: Child;
+  onInvite: () => void;
+  onTransfer: () => void;
+}) {
+  const [copiedInvitationId, setCopiedInvitationId] = useState<string>();
+  const [replacementTarget, setReplacementTarget] =
+    useState<CareTeamInvitation>();
+  const [replacementInvitation, setReplacementInvitation] =
+    useState<CareTeamInvitation>();
+  const queryClient = useQueryClient();
+  const settings = useGetSettings();
+  const invitations = useListCareTeamInvitations({
+    query: {
+      queryKey: getListCareTeamInvitationsQueryKey(),
+    },
+  });
+  const replaceInvitation = useReplaceCareTeamInvitation();
+  const student = settings.data?.students.find(
+    (candidate) => candidate.id === child.id,
+  );
+  const members = student?.careTeam ?? [];
+  const pendingInvitations = (invitations.data ?? []).filter(
+    (invitation) =>
+      invitation.childId === child.id && invitation.status === "pending",
+  );
+  const loading = settings.isLoading || invitations.isLoading;
+  const failed = settings.isError || invitations.isError;
+  const hasJoinedParentOrTeacher = members.some((member) =>
+    ["Parent", "Teacher"].includes(member.role),
+  );
+  const copyInvitation = async (invitation: CareTeamInvitation) => {
+    if (!invitation.invitationPath) return;
+    await navigator.clipboard.writeText(
+      new URL(invitation.invitationPath, window.location.origin).toString(),
+    );
+    setCopiedInvitationId(invitation.id);
+  };
+  const closeReplacementDialog = () => {
+    if (replaceInvitation.isPending) return;
+    setReplacementTarget(undefined);
+    setReplacementInvitation(undefined);
+    replaceInvitation.reset();
+  };
+  const requestReplacement = () => {
+    if (!replacementTarget) return;
+    replaceInvitation.mutate(
+      { invitationId: Number(replacementTarget.id) },
+      {
+        onSuccess: (invitation) => {
+          setCopiedInvitationId(undefined);
+          setReplacementInvitation(invitation);
+          void queryClient.invalidateQueries({
+            queryKey: getListCareTeamInvitationsQueryKey(),
+          });
+        },
+      },
+    );
+  };
+
+  return (
+    <>
+      <div
+        id="child-team"
+        data-testid="child-team-page"
+        className="space-y-6 animate-rise"
+      >
+        <SectionHeading
+          eyebrow="Student care team"
+          title={`${child.preferredName || child.firstName || child.name}'s team`}
+          description="See who currently has approved access to this student and invite a parent or teacher to join."
+          action={
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="outline"
+                onClick={onTransfer}
+                data-testid="button-child-team-transfer"
+              >
+                <ArrowLeftRight size={16} /> Transfer student
+              </Button>
+              <Button onClick={onInvite} data-testid="button-child-team-invite">
+                <UserPlus size={16} /> Invite team member
+              </Button>
+            </div>
+          }
+        />
+
+        {loading ? (
+          <LoadingBlocks />
+        ) : failed ? (
+          <EmptyState
+            icon={Users}
+            title="Team unavailable"
+            body="ChildLed could not securely load this student's team."
+            action={
+              <Button
+                variant="outline"
+                onClick={() => {
+                  void settings.refetch();
+                  void invitations.refetch();
+                }}
+              >
+                <RefreshCw size={16} /> Try again
+              </Button>
+            }
+          />
+        ) : (
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,.75fr)]">
+            <section className="rounded-2xl border border-border bg-card p-5 soft-shadow sm:p-6">
+              <div className="flex items-center justify-between gap-3 border-b border-border pb-4">
+                <div>
+                  <h2 className="serif text-2xl font-semibold">Current team</h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {members.length} active member
+                    {members.length === 1 ? "" : "s"}
+                  </p>
+                </div>
+                <div className="grid size-10 place-items-center rounded-xl bg-secondary text-primary">
+                  <Users size={19} />
+                </div>
+              </div>
+
+              {members.length ? (
+                <div className="mt-2 divide-y divide-border">
+                  {members.map((member) => (
+                    <article
+                      key={member.userId}
+                      data-testid={`child-team-member-${member.userId}`}
+                      className="flex items-center gap-3 py-4"
+                    >
+                      <Avatar
+                        name={member.name}
+                        className="size-11 bg-secondary text-xs"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate font-semibold text-primary">
+                          {member.name}
+                        </h3>
+                        <p className="mt-0.5 text-sm text-muted-foreground">
+                          {member.role}
+                        </p>
+                      </div>
+                      <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-semibold text-primary">
+                        Active
+                      </span>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="mt-5 rounded-xl border border-dashed border-border p-5">
+                  <p className="font-semibold text-primary">
+                    No team members yet
+                  </p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                    Invite a parent or teacher to give them approved access to
+                    this student.
+                  </p>
+                </div>
+              )}
+
+              {!hasJoinedParentOrTeacher && members.length > 0 ? (
+                <p className="mt-4 rounded-xl bg-secondary/45 p-4 text-sm leading-6 text-muted-foreground">
+                  No parent or teacher has joined this student's team yet.
+                </p>
+              ) : null}
+            </section>
+
+            <section className="rounded-2xl border border-border bg-card p-5 soft-shadow sm:p-6">
+              <div className="flex items-center justify-between gap-3 border-b border-border pb-4">
+                <div>
+                  <h2 className="serif text-2xl font-semibold">
+                    Pending invites
+                  </h2>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Waiting for account setup
+                  </p>
+                </div>
+                <span className="grid min-w-9 place-items-center rounded-full bg-accent/20 px-2 py-1 text-sm font-bold text-primary">
+                  {pendingInvitations.length}
+                </span>
+              </div>
+
+              {pendingInvitations.length ? (
+                <div className="mt-2 divide-y divide-border">
+                  {pendingInvitations.map((invitation) => (
+                    <article
+                      key={invitation.id}
+                      data-testid={`child-team-invitation-${invitation.id}`}
+                      className="py-4"
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-secondary text-primary">
+                          <Mail size={17} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="break-all text-sm font-semibold">
+                            {invitation.email}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {invitation.role} · Pending
+                          </p>
+                        </div>
+                      </div>
+                      {invitation.invitationPath ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="mt-3 min-h-11 w-full"
+                          onClick={() => void copyInvitation(invitation)}
+                          data-testid={`button-copy-team-invitation-${invitation.id}`}
+                        >
+                          {copiedInvitationId === invitation.id ? (
+                            <Check size={16} />
+                          ) : (
+                            <Copy size={16} />
+                          )}
+                          {copiedInvitationId === invitation.id
+                            ? "Link copied"
+                            : "Copy invite link"}
+                        </Button>
+                      ) : (
+                        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                          The invitation was emailed securely. Its original link
+                          is unavailable from ChildLed.
+                        </p>
+                      )}
+                      <Button
+                        type="button"
+                        variant="quiet"
+                        className="mt-2 min-h-11 w-full"
+                        onClick={() => {
+                          setReplacementTarget(invitation);
+                          setReplacementInvitation(undefined);
+                          replaceInvitation.reset();
+                        }}
+                        data-testid={`button-replace-team-invitation-${invitation.id}`}
+                      >
+                        <RefreshCw size={16} /> Get a new link
+                      </Button>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-5 rounded-xl border border-dashed border-border p-4 text-sm leading-6 text-muted-foreground">
+                  No invitations are waiting for acceptance.
+                </p>
+              )}
+
+              <Button
+                variant="outline"
+                className="mt-5 w-full"
+                onClick={onInvite}
+                data-testid="button-child-team-invite-secondary"
+              >
+                <UserPlus size={16} /> Invite parent or teacher
+              </Button>
+            </section>
+          </div>
+        )}
+      </div>
+
+      {replacementTarget ? (
+        <Modal
+          title="Get a new invitation link?"
+          onClose={closeReplacementDialog}
+        >
+          {replacementInvitation ? (
+            <div className="space-y-5">
+              <div className="rounded-xl border border-border bg-secondary/45 p-4">
+                <div className="flex items-start gap-3">
+                  <div className="grid size-10 shrink-0 place-items-center rounded-xl bg-card text-primary">
+                    <CheckCircle size={19} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-primary">
+                      New invitation ready
+                    </p>
+                    <p className="mt-1 break-all text-sm text-muted-foreground">
+                      {replacementInvitation.email}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-sm leading-6 text-muted-foreground">
+                Clerk emailed the new invitation. The previous link no longer
+                grants ChildLed access.
+              </p>
+              <Button
+                type="button"
+                className="min-h-11 w-full"
+                onClick={() => void copyInvitation(replacementInvitation)}
+                data-testid="button-copy-replacement-team-invitation"
+              >
+                {copiedInvitationId === replacementInvitation.id ? (
+                  <Check size={16} />
+                ) : (
+                  <Copy size={16} />
+                )}
+                {copiedInvitationId === replacementInvitation.id
+                  ? "Link copied"
+                  : "Copy new invite link"}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-11 w-full"
+                onClick={closeReplacementDialog}
+              >
+                Done
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              <p className="text-sm leading-6 text-muted-foreground">
+                Create a fresh {replacementTarget.role.toLowerCase()} invitation
+                for <strong>{replacementTarget.email}</strong>. The existing
+                link will stop working, and Clerk will email the replacement.
+              </p>
+              {replaceInvitation.isError ? (
+                <p
+                  className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive"
+                  data-testid="status-replace-team-invitation-error"
+                >
+                  {replaceInvitation.error instanceof Error
+                    ? replaceInvitation.error.message
+                    : "The new invitation could not be created. Please try again."}
+                </p>
+              ) : null}
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <Button
+                  type="button"
+                  variant="quiet"
+                  onClick={closeReplacementDialog}
+                  disabled={replaceInvitation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={requestReplacement}
+                  disabled={replaceInvitation.isPending}
+                  data-autofocus
+                  data-testid="button-confirm-replace-team-invitation"
+                >
+                  <RefreshCw
+                    size={16}
+                    className={
+                      replaceInvitation.isPending ? "animate-spin" : ""
+                    }
+                  />
+                  {replaceInvitation.isPending
+                    ? "Creating new link…"
+                    : "Create new link"}
+                </Button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      ) : null}
+    </>
+  );
+}
+
 function ClinicalDisclaimer() {
   return (
     <div className="mt-8 rounded-xl border border-border bg-muted/30 p-4 text-xs leading-5 text-muted-foreground print:block print:border-none print:bg-transparent print:p-0">
@@ -8858,19 +9269,18 @@ function SettingsPage() {
   const savePreferences = () => {
     updatePreferences.mutate({ data: resolvedPreferences });
   };
-  const clearAndSignOut = () => {
+  const clearAndSignOut = async () => {
     queryClient.clear();
     clearOverviewSessionMarkers();
     markAuthLogout();
     const wasDevelopmentDemo =
       window.localStorage.getItem(developmentDemoStorageKey) === "active";
-    window.localStorage.removeItem(developmentDemoStorageKey);
-    window.localStorage.removeItem(developmentDemoSessionStorageKey);
     if (wasDevelopmentDemo) {
+      await endDevelopmentDemoSession();
       window.location.assign(basePath || "/");
       return;
     }
-    void signOut({ redirectUrl: basePath || "/" });
+    await signOut({ redirectUrl: basePath || "/" });
   };
 
   return (
@@ -16363,16 +16773,134 @@ function ChildForm({
   onCreated: (child: Child) => void;
 }) {
   const mutation = useCreateChild();
+  const invitationMutation = useCreateCareTeamInvitation();
+  const teacherLookupMutation = useLookupExistingTeacher();
+  const teacherAssignmentMutation = useAssignExistingTeacher();
+  const client = useQueryClient();
   const [name, setName] = useState("");
   const [school, setSchool] = useState("");
   const [grade, setGrade] = useState("");
   const [style, setStyle] = useState("Gestalt language processor");
   const [notes, setNotes] = useState("");
   const [legalAuthorityConfirmed, setLegalAuthorityConfirmed] = useState(false);
-  const submit = (event: FormEvent) => {
+  const [inviteDrafts, setInviteDrafts] = useState<
+    Array<{
+      id: string;
+      email: string;
+      role: "Parent" | "Teacher";
+    }>
+  >([]);
+  const [createdChild, setCreatedChild] = useState<Child>();
+  const [inviteResults, setInviteResults] = useState<
+    Array<{
+      id: string;
+      email: string;
+      role: "Parent" | "Teacher";
+      invitation?: CareTeamInvitation;
+      teacherLookup?: ExistingTeacherLookup;
+      assignment?: ExistingTeacherAssignment;
+      error?: string;
+    }>
+  >([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [formError, setFormError] = useState("");
+  const [copiedInvitationId, setCopiedInvitationId] = useState<string>();
+
+  const addInvite = (role: "Parent" | "Teacher") => {
+    setInviteDrafts((current) => [
+      ...current,
+      { id: crypto.randomUUID(), email: "", role },
+    ]);
+    setFormError("");
+  };
+  const updateInvite = (
+    id: string,
+    updates: Partial<{ email: string; role: "Parent" | "Teacher" }>,
+  ) =>
+    setInviteDrafts((current) =>
+      current.map((invite) =>
+        invite.id === id ? { ...invite, ...updates } : invite,
+      ),
+    );
+  const removeInvite = (id: string) =>
+    setInviteDrafts((current) => current.filter((invite) => invite.id !== id));
+
+  const sendInvitation = async (
+    child: Child,
+    invite: (typeof inviteDrafts)[number],
+  ) => {
+    try {
+      if (invite.role === "Teacher") {
+        const teacherLookup = await teacherLookupMutation.mutateAsync({
+          data: {
+            childId: child.id,
+            email: invite.email.trim().toLowerCase(),
+          },
+        });
+        if (teacherLookup.status === "available") {
+          return {
+            ...invite,
+            email: invite.email.trim(),
+            teacherLookup,
+          };
+        }
+        if (teacherLookup.status === "already_assigned") {
+          return {
+            ...invite,
+            email: invite.email.trim(),
+            teacherLookup,
+          };
+        }
+        if (teacherLookup.status === "different_role") {
+          return {
+            ...invite,
+            email: invite.email.trim(),
+            teacherLookup,
+          };
+        }
+      }
+      const invitation = await invitationMutation.mutateAsync({
+        data: {
+          childId: child.id,
+          email: invite.email.trim().toLowerCase(),
+          role: invite.role,
+        },
+      });
+      return { ...invite, email: invite.email.trim(), invitation };
+    } catch (error) {
+      return {
+        ...invite,
+        email: invite.email.trim(),
+        error:
+          error instanceof Error
+            ? error.message
+            : "The invitation could not be created.",
+      };
+    }
+  };
+
+  const submit = async (event: FormEvent) => {
     event.preventDefault();
-    mutation.mutate(
-      {
+    const normalizedEmails = inviteDrafts.map((invite) =>
+      invite.email.trim().toLowerCase(),
+    );
+    if (
+      inviteDrafts.some(
+        (invite) => !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(invite.email.trim()),
+      )
+    ) {
+      setFormError("Enter a valid email address for every care-team invite.");
+      return;
+    }
+    if (new Set(normalizedEmails).size !== normalizedEmails.length) {
+      setFormError("Each care-team email should only be invited once.");
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError("");
+    try {
+      const child = await mutation.mutateAsync({
         data: {
           name,
           school,
@@ -16385,10 +16913,202 @@ function ChildForm({
           regulationNotes: "",
           legalAuthorityConfirmed,
         },
-      },
-      { onSuccess: onCreated },
-    );
+      });
+      setCreatedChild(child);
+      if (!inviteDrafts.length) {
+        onCreated(child);
+        return;
+      }
+      const results = [];
+      for (const invite of inviteDrafts) {
+        results.push(await sendInvitation(child, invite));
+      }
+      setInviteResults(results);
+      await client.invalidateQueries({
+        queryKey: getListCareTeamInvitationsQueryKey(),
+      });
+    } catch {
+      setFormError("We couldn’t save this profile. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
   };
+
+  const retryInvitation = async (id: string) => {
+    if (!createdChild) return;
+    const failed = inviteResults.find((result) => result.id === id);
+    if (!failed) return;
+    setSubmitting(true);
+    const retried = await sendInvitation(createdChild, failed);
+    setInviteResults((current) =>
+      current.map((result) => (result.id === id ? retried : result)),
+    );
+    await client.invalidateQueries({
+      queryKey: getListCareTeamInvitationsQueryKey(),
+    });
+    setSubmitting(false);
+  };
+
+  const assignExistingTeacher = async (id: string) => {
+    if (!createdChild) return;
+    const result = inviteResults.find((candidate) => candidate.id === id);
+    if (!result || result.teacherLookup?.status !== "available") return;
+    setSubmitting(true);
+    try {
+      const assignment = await teacherAssignmentMutation.mutateAsync({
+        data: {
+          childId: createdChild.id,
+          email: result.email.trim().toLowerCase(),
+        },
+      });
+      setInviteResults((current) =>
+        current.map((candidate) =>
+          candidate.id === id
+            ? { ...candidate, assignment, error: undefined }
+            : candidate,
+        ),
+      );
+      await Promise.all([
+        client.invalidateQueries({ queryKey: getGetSettingsQueryKey() }),
+        client.invalidateQueries({ queryKey: getGetTeamInboxQueryKey() }),
+        client.invalidateQueries({
+          queryKey: getGetClinicianOverviewQueryKey(),
+        }),
+      ]);
+    } catch (error) {
+      setInviteResults((current) =>
+        current.map((candidate) =>
+          candidate.id === id
+            ? {
+                ...candidate,
+                error:
+                  error instanceof Error
+                    ? error.message
+                    : "The existing Teacher could not be added.",
+              }
+            : candidate,
+        ),
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const copyInvitation = async (result: (typeof inviteResults)[number]) => {
+    if (!result.invitation?.invitationPath) return;
+    await navigator.clipboard.writeText(
+      new URL(
+        result.invitation.invitationPath,
+        window.location.origin,
+      ).toString(),
+    );
+    setCopiedInvitationId(result.id);
+  };
+
+  if (createdChild && inviteResults.length) {
+    const failedCount = inviteResults.filter((result) => result.error).length;
+    const existingTeacherCount = inviteResults.filter(
+      (result) =>
+        result.teacherLookup?.status === "available" && !result.assignment,
+    ).length;
+    return (
+      <Modal
+        title={`${createdChild.name} was added`}
+        onClose={() => onCreated(createdChild)}
+      >
+        <div className="space-y-5">
+          <div className="rounded-xl border border-primary/20 bg-secondary/35 p-4">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="mt-0.5 shrink-0 text-primary" size={20} />
+              <div>
+                <p className="font-semibold text-primary">
+                  Student profile created
+                </p>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  {failedCount
+                    ? "The profile is safe. Retry any invitation that was not created before continuing."
+                    : existingTeacherCount
+                      ? "An existing Teacher account was found. Confirm Add to Student below; new care-team members received the normal Clerk invitation."
+                      : "The care-team invitations are ready. Clerk will guide each person through secure account creation."}
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="space-y-3" data-testid="student-invitation-results">
+            {inviteResults.map((result) => (
+              <div
+                key={result.id}
+                className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div className="min-w-0">
+                  <p className="font-semibold">
+                    {result.assignment
+                      ? "Teacher added"
+                      : result.teacherLookup?.teacher
+                        ? result.teacherLookup.teacher.name
+                        : result.role + " invitation"}
+                  </p>
+                  <p className="truncate text-sm text-muted-foreground">
+                    {result.email}
+                  </p>
+                  <p
+                    className={`mt-1 text-xs ${result.error ? "text-destructive" : "text-primary"}`}
+                  >
+                    {result.error
+                      ? "Invitation not created. Check the address or existing pending invitations."
+                      : result.assignment
+                        ? "Existing Teacher added to this student"
+                        : result.teacherLookup?.status === "available"
+                          ? "Existing ChildLed Teacher found"
+                          : result.teacherLookup?.status === "already_assigned"
+                            ? "Teacher already has access"
+                            : result.teacherLookup?.status === "different_role"
+                              ? "Different ChildLed account type — no invitation created"
+                              : "Invitation created"}
+                  </p>
+                </div>
+                {result.error ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void retryInvitation(result.id)}
+                    disabled={submitting}
+                  >
+                    <RotateCcw size={16} /> Retry
+                  </Button>
+                ) : result.teacherLookup?.status === "available" &&
+                  !result.assignment ? (
+                  <Button
+                    type="button"
+                    onClick={() => void assignExistingTeacher(result.id)}
+                    disabled={submitting}
+                    data-testid={"button-assign-existing-teacher-" + result.id}
+                  >
+                    <UserPlus size={16} /> Add to Student
+                  </Button>
+                ) : result.invitation?.invitationPath ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => void copyInvitation(result)}
+                  >
+                    <Copy size={16} />
+                    {copiedInvitationId === result.id ? "Copied" : "Copy link"}
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+          <div className="flex justify-end border-t border-border pt-4">
+            <Button type="button" onClick={() => onCreated(createdChild)}>
+              Continue to service setup <ArrowRight size={16} />
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal title="Add a child to your map" onClose={onClose}>
       <form onSubmit={submit} className="space-y-5">
@@ -16487,12 +17207,99 @@ function ChildForm({
             .
           </p>
         </fieldset>
-        {mutation.isError && (
+        <fieldset className="rounded-xl border border-border p-4 sm:p-5">
+          <legend className="px-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+            Care-team invitations (optional)
+          </legend>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Invite parents and teachers while creating this profile. Access will
+            be limited to this student.
+          </p>
+          {inviteDrafts.length ? (
+            <div className="mt-4 space-y-3">
+              {inviteDrafts.map((invite, index) => (
+                <div
+                  key={invite.id}
+                  className="grid gap-3 rounded-xl bg-secondary/30 p-3 sm:grid-cols-[9rem_minmax(0,1fr)_2.75rem] sm:items-end"
+                >
+                  <label className="space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Role
+                    </span>
+                    <select
+                      data-testid={`select-new-student-invite-role-${index}`}
+                      value={invite.role}
+                      onChange={(event) =>
+                        updateInvite(invite.id, {
+                          role: event.target.value as "Parent" | "Teacher",
+                        })
+                      }
+                      className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none focus-ring"
+                    >
+                      <option value="Parent">Parent</option>
+                      <option value="Teacher">Teacher</option>
+                    </select>
+                  </label>
+                  <label className="min-w-0 space-y-2">
+                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                      Email address
+                    </span>
+                    <div className="relative">
+                      <Mail
+                        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                        size={16}
+                      />
+                      <input
+                        data-testid={`input-new-student-invite-email-${index}`}
+                        type="email"
+                        required
+                        value={invite.email}
+                        onChange={(event) =>
+                          updateInvite(invite.id, { email: event.target.value })
+                        }
+                        placeholder="person@example.com"
+                        className="h-11 w-full rounded-xl border border-input bg-background pl-10 pr-3 text-sm outline-none focus-ring"
+                      />
+                    </div>
+                  </label>
+                  <Button
+                    type="button"
+                    variant="quiet"
+                    className="size-11 p-0"
+                    onClick={() => removeInvite(invite.id)}
+                    aria-label={`Remove ${invite.role} invitation`}
+                  >
+                    <Trash2 size={17} />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : null}
+          <div className="mt-4 grid gap-2 sm:flex">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => addInvite("Parent")}
+              data-testid="button-add-parent-invite"
+            >
+              <UserPlus size={16} /> Invite parent
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => addInvite("Teacher")}
+              data-testid="button-add-teacher-invite"
+            >
+              <UserPlus size={16} /> Invite teacher
+            </Button>
+          </div>
+        </fieldset>
+        {(mutation.isError || formError) && (
           <p
             data-testid="status-create-child-error"
             className="text-sm text-destructive"
           >
-            We couldn’t save this profile. Please try again.
+            {formError || "We couldn’t save this profile. Please try again."}
           </p>
         )}
         <div className="flex justify-end gap-3 pt-2">
@@ -16507,7 +17314,7 @@ function ChildForm({
           <Button
             type="submit"
             disabled={
-              mutation.isPending ||
+              submitting ||
               !name ||
               !school ||
               !grade ||
@@ -16515,7 +17322,11 @@ function ChildForm({
             }
             data-testid="button-submit-child"
           >
-            {mutation.isPending ? "Saving…" : "Create profile"}
+            {submitting
+              ? inviteDrafts.length
+                ? "Creating profile and invites…"
+                : "Saving…"
+              : "Create profile"}
           </Button>
         </div>
       </form>
@@ -18640,10 +19451,29 @@ function CareTeamInvitationForm({
   onClose: () => void;
 }) {
   const mutation = useCreateCareTeamInvitation();
+  const teacherLookup = useLookupExistingTeacher();
+  const teacherAssignment = useAssignExistingTeacher();
   const client = useQueryClient();
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<"Parent" | "Teacher">("Parent");
   const invitationPath = mutation.data?.invitationPath;
+  const lookupResult = teacherLookup.data;
+  const invalidateCareTeam = async () => {
+    await Promise.all([
+      client.invalidateQueries({ queryKey: getGetSettingsQueryKey() }),
+      client.invalidateQueries({
+        queryKey: getListCareTeamInvitationsQueryKey(),
+      }),
+      client.invalidateQueries({ queryKey: getGetTeamInboxQueryKey() }),
+      client.invalidateQueries({
+        queryKey: getGetClinicianOverviewQueryKey(),
+      }),
+    ]);
+  };
+  const resetTeacherLookup = () => {
+    teacherLookup.reset();
+    teacherAssignment.reset();
+  };
   const copyInvitation = async () => {
     if (!invitationPath) return;
     await navigator.clipboard.writeText(
@@ -18652,17 +19482,52 @@ function CareTeamInvitationForm({
   };
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    const normalizedEmail = email.trim().toLowerCase();
+    if (role === "Teacher" && !lookupResult) {
+      teacherLookup.mutate({
+        data: { childId: child.id, email: normalizedEmail },
+      });
+      return;
+    }
+    if (role === "Teacher" && lookupResult?.status === "available") {
+      teacherAssignment.mutate(
+        { data: { childId: child.id, email: normalizedEmail } },
+        { onSuccess: () => void invalidateCareTeam() },
+      );
+      return;
+    }
+    if (role === "Teacher" && lookupResult?.status !== "not_found") {
+      return;
+    }
     mutation.mutate(
-      { data: { childId: child.id, email, role } },
+      { data: { childId: child.id, email: normalizedEmail, role } },
       {
-        onSuccess: () => {
-          client.invalidateQueries({
-            queryKey: getListCareTeamInvitationsQueryKey(),
-          });
-        },
+        onSuccess: () => void invalidateCareTeam(),
       },
     );
   };
+  const primaryLabel =
+    role === "Parent"
+      ? "Create invitation"
+      : !lookupResult
+        ? "Check Teacher account"
+        : lookupResult.status === "available"
+          ? "Add to Student"
+          : lookupResult.status === "not_found"
+            ? "Send invitation"
+            : lookupResult.status === "already_assigned"
+              ? "Already added"
+              : "Different account type";
+  const primaryPending =
+    mutation.isPending ||
+    teacherLookup.isPending ||
+    teacherAssignment.isPending;
+  const primaryDisabled =
+    primaryPending ||
+    !email.trim() ||
+    (role === "Teacher" &&
+      (lookupResult?.status === "already_assigned" ||
+        lookupResult?.status === "different_role"));
   return (
     <Modal
       title={`Invite a care-team member for ${child.name}`}
@@ -18693,13 +19558,37 @@ function CareTeamInvitationForm({
             </Button>
           </div>
         </section>
+      ) : teacherAssignment.data ? (
+        <section className="space-y-5">
+          <div className="rounded-2xl border border-primary/20 bg-secondary/45 p-5">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="mt-0.5 shrink-0 text-primary" size={20} />
+              <div>
+                <p className="font-semibold text-primary">
+                  Teacher added to {child.name}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {teacherAssignment.data.teacher.name} can now access this
+                  student using their existing ChildLed account. A message was
+                  added to their Inbox.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="flex justify-end">
+            <Button type="button" onClick={onClose}>
+              Done
+            </Button>
+          </div>
+        </section>
       ) : (
         <form onSubmit={submit} className="space-y-5">
           <div className="rounded-2xl border border-primary/15 bg-secondary/35 p-4 text-sm leading-6 text-muted-foreground">
-            Create a secure pending invitation for a parent or teacher assigned
-            to <strong className="text-foreground">{child.name}</strong>.
-            ChildLed records the invitation for your organization; delivery
-            stays within your organization’s approved invite process.
+            {role === "Teacher"
+              ? "Enter the Teacher's exact email. ChildLed will check for an existing Teacher account before creating an invitation."
+              : "Create a secure pending invitation for a parent assigned to this student."}{" "}
+            Access will be limited to{" "}
+            <strong className="text-foreground">{child.name}</strong>.
           </div>
           <label className="block space-y-2">
             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -18715,7 +19604,10 @@ function CareTeamInvitationForm({
                 type="email"
                 required
                 value={email}
-                onChange={(event) => setEmail(event.target.value)}
+                onChange={(event) => {
+                  setEmail(event.target.value);
+                  resetTeacherLookup();
+                }}
                 placeholder="caregiver@example.com"
                 className="h-11 w-full rounded-xl border border-input bg-background pl-10 pr-3 text-sm outline-none transition-shadow focus-ring"
               />
@@ -18724,14 +19616,27 @@ function CareTeamInvitationForm({
           <SelectField
             label="Role"
             value={role}
-            onChange={(value) => setRole(value as "Parent" | "Teacher")}
+            onChange={(value) => {
+              setRole(value as "Parent" | "Teacher");
+              resetTeacherLookup();
+            }}
             options={["Parent", "Teacher"]}
             testId="select-invite-role"
           />
+          {role === "Teacher" && lookupResult ? (
+            <TeacherLookupResultCard result={lookupResult} />
+          ) : null}
           {mutation.isError && (
             <p className="text-sm text-destructive">
               We couldn’t create that invitation. Check the email address and
               try again.
+            </p>
+          )}
+          {(teacherLookup.isError || teacherAssignment.isError) && (
+            <p className="text-sm text-destructive">
+              {teacherAssignment.isError
+                ? "The Teacher could not be added. Refresh the account check and try again."
+                : "ChildLed could not check that Teacher account. Try again."}
             </p>
           )}
           <div className="flex justify-end gap-3">
@@ -18740,15 +19645,458 @@ function CareTeamInvitationForm({
             </Button>
             <Button
               type="submit"
-              disabled={mutation.isPending || !email.trim()}
+              disabled={primaryDisabled}
               data-testid="button-submit-invite"
             >
-              {mutation.isPending ? "Creating…" : "Create invitation"}
+              {primaryPending ? "Working..." : primaryLabel}
             </Button>
           </div>
         </form>
       )}
     </Modal>
+  );
+}
+
+function TeacherLookupResultCard({
+  result,
+}: {
+  result: ExistingTeacherLookup;
+}) {
+  const content =
+    result.status === "available"
+      ? {
+          title: "Existing ChildLed Teacher found",
+          detail:
+            (result.teacher?.name ?? "This Teacher") +
+            " can be added without creating another account.",
+          className: "border-primary/20 bg-secondary/45",
+        }
+      : result.status === "already_assigned"
+        ? {
+            title:
+              (result.teacher?.name ?? "This Teacher") + " already has access",
+            detail:
+              "No duplicate student assignment or invitation was created.",
+            className: "border-primary/20 bg-secondary/45",
+          }
+        : result.status === "different_role"
+          ? {
+              title: "Different ChildLed account type",
+              detail:
+                "This email belongs to another account type and cannot be changed to Teacher by an SLP.",
+              className: "border-destructive/25 bg-destructive/5",
+            }
+          : {
+              title: "This Teacher is not on ChildLed yet",
+              detail:
+                "Send the existing secure invitation so they can create an account.",
+              className: "border-border bg-background",
+            };
+  return (
+    <div
+      className={"rounded-xl border p-4 " + content.className}
+      data-testid={"teacher-lookup-" + result.status}
+    >
+      <p className="font-semibold text-primary">{content.title}</p>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+        {content.detail}
+      </p>
+      {result.teacher ? (
+        <span className="mt-3 inline-flex rounded-full bg-card px-3 py-1 text-xs font-semibold text-primary">
+          Teacher
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+function StudentTransferDialog({
+  child,
+  onClose,
+  onTransferred,
+}: {
+  child: Child;
+  onClose: () => void;
+  onTransferred: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [email, setEmail] = useState("");
+  const [confirming, setConfirming] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const history = useListStudentTransfers(
+    { childId: child.id },
+    {
+      query: {
+        queryKey: getListStudentTransfersQueryKey({ childId: child.id }),
+        retry: false,
+      },
+    },
+  );
+  const lookup = useLookupStudentTransferSlp();
+  const createTransfer = useCreateStudentTransfer();
+  const cancelTransfer = useCancelStudentTransfer();
+  const lookupResult = lookup.data;
+  const created = createTransfer.data;
+  const pendingTransfer = (history.data ?? []).find(
+    (transfer) => transfer.status === "pending",
+  );
+  const normalizedEmail = email.trim().toLowerCase();
+  const actionableLookup =
+    lookupResult?.status === "available" ||
+    lookupResult?.status === "not_found";
+
+  const invalidateTransferData = async () => {
+    await Promise.all([
+      queryClient.invalidateQueries({
+        queryKey: getListStudentTransfersQueryKey({ childId: child.id }),
+      }),
+      queryClient.invalidateQueries({
+        queryKey: getListCareTeamInvitationsQueryKey(),
+      }),
+      queryClient.invalidateQueries({ queryKey: getGetSettingsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getGetTeamInboxQueryKey() }),
+      queryClient.invalidateQueries({
+        queryKey: getGetClinicianOverviewQueryKey(),
+      }),
+      queryClient.invalidateQueries({ queryKey: getListChildrenQueryKey() }),
+    ]);
+  };
+  const close = () => {
+    if (
+      lookup.isPending ||
+      createTransfer.isPending ||
+      cancelTransfer.isPending
+    )
+      return;
+    if (created?.status === "completed") {
+      void invalidateTransferData();
+      onTransferred();
+      return;
+    }
+    onClose();
+  };
+  const checkEmail = (event: FormEvent) => {
+    event.preventDefault();
+    if (!normalizedEmail || pendingTransfer) return;
+    setConfirming(false);
+    createTransfer.reset();
+    lookup.mutate({ data: { childId: child.id, email: normalizedEmail } });
+  };
+  const confirmTransfer = () => {
+    if (!actionableLookup) return;
+    createTransfer.mutate(
+      { data: { childId: child.id, email: normalizedEmail } },
+      {
+        onSuccess: (transfer) => {
+          if (transfer.status === "pending") void invalidateTransferData();
+        },
+      },
+    );
+  };
+  const copyInvitation = async (invitationPath?: string) => {
+    if (!invitationPath) return;
+    await navigator.clipboard.writeText(
+      new URL(invitationPath, window.location.origin).toString(),
+    );
+    setCopied(true);
+  };
+
+  return (
+    <Modal title={`Transfer ${child.name}`} onClose={close}>
+      {created ? (
+        <div className="space-y-5" data-testid="student-transfer-success">
+          <div className="rounded-2xl border border-primary/20 bg-secondary/45 p-5">
+            <div className="flex items-start gap-3">
+              <CheckCircle className="mt-0.5 shrink-0 text-primary" size={20} />
+              <div>
+                <p className="font-semibold text-primary">
+                  {created.status === "completed"
+                    ? "Transfer complete"
+                    : "SLP invitation sent"}
+                </p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  {created.status === "completed"
+                    ? `${created.destinationSlpName ?? created.destinationEmail} is now the active SLP for ${child.name}.`
+                    : `The transfer remains pending for ${created.destinationEmail}. You keep access until the invited SLP completes signup and SLP onboarding.`}
+                </p>
+              </div>
+            </div>
+          </div>
+          {created.invitationPath ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-11 w-full"
+              onClick={() => void copyInvitation(created.invitationPath)}
+              data-testid="button-copy-transfer-invitation"
+            >
+              {copied ? <Check size={16} /> : <Copy size={16} />}
+              {copied ? "Link copied" : "Copy invitation link"}
+            </Button>
+          ) : null}
+          <div className="flex justify-end">
+            <Button type="button" onClick={close}>
+              Done
+            </Button>
+          </div>
+        </div>
+      ) : confirming && actionableLookup ? (
+        <div className="space-y-5" data-testid="student-transfer-confirmation">
+          <div className="rounded-2xl border border-accent/40 bg-accent/10 p-5">
+            <p className="font-semibold text-primary">
+              {lookupResult.status === "available"
+                ? `Transfer ${child.name} to ${lookupResult.slp?.name ?? normalizedEmail}?`
+                : `Invite ${normalizedEmail} and start a pending transfer?`}
+            </p>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              {lookupResult.status === "available"
+                ? `${lookupResult.slp?.name ?? "The destination SLP"} will gain access to this exact student record. Your active access will be removed when the transfer completes.`
+                : "You will keep responsibility and access while the invitation is outstanding. The transfer completes only after the new SLP accepts the invitation and finishes SLP onboarding."}
+            </p>
+          </div>
+          {createTransfer.isError ? (
+            <p className="rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+              {createTransfer.error instanceof Error
+                ? createTransfer.error.message
+                : "The transfer could not be completed."}
+            </p>
+          ) : null}
+          <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <Button
+              type="button"
+              variant="quiet"
+              onClick={() => setConfirming(false)}
+              disabled={createTransfer.isPending}
+            >
+              Back
+            </Button>
+            <Button
+              type="button"
+              onClick={confirmTransfer}
+              disabled={createTransfer.isPending}
+              data-testid="button-confirm-student-transfer"
+            >
+              <ArrowLeftRight size={16} />
+              {createTransfer.isPending
+                ? "Working..."
+                : lookupResult.status === "available"
+                  ? "Confirm transfer"
+                  : "Send SLP invitation"}
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-6">
+          {pendingTransfer ? (
+            <section
+              className="rounded-2xl border border-accent/45 bg-accent/10 p-5"
+              data-testid="pending-student-transfer"
+            >
+              <div className="flex items-start gap-3">
+                <Clock3 className="mt-0.5 shrink-0 text-primary" size={19} />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-primary">Transfer pending</p>
+                  <p className="mt-1 break-all text-sm text-muted-foreground">
+                    Waiting for {pendingTransfer.destinationEmail} to complete
+                    SLP signup and onboarding.
+                  </p>
+                </div>
+              </div>
+              {pendingTransfer.invitationPath ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="mt-4 min-h-11 w-full"
+                  onClick={() =>
+                    void copyInvitation(pendingTransfer.invitationPath)
+                  }
+                >
+                  {copied ? <Check size={16} /> : <Copy size={16} />}
+                  {copied ? "Link copied" : "Copy invitation link"}
+                </Button>
+              ) : null}
+              <Button
+                type="button"
+                variant="quiet"
+                className="mt-2 min-h-11 w-full text-destructive hover:text-destructive"
+                disabled={cancelTransfer.isPending}
+                onClick={() =>
+                  cancelTransfer.mutate(
+                    { transferId: pendingTransfer.id },
+                    {
+                      onSuccess: () => {
+                        lookup.reset();
+                        setCopied(false);
+                        void invalidateTransferData();
+                      },
+                    },
+                  )
+                }
+                data-testid="button-cancel-student-transfer"
+              >
+                <X size={16} />
+                {cancelTransfer.isPending ? "Cancelling..." : "Cancel transfer"}
+              </Button>
+              {cancelTransfer.isError ? (
+                <p className="mt-3 text-sm text-destructive">
+                  {cancelTransfer.error instanceof Error
+                    ? cancelTransfer.error.message
+                    : "The transfer could not be cancelled."}
+                </p>
+              ) : null}
+            </section>
+          ) : (
+            <form onSubmit={checkEmail} className="space-y-5">
+              <p className="rounded-2xl border border-primary/15 bg-secondary/35 p-4 text-sm leading-6 text-muted-foreground">
+                Enter the new SLP's exact email address. ChildLed checks that
+                address only and does not expose an SLP directory.
+              </p>
+              <label className="block space-y-2">
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  New SLP email
+                </span>
+                <div className="relative">
+                  <Mail
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground"
+                    size={16}
+                  />
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                      setConfirming(false);
+                      lookup.reset();
+                      createTransfer.reset();
+                    }}
+                    placeholder="slp@school.org"
+                    className="h-11 w-full rounded-xl border border-input bg-background pl-10 pr-3 text-sm outline-none transition-shadow focus-ring"
+                    data-testid="input-transfer-slp-email"
+                  />
+                </div>
+              </label>
+              {lookupResult ? (
+                <StudentTransferLookupCard result={lookupResult} />
+              ) : null}
+              {lookup.isError ? (
+                <p className="text-sm text-destructive">
+                  {lookup.error instanceof Error
+                    ? lookup.error.message
+                    : "ChildLed could not check that SLP account."}
+                </p>
+              ) : null}
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <Button type="button" variant="quiet" onClick={close}>
+                  Cancel
+                </Button>
+                {actionableLookup ? (
+                  <Button
+                    type="button"
+                    onClick={() => setConfirming(true)}
+                    data-testid="button-continue-student-transfer"
+                  >
+                    <ArrowRight size={16} />
+                    {lookupResult.status === "available"
+                      ? "Continue transfer"
+                      : "Continue to invitation"}
+                  </Button>
+                ) : (
+                  <Button
+                    type="submit"
+                    disabled={lookup.isPending || !normalizedEmail}
+                    data-testid="button-check-transfer-slp"
+                  >
+                    <Search size={16} />
+                    {lookup.isPending ? "Checking..." : "Check SLP account"}
+                  </Button>
+                )}
+              </div>
+            </form>
+          )}
+
+          {(history.data ?? []).length ? (
+            <section className="border-t border-border pt-5">
+              <h3 className="text-sm font-bold text-primary">
+                Transfer history
+              </h3>
+              <div className="mt-3 space-y-2">
+                {(history.data ?? []).map((transfer) => (
+                  <div
+                    key={transfer.id}
+                    className="flex flex-wrap items-center justify-between gap-2 rounded-xl bg-secondary/35 px-3 py-2.5 text-xs"
+                  >
+                    <span className="min-w-0 break-all text-muted-foreground">
+                      {transfer.destinationSlpName ?? transfer.destinationEmail}
+                    </span>
+                    <span className="rounded-full bg-card px-2.5 py-1 font-bold capitalize text-primary">
+                      {transfer.status}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function StudentTransferLookupCard({
+  result,
+}: {
+  result: StudentTransferSlpLookup;
+}) {
+  const content =
+    result.status === "available"
+      ? {
+          title: "Existing ChildLed SLP found",
+          detail: `${result.slp?.name ?? "This SLP"} · ${result.slp?.professionalTitle ?? "Speech-Language Pathologist"}`,
+          className: "border-primary/20 bg-secondary/45",
+        }
+      : result.status === "not_found"
+        ? {
+            title: "This SLP is not on ChildLed yet",
+            detail:
+              "You can send a trusted SLP invitation. The transfer will remain pending during signup and onboarding.",
+            className: "border-border bg-background",
+          }
+        : result.status === "current_slp"
+          ? {
+              title: "This is the current SLP",
+              detail: "Choose a different SLP email to transfer the student.",
+              className: "border-destructive/25 bg-destructive/5",
+            }
+          : result.status === "pending_transfer"
+            ? {
+                title: "A transfer is already pending",
+                detail: "Cancel the pending transfer before starting another.",
+                className: "border-accent/40 bg-accent/10",
+              }
+            : result.status === "different_workspace"
+              ? {
+                  title: "SLP is in another ChildLed workspace",
+                  detail:
+                    "Cross-workspace transfers are not available yet. No student access or role was changed.",
+                  className: "border-destructive/25 bg-destructive/5",
+                }
+              : {
+                  title: "Different ChildLed account type",
+                  detail:
+                    "This account cannot be changed into an SLP by transferring a student.",
+                  className: "border-destructive/25 bg-destructive/5",
+                };
+  return (
+    <div
+      className={`rounded-xl border p-4 ${content.className}`}
+      data-testid={`student-transfer-lookup-${result.status}`}
+    >
+      <p className="font-semibold text-primary">{content.title}</p>
+      <p className="mt-1 text-sm leading-6 text-muted-foreground">
+        {content.detail}
+      </p>
+    </div>
   );
 }
 
@@ -20135,7 +21483,12 @@ function Workspace() {
   const locationSearch = useSearch();
   const { sessionId } = useAuth();
   const routePath = location.split("?")[0] || "/";
-  const childrenQuery = useListChildren();
+  const childrenQuery = useListChildren({
+    query: {
+      queryKey: getListChildrenQueryKey(),
+      refetchInterval: 30_000,
+    },
+  });
   const viewerQuery = useGetViewer({
     query: {
       queryKey: getGetViewerQueryKey(),
@@ -20169,6 +21522,7 @@ function Workspace() {
     | "team-question"
     | "comment"
     | "invite"
+    | "transfer"
     | null
   >(null);
   const [commentGestalt, setCommentGestalt] = useState<Gestalt>();
@@ -20178,6 +21532,7 @@ function Workspace() {
   );
   const [editingInterest, setEditingInterest] = useState<ChildInterest>();
   const [inviteChild, setInviteChild] = useState<Child>();
+  const [transferChild, setTransferChild] = useState<Child>();
   const [editingChild, setEditingChild] = useState<Child>();
   const [teacherActionPhrase, setTeacherActionPhrase] = useState<string>();
   const [teacherQuestionAudience, setTeacherQuestionAudience] = useState<
@@ -20212,7 +21567,6 @@ function Workspace() {
     "/communication-profile",
     "/dictionary",
     "/activity",
-    "/teacher-resources",
     "/communication-passport",
   ]);
   const needsActiveChild = canUseClinicalPortal
@@ -20306,6 +21660,7 @@ function Workspace() {
       query: {
         queryKey: getGetClinicianOverviewQueryKey(clinicianOverviewParams),
         enabled: canLoadClinicianOverview && clinicianOverviewSince !== null,
+        refetchInterval: 30_000,
       },
     },
   );
@@ -20313,6 +21668,7 @@ function Workspace() {
     query: {
       queryKey: getGetTeacherOverviewQueryKey(clinicianOverviewParams),
       enabled: viewer?.role === "Teacher" && clinicianOverviewSince !== null,
+      refetchInterval: 30_000,
     },
   });
   const dashboardQuery = useGetDashboard(childParams, {
@@ -20944,7 +22300,12 @@ function Workspace() {
   ) : routePath === "/family-resources" ? (
     <FamilyResourcesPage childId={activeId} />
   ) : routePath === "/teacher-resources" ? (
-    <TeacherResourcesPage childId={activeId} />
+    <TeacherResourcesPage
+      childId={validRequestedChildId ?? selectedId ?? children[0]?.id}
+      children={children}
+      childrenLoading={childrenQuery.isLoading}
+      onSelectChild={selectChild}
+    />
   ) : routePath === "/team-communication" ? (
     <TeamInboxPage
       selectedConversationId={inboxConversationId}
@@ -21051,6 +22412,10 @@ function Workspace() {
         setInviteChild(child);
         setModal("invite");
       }}
+      onTransfer={(child) => {
+        setTransferChild(child);
+        setModal("transfer");
+      }}
     />
   ) : routePath === "/dictionary" ? (
     <DictionaryPage
@@ -21155,6 +22520,14 @@ function Workspace() {
             onEditChild={(child) => {
               setEditingChild(child);
               setModal("edit-child");
+            }}
+            onInvite={(child) => {
+              setInviteChild(child);
+              setModal("invite");
+            }}
+            onTransfer={(child) => {
+              setTransferChild(child);
+              setModal("transfer");
             }}
           />
         ) : (
@@ -21365,6 +22738,21 @@ function Workspace() {
           }}
         />
       )}
+      {modal === "transfer" && transferChild && (
+        <StudentTransferDialog
+          child={transferChild}
+          onClose={() => {
+            setTransferChild(undefined);
+            setModal(null);
+          }}
+          onTransferred={() => {
+            setTransferChild(undefined);
+            setSelectedId(undefined);
+            setModal(null);
+            setLocation("/overview");
+          }}
+        />
+      )}
       {modal === "observation" && (
         <ObservationForm
           childId={activeId}
@@ -21507,6 +22895,7 @@ function Router() {
           "/manual-session",
           "/service-setup",
           "/slp-onboarding",
+          "/care-team-onboarding",
           "/communication-passport",
           "/children",
           "/communication-profile",
@@ -21578,6 +22967,7 @@ const clerkPubKey = publishableKeyFromHost(
 
 function CareTeamGate() {
   const { isLoaded, isSignedIn } = useAuth();
+  const { signOut } = useClerk();
   const [location, setLocation] = useLocation();
   const developmentSession =
     developmentDemoEnabled &&
@@ -21586,12 +22976,16 @@ function CareTeamGate() {
     "loading" | "ready" | "blocked" | "beta-notice" | "onboarding"
   >("loading");
   const [message, setMessage] = useState("");
+  const [failureCode, setFailureCode] = useState<string>();
   const [canRetry, setCanRetry] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState(0);
   const [resolvedViewer, setResolvedViewer] = useState<Viewer>();
   const [betaNotice, setBetaNotice] = useState<{
+    agreementType: string;
     text: string;
     version: string;
+    required: boolean;
+    acknowledged: boolean;
   } | null>(null);
 
   useEffect(() => {
@@ -21618,6 +23012,8 @@ function CareTeamGate() {
     const initialize = async () => {
       setStatus("loading");
       setCanRetry(false);
+      setFailureCode(undefined);
+      setBetaNotice(null);
 
       const inviteToken = new URLSearchParams(window.location.search).get(
         "token",
@@ -21666,7 +23062,7 @@ function CareTeamGate() {
           cache: "no-store",
         });
         const body = (await response.json().catch(() => null)) as
-          (Partial<Viewer> & { error?: unknown }) | null;
+          (Partial<Viewer> & { error?: unknown; code?: unknown }) | null;
         if (!active) return;
 
         if (response.ok && typeof body?.role === "string") {
@@ -21675,38 +23071,33 @@ function CareTeamGate() {
             window.localStorage.removeItem(developmentDemoStorageKey);
             window.localStorage.removeItem(developmentDemoSessionStorageKey);
           }
-          if (viewerData.role === "SLP" && !viewerData.onboardingComplete) {
+          if (!viewerData.onboardingComplete) {
             clearAuthReturnPath();
-            if (location.split("?")[0] !== "/slp-onboarding") {
-              setLocation("/slp-onboarding", { replace: true });
+            const onboardingPath =
+              viewerData.role === "SLP"
+                ? "/slp-onboarding"
+                : viewerData.role === "Parent" || viewerData.role === "Teacher"
+                  ? "/care-team-onboarding"
+                  : null;
+            if (!onboardingPath) {
+              setResolvedViewer(undefined);
+              setMessage(
+                "This account does not have a supported ChildLed role.",
+              );
+              setStatus("blocked");
+              return;
+            }
+            if (location.split("?")[0] !== onboardingPath) {
+              setLocation(onboardingPath, { replace: true });
             }
             setResolvedViewer(viewerData);
             setStatus("onboarding");
             return;
           }
-          if (!developmentSession) {
-            const noticeRes = await fetch("/api/beta-notice", {
-              credentials: "include",
-              cache: "no-store",
-            });
-            if (noticeRes.ok) {
-              const noticeData = await noticeRes.json().catch(() => null);
-              if (noticeData && !noticeData.acknowledged && noticeData.text) {
-                setResolvedViewer(viewerData);
-                setBetaNotice(noticeData);
-                setStatus("beta-notice");
-                return;
-              }
-            }
-          }
           setResolvedViewer(viewerData);
           setStatus("ready");
         } else {
-          if (
-            response.status === 403 &&
-            typeof body?.error === "string" &&
-            body.error.toLowerCase().includes("participation notice")
-          ) {
+          if (response.status === 403) {
             const noticeRes = await fetch("/api/beta-notice", {
               credentials: "include",
               cache: "no-store",
@@ -21714,7 +23105,12 @@ function CareTeamGate() {
             const noticeData = noticeRes.ok
               ? await noticeRes.json().catch(() => null)
               : null;
-            if (noticeData?.text && noticeData?.version) {
+            if (
+              noticeData?.required &&
+              !noticeData.acknowledged &&
+              noticeData?.text &&
+              noticeData?.version
+            ) {
               setBetaNotice(noticeData);
               setStatus("beta-notice");
               return;
@@ -21722,12 +23118,19 @@ function CareTeamGate() {
           }
           queryClient.clear();
           setResolvedViewer(undefined);
+          setFailureCode(
+            typeof body?.code === "string" ? body.code : undefined,
+          );
           setMessage(
             typeof body?.error === "string"
               ? body.error
               : "Your account cannot access this care-team workspace.",
           );
-          setCanRetry(false);
+          setCanRetry(
+            response.status >= 500 ||
+              body?.code === "session_invalid" ||
+              body?.code === "not_invited",
+          );
           setStatus("blocked");
         }
       } catch (err) {
@@ -21748,13 +23151,42 @@ function CareTeamGate() {
     };
   }, [isLoaded, isSignedIn, developmentSession, retryAttempt]);
 
+  const signOutFromBetaAgreement = async () => {
+    queryClient.clear();
+    clearOverviewSessionMarkers();
+    markAuthLogout();
+    if (developmentSession) {
+      await endDevelopmentDemoSession();
+      window.location.assign(basePath || "/");
+      return;
+    }
+    await signOut({ redirectUrl: basePath || "/" });
+  };
+
+  const leaveBlockedSession = async (destination: "/" | "/sign-in") => {
+    queryClient.clear();
+    clearOverviewSessionMarkers();
+    markAuthLogout();
+    const target = `${basePath || ""}${destination}` || "/";
+    if (developmentSession) {
+      await endDevelopmentDemoSession();
+      window.location.assign(target);
+      return;
+    }
+    await signOut({ redirectUrl: target });
+    window.location.assign(target);
+  };
+
   useEffect(() => {
     if (status !== "ready" || !resolvedViewer) return;
     const target = roleOverviewPath(resolvedViewer.role);
     if (!target) return;
     const currentLocation = `${location.split("?")[0]}${window.location.search}`;
     const currentPath = currentLocation.split("?")[0] || "/";
-    if (currentPath === "/slp-onboarding") {
+    if (
+      currentPath === "/slp-onboarding" ||
+      currentPath === "/care-team-onboarding"
+    ) {
       clearAuthReturnPath();
       setLocation(target, { replace: true });
       return;
@@ -21777,14 +23209,23 @@ function CareTeamGate() {
     return (
       <BetaNoticeScreen
         notice={betaNotice}
-        onAcknowledge={() => setStatus("ready")}
+        onAcknowledge={() => setRetryAttempt((attempt) => attempt + 1)}
+        onSignOut={signOutFromBetaAgreement}
       />
     );
   if (status === "onboarding" && resolvedViewer)
-    return (
+    return resolvedViewer.role === "SLP" ? (
       <SlpOnboardingPage
         onCompleted={() =>
           window.location.replace(`${basePath || ""}/overview`)
+        }
+      />
+    ) : (
+      <CareTeamOnboardingPage
+        onCompleted={() =>
+          window.location.replace(
+            `${basePath || ""}${roleOverviewPath(resolvedViewer.role) ?? "/"}`,
+          )
         }
       />
     );
@@ -21814,19 +23255,27 @@ function CareTeamGate() {
               Try again
             </button>
           ) : null}
-          <Link
-            href="/sign-in"
+          <button
+            type="button"
+            onClick={() => void leaveBlockedSession("/sign-in")}
             className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground"
           >
             Use another account
-          </Link>
-          <Link
-            href="/"
+          </button>
+          <button
+            type="button"
+            onClick={() => void leaveBlockedSession("/")}
             className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border px-4 py-2.5 text-sm font-semibold"
           >
             Back home
-          </Link>
+          </button>
         </div>
+        {failureCode === "not_invited" ? (
+          <p className="mt-4 text-xs leading-5 text-muted-foreground">
+            SLP access must be approved in ChildLed. A Clerk Dashboard
+            invitation by itself does not assign a ChildLed role or workspace.
+          </p>
+        ) : null}
       </section>
     </main>
   );
@@ -22064,13 +23513,28 @@ const clerkAppearance = {
 };
 
 function SignUpPage() {
+  const { isLoaded, isSignedIn } = useAuth();
   const searchParams = new URLSearchParams(window.location.search);
   const tokenFromUrl = searchParams.get("token");
+  const clerkTicket = searchParams.get("__clerk_ticket");
   const [tokenStatus, setTokenStatus] = useState<
     "checking" | "valid" | "invalid"
-  >("checking");
+  >(clerkTicket ? "valid" : "checking");
 
   useEffect(() => {
+    if (!isLoaded || !isSignedIn) return;
+    const target = tokenFromUrl
+      ? `${basePath || "/"}?token=${encodeURIComponent(tokenFromUrl)}`
+      : basePath || "/";
+    window.location.replace(target);
+  }, [isLoaded, isSignedIn, tokenFromUrl]);
+
+  useEffect(() => {
+    if (!isLoaded || isSignedIn) return;
+    if (clerkTicket) {
+      setTokenStatus("valid");
+      return;
+    }
     const tokenToUse = tokenFromUrl;
     if (!tokenToUse) {
       setTokenStatus("invalid");
@@ -22091,9 +23555,9 @@ function SignUpPage() {
     return () => {
       active = false;
     };
-  }, [tokenFromUrl]);
+  }, [clerkTicket, isLoaded, isSignedIn, tokenFromUrl]);
 
-  if (tokenStatus === "checking") {
+  if (!isLoaded || isSignedIn || tokenStatus === "checking") {
     return (
       <div className="paper-grain grid min-h-[100dvh] place-items-center bg-background">
         <p className="text-muted-foreground animate-pulse">
@@ -22131,13 +23595,18 @@ function SignUpPage() {
   }
 
   const invitationTarget = `${basePath || "/"}?token=${encodeURIComponent(tokenFromUrl!)}`;
+  const redirectTarget = tokenFromUrl ? invitationTarget : basePath || "/";
+  const signInSearch = new URLSearchParams();
+  if (tokenFromUrl) signInSearch.set("token", tokenFromUrl);
+  if (clerkTicket) signInSearch.set("__clerk_ticket", clerkTicket);
+  const signInTarget = `${basePath}/sign-in${signInSearch.size ? `?${signInSearch.toString()}` : ""}`;
   return (
     <div className="paper-grain grid min-h-[100dvh] place-items-center bg-background p-5">
       <SignUp
         routing="path"
         path={`${basePath}/sign-up`}
-        signInUrl={`${basePath}/sign-in?token=${encodeURIComponent(tokenFromUrl!)}`}
-        forceRedirectUrl={invitationTarget}
+        signInUrl={signInTarget}
+        forceRedirectUrl={redirectTarget}
       />
     </div>
   );

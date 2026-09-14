@@ -6,8 +6,8 @@ import type { TeacherResourceSection } from "@workspace/db";
 import { storeClinicalKnowledgeObject } from "./clinical-knowledge-object-storage";
 
 export const TEACHER_RESOURCE_KEY = "teacher-resource-center";
-export const TEACHER_RESOURCE_VERSION = "1.0";
-export const TEACHER_RESOURCE_PDF = "childled-teacher-resources_1788216080991.pdf";
+export const TEACHER_RESOURCE_VERSION = "2.0";
+export const TEACHER_RESOURCE_PDF = "childled-teacher-resources.pdf";
 export const TEACHER_RESOURCE_DISCLAIMER = "These resources are educational classroom supports, not clinical records, diagnosis, treatment recommendations, or a replacement for individualized guidance from a child’s care team.";
 type Definition = { resourceKey: string; category: string; position: number; title: string; summary: string; readingMinutes: number; sections: TeacherResourceSection[]; format?: string };
 type TeacherResourceBundle = {
@@ -30,25 +30,26 @@ const inFlight = new Map<number, Promise<TeacherResourceBundle>>();
 export const ensureTeacherResourceCenter = async (organizationId: number): Promise<TeacherResourceBundle> => {
   const prior = inFlight.get(organizationId); if (prior) return prior;
   const work = (async () => {
-    await db.insert(teacherResourcesTable).values({ organizationId, resourceKey: TEACHER_RESOURCE_KEY, title: "Teacher Resource Center", description: "Classroom-ready supports for communication, regulation, AAC, and connection.", contentVersion: TEACHER_RESOURCE_VERSION }).onConflictDoNothing({ target: [teacherResourcesTable.organizationId, teacherResourcesTable.resourceKey] });
+    await db.insert(teacherResourcesTable).values({ organizationId, resourceKey: TEACHER_RESOURCE_KEY, title: "Teacher Resources", description: "Practical tools and guidance to support your student's communication throughout the school day.", contentVersion: TEACHER_RESOURCE_VERSION }).onConflictDoUpdate({ target: [teacherResourcesTable.organizationId, teacherResourcesTable.resourceKey], set: { title: "Teacher Resources", description: "Practical tools and guidance to support your student's communication throughout the school day.", contentVersion: TEACHER_RESOURCE_VERSION, updatedAt: new Date() } });
     const [resource] = await db.select().from(teacherResourcesTable).where(and(eq(teacherResourcesTable.organizationId, organizationId), eq(teacherResourcesTable.resourceKey, TEACHER_RESOURCE_KEY))).limit(1);
     if (!resource) throw new Error("Teacher Resource Center could not be initialized.");
     for (const item of teacherResourceDefinitions) await db.insert(teacherResourceItemsTable).values({ resourceId: resource.id, ...item }).onConflictDoNothing({ target: [teacherResourceItemsTable.resourceId, teacherResourceItemsTable.resourceKey] });
     let current = resource;
-    if (!current.pdfObjectPath) {
+    const versionedPdfKey = `teacher-resources/${TEACHER_RESOURCE_VERSION}/${TEACHER_RESOURCE_PDF}`;
+    if (!current.pdfObjectPath?.endsWith(versionedPdfKey)) {
       let data: Buffer | undefined;
       try {
-        data = await readFile(path.resolve(process.cwd(), "dist", "parent-resources", TEACHER_RESOURCE_PDF));
+        data = await readFile(path.resolve(process.cwd(), "dist", "teacher-resources", TEACHER_RESOURCE_PDF));
       } catch (err: any) {
         if (err?.code === 'ENOENT') {
           const { logger } = await import('./logger');
-          logger.warn({ err, path: path.resolve(process.cwd(), "dist", "parent-resources", TEACHER_RESOURCE_PDF) }, 'Packaged teacher resource PDF missing; skipping provisioning in dev.');
+          logger.warn({ err, path: path.resolve(process.cwd(), "dist", "teacher-resources", TEACHER_RESOURCE_PDF) }, 'Packaged teacher resource PDF missing; skipping provisioning in dev.');
         } else {
           throw err;
         }
       }
       if (data) {
-        const stored = await storeClinicalKnowledgeObject({ organizationId, key: `teacher-resources/${TEACHER_RESOURCE_PDF}`, contentType: "application/pdf", data });
+        const stored = await storeClinicalKnowledgeObject({ organizationId, key: versionedPdfKey, contentType: "application/pdf", data });
         const [updated] = await db.update(teacherResourcesTable).set({ pdfObjectPath: stored.key, pdfContentType: stored.contentType, pdfSizeBytes: stored.sizeBytes, updatedAt: new Date() }).where(eq(teacherResourcesTable.id, current.id)).returning();
         if (updated) current = updated;
       }

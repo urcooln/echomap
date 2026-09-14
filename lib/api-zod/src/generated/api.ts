@@ -1266,8 +1266,11 @@ export const UpdateTeacherResourceProgressResponse = zod.object({
 /**
  * @summary Download teacher resources handbook
  */
+export const downloadTeacherResourceHandbookQueryDispositionDefault = `attachment`;
+
 export const DownloadTeacherResourceHandbookQueryParams = zod.object({
-  "childId": zod.coerce.number()
+  "childId": zod.coerce.number(),
+  "disposition": zod.enum(['inline', 'attachment']).default(downloadTeacherResourceHandbookQueryDispositionDefault)
 })
 
 export const DownloadTeacherResourceHandbookResponse = zod.unknown()
@@ -1395,9 +1398,9 @@ export const UpdateClinicianLearningPreferencesResponse = zod.object({
 
 
 /**
- * @summary Download the clinician learning handbook
+ * @summary Download the clinician resource handbook PDF
  */
-export const DownloadClinicianLearningHandbookResponse = zod.string()
+export const DownloadClinicianLearningHandbookResponse = zod.unknown()
 
 
 /**
@@ -1576,6 +1579,44 @@ export const CompleteSlpOnboardingResponse = zod.object({
   "completed": zod.boolean(),
   "accountStatus": zod.enum(['active']),
   "onboardingCompletedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary Get Parent or Teacher account setup
+ */
+export const GetCareTeamOnboardingResponse = zod.object({
+  "email": zod.string(),
+  "organizationName": zod.string(),
+  "role": zod.enum(['Parent', 'Teacher']),
+  "firstName": zod.string(),
+  "lastName": zod.string(),
+  "students": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+}))
+})
+
+
+/**
+ * @summary Complete Parent or Teacher account setup
+ */
+export const completeCareTeamOnboardingBodyFirstNameMax = 120;
+
+export const completeCareTeamOnboardingBodyLastNameMax = 120;
+
+
+
+export const CompleteCareTeamOnboardingBody = zod.object({
+  "firstName": zod.string().min(1).max(completeCareTeamOnboardingBodyFirstNameMax),
+  "lastName": zod.string().min(1).max(completeCareTeamOnboardingBodyLastNameMax)
+})
+
+export const CompleteCareTeamOnboardingResponse = zod.object({
+  "completed": zod.boolean(),
+  "accountStatus": zod.enum(['active']),
+  "onboardingCompletedAt": zod.coerce.date(),
+  "displayName": zod.string()
 })
 
 
@@ -2591,6 +2632,180 @@ export const CreateCareTeamInvitationResponse = zod.object({
   "status": zod.enum(['pending', 'accepted', 'expired', 'revoked']),
   "createdAt": zod.coerce.date(),
   "invitationPath": zod.string().optional()
+})
+
+
+/**
+ * @summary Replace a pending invitation with a fresh Clerk invitation link
+ */
+export const ReplaceCareTeamInvitationParams = zod.object({
+  "invitationId": zod.coerce.number()
+})
+
+export const replaceCareTeamInvitationResponseEmailMin = 3;
+export const replaceCareTeamInvitationResponseEmailMax = 320;
+
+
+
+export const ReplaceCareTeamInvitationResponse = zod.object({
+  "id": zod.string(),
+  "childId": zod.number(),
+  "email": zod.string().min(replaceCareTeamInvitationResponseEmailMin).max(replaceCareTeamInvitationResponseEmailMax),
+  "role": zod.string(),
+  "status": zod.enum(['pending', 'accepted', 'expired', 'revoked']),
+  "createdAt": zod.coerce.date(),
+  "invitationPath": zod.string().optional()
+})
+
+
+/**
+ * @summary Check an exact email for an existing Teacher account
+ */
+export const lookupExistingTeacherBodyEmailMin = 3;
+export const lookupExistingTeacherBodyEmailMax = 320;
+
+
+
+export const LookupExistingTeacherBody = zod.object({
+  "childId": zod.number(),
+  "email": zod.string().min(lookupExistingTeacherBodyEmailMin).max(lookupExistingTeacherBodyEmailMax)
+})
+
+export const LookupExistingTeacherResponse = zod.object({
+  "status": zod.enum(['available', 'already_assigned', 'not_found', 'different_role']),
+  "teacher": zod.object({
+  "name": zod.string(),
+  "role": zod.enum(['Teacher'])
+}).optional()
+})
+
+
+/**
+ * @summary Assign an existing Teacher account to an additional student
+ */
+export const assignExistingTeacherBodyEmailMin = 3;
+export const assignExistingTeacherBodyEmailMax = 320;
+
+
+
+export const AssignExistingTeacherBody = zod.object({
+  "childId": zod.number(),
+  "email": zod.string().min(assignExistingTeacherBodyEmailMin).max(assignExistingTeacherBodyEmailMax)
+})
+
+export const AssignExistingTeacherResponse = zod.object({
+  "childId": zod.number(),
+  "assigned": zod.boolean(),
+  "notificationCreated": zod.boolean(),
+  "teacher": zod.object({
+  "name": zod.string(),
+  "role": zod.enum(['Teacher'])
+})
+})
+
+
+/**
+ * @summary List transfer history for an assigned student
+ */
+export const ListStudentTransfersQueryParams = zod.object({
+  "childId": zod.coerce.number()
+})
+
+export const ListStudentTransfersResponseItem = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "childName": zod.string(),
+  "childLedId": zod.string(),
+  "fromSlpName": zod.string(),
+  "destinationEmail": zod.string(),
+  "destinationSlpName": zod.string().optional(),
+  "transferMode": zod.enum(['existing_account', 'invitation']),
+  "status": zod.enum(['pending', 'completed', 'cancelled']),
+  "invitationId": zod.number().optional(),
+  "invitationPath": zod.string().optional(),
+  "requestedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().optional(),
+  "cancelledAt": zod.coerce.date().optional()
+})
+export const ListStudentTransfersResponse = zod.array(ListStudentTransfersResponseItem)
+
+
+/**
+ * @summary Complete or request a primary SLP transfer
+ */
+export const createStudentTransferBodyEmailMin = 3;
+export const createStudentTransferBodyEmailMax = 320;
+
+
+
+export const CreateStudentTransferBody = zod.object({
+  "childId": zod.number(),
+  "email": zod.string().min(createStudentTransferBodyEmailMin).max(createStudentTransferBodyEmailMax)
+})
+
+export const CreateStudentTransferResponse = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "childName": zod.string(),
+  "childLedId": zod.string(),
+  "fromSlpName": zod.string(),
+  "destinationEmail": zod.string(),
+  "destinationSlpName": zod.string().optional(),
+  "transferMode": zod.enum(['existing_account', 'invitation']),
+  "status": zod.enum(['pending', 'completed', 'cancelled']),
+  "invitationId": zod.number().optional(),
+  "invitationPath": zod.string().optional(),
+  "requestedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().optional(),
+  "cancelledAt": zod.coerce.date().optional()
+})
+
+
+/**
+ * @summary Check an exact email for an eligible destination SLP account
+ */
+export const lookupStudentTransferSlpBodyEmailMin = 3;
+export const lookupStudentTransferSlpBodyEmailMax = 320;
+
+
+
+export const LookupStudentTransferSlpBody = zod.object({
+  "childId": zod.number(),
+  "email": zod.string().min(lookupStudentTransferSlpBodyEmailMin).max(lookupStudentTransferSlpBodyEmailMax)
+})
+
+export const LookupStudentTransferSlpResponse = zod.object({
+  "status": zod.enum(['available', 'current_slp', 'not_found', 'different_role', 'different_workspace', 'pending_transfer']),
+  "slp": zod.object({
+  "name": zod.string(),
+  "role": zod.enum(['SLP']),
+  "professionalTitle": zod.string()
+}).optional()
+})
+
+
+/**
+ * @summary Cancel a pending primary SLP transfer
+ */
+export const CancelStudentTransferParams = zod.object({
+  "transferId": zod.coerce.number()
+})
+
+export const CancelStudentTransferResponse = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "childName": zod.string(),
+  "childLedId": zod.string(),
+  "fromSlpName": zod.string(),
+  "destinationEmail": zod.string(),
+  "destinationSlpName": zod.string().optional(),
+  "transferMode": zod.enum(['existing_account', 'invitation']),
+  "status": zod.enum(['pending', 'completed', 'cancelled']),
+  "invitationId": zod.number().optional(),
+  "invitationPath": zod.string().optional(),
+  "requestedAt": zod.coerce.date(),
+  "completedAt": zod.coerce.date().optional(),
+  "cancelledAt": zod.coerce.date().optional()
 })
 
 
@@ -7082,8 +7297,10 @@ export const AcceptInvitationResponse = zod.object({
  * @summary Get the current beta participation notice
  */
 export const GetBetaNoticeResponse = zod.object({
+  "agreementType": zod.string(),
   "version": zod.string(),
   "text": zod.string(),
+  "required": zod.boolean(),
   "acknowledged": zod.boolean()
 })
 
@@ -7091,8 +7308,13 @@ export const GetBetaNoticeResponse = zod.object({
 /**
  * @summary Acknowledge the current beta participation notice
  */
+export const AcknowledgeBetaNoticeBody = zod.object({
+  "accepted": zod.boolean()
+})
+
 export const AcknowledgeBetaNoticeResponse = zod.object({
   "acknowledged": zod.boolean(),
+  "agreementType": zod.string(),
   "version": zod.string()
 })
 

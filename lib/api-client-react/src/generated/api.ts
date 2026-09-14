@@ -43,8 +43,12 @@ import type {
   BetaControlsInput,
   BetaNotice,
   BetaNoticeAcknowledgement,
+  BetaNoticeAcknowledgementInput,
   CareTeamInvitation,
   CareTeamInvitationInput,
+  CareTeamOnboarding,
+  CareTeamOnboardingCompletion,
+  CareTeamOnboardingInput,
   CaseloadServiceSettings,
   CaseloadServiceSettingsInput,
   Child,
@@ -102,6 +106,9 @@ import type {
   DictionaryInsights,
   DownloadParentLearningHandbookParams,
   DownloadTeacherResourceHandbookParams,
+  ExistingTeacherAssignment,
+  ExistingTeacherLookup,
+  ExistingTeacherLookupInput,
   FrequentScripts,
   Gestalt,
   GestaltInput,
@@ -154,6 +161,7 @@ import type {
   ListLegacyPhraseObservationsParams,
   ListMissedSessionsParams,
   ListSessionsParams,
+  ListStudentTransfersParams,
   ListUnclearVocalizationsParams,
   LogPhraseObservationParams,
   ManualSessionInput,
@@ -211,6 +219,9 @@ import type {
   SlpOnboardingCompletion,
   SlpOnboardingInput,
   SoapNoteInput,
+  StudentTransfer,
+  StudentTransferInput,
+  StudentTransferSlpLookup,
   TeacherCommunicationHelper,
   TeacherPhraseLookupResult,
   TeacherResourceCenter,
@@ -2822,7 +2833,7 @@ export const getDownloadClinicianLearningHandbookUrl = () => {
 }
 
 /**
- * @summary Download the clinician learning handbook
+ * @summary Download the clinician resource handbook PDF
  */
 export const downloadClinicianLearningHandbook = async ( options?: Parameters<typeof customFetch>[1]): Promise<Blob> => {
 
@@ -2869,7 +2880,7 @@ export type DownloadClinicianLearningHandbookQueryError = ErrorType<void>
 
 
 /**
- * @summary Download the clinician learning handbook
+ * @summary Download the clinician resource handbook PDF
  */
 
 export function useDownloadClinicianLearningHandbook<TData = Awaited<ReturnType<typeof downloadClinicianLearningHandbook>>, TError = ErrorType<void>>(
@@ -3262,6 +3273,154 @@ export const useCompleteSlpOnboarding = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCompleteSlpOnboardingMutationOptions(options));
+    }
+
+export const getGetCareTeamOnboardingUrl = () => {
+
+
+
+
+  return `/api/care-team-onboarding`
+}
+
+/**
+ * @summary Get Parent or Teacher account setup
+ */
+export const getCareTeamOnboarding = async ( options?: Parameters<typeof customFetch>[1]): Promise<CareTeamOnboarding> => {
+
+  return customFetch<CareTeamOnboarding>(getGetCareTeamOnboardingUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCareTeamOnboardingQueryKey = () => {
+    return [
+    `/api/care-team-onboarding`
+    ] as const;
+    }
+
+
+export const getGetCareTeamOnboardingQueryOptions = <TData = Awaited<ReturnType<typeof getCareTeamOnboarding>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCareTeamOnboarding>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCareTeamOnboardingQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCareTeamOnboarding>>> = ({ signal }) => getCareTeamOnboarding({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCareTeamOnboarding>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCareTeamOnboardingQueryResult = NonNullable<Awaited<ReturnType<typeof getCareTeamOnboarding>>>
+export type GetCareTeamOnboardingQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get Parent or Teacher account setup
+ */
+
+export function useGetCareTeamOnboarding<TData = Awaited<ReturnType<typeof getCareTeamOnboarding>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCareTeamOnboarding>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCareTeamOnboardingQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCompleteCareTeamOnboardingUrl = () => {
+
+
+
+
+  return `/api/care-team-onboarding`
+}
+
+/**
+ * @summary Complete Parent or Teacher account setup
+ */
+export const completeCareTeamOnboarding = async (careTeamOnboardingInput: CareTeamOnboardingInput, options?: Parameters<typeof customFetch>[1]): Promise<CareTeamOnboardingCompletion> => {
+
+  return customFetch<CareTeamOnboardingCompletion>(getCompleteCareTeamOnboardingUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(careTeamOnboardingInput)
+  }
+);}
+
+
+
+
+
+export const getCompleteCareTeamOnboardingMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeCareTeamOnboarding>>, TError,{data: BodyType<CareTeamOnboardingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof completeCareTeamOnboarding>>, TError,{data: BodyType<CareTeamOnboardingInput>}, TContext> => {
+
+const mutationKey = ['completeCareTeamOnboarding'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof completeCareTeamOnboarding>>, {data: BodyType<CareTeamOnboardingInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  completeCareTeamOnboarding(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CompleteCareTeamOnboardingMutationResult = NonNullable<Awaited<ReturnType<typeof completeCareTeamOnboarding>>>
+    export type CompleteCareTeamOnboardingMutationBody = BodyType<CareTeamOnboardingInput>
+    export type CompleteCareTeamOnboardingMutationError = ErrorType<void>
+
+    /**
+ * @summary Complete Parent or Teacher account setup
+ */
+export const useCompleteCareTeamOnboarding = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof completeCareTeamOnboarding>>, TError,{data: BodyType<CareTeamOnboardingInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof completeCareTeamOnboarding>>,
+        TError,
+        {data: BodyType<CareTeamOnboardingInput>},
+        TContext
+      > => {
+      return useMutation(getCompleteCareTeamOnboardingMutationOptions(options));
     }
 
 export const getGetAdminSecurityOverviewUrl = () => {
@@ -5051,6 +5210,516 @@ export const useCreateCareTeamInvitation = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCreateCareTeamInvitationMutationOptions(options));
+    }
+
+export const getReplaceCareTeamInvitationUrl = (invitationId: number,) => {
+
+
+
+
+  return `/api/care-team-invitations/${invitationId}/replace`
+}
+
+/**
+ * @summary Replace a pending invitation with a fresh Clerk invitation link
+ */
+export const replaceCareTeamInvitation = async (invitationId: number, options?: Parameters<typeof customFetch>[1]): Promise<CareTeamInvitation> => {
+
+  return customFetch<CareTeamInvitation>(getReplaceCareTeamInvitationUrl(invitationId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReplaceCareTeamInvitationMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceCareTeamInvitation>>, TError,{invitationId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof replaceCareTeamInvitation>>, TError,{invitationId: number}, TContext> => {
+
+const mutationKey = ['replaceCareTeamInvitation'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof replaceCareTeamInvitation>>, {invitationId: number}> = (props) => {
+          const {invitationId} = props ?? {};
+
+          return  replaceCareTeamInvitation(invitationId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReplaceCareTeamInvitationMutationResult = NonNullable<Awaited<ReturnType<typeof replaceCareTeamInvitation>>>
+
+    export type ReplaceCareTeamInvitationMutationError = ErrorType<void>
+
+    /**
+ * @summary Replace a pending invitation with a fresh Clerk invitation link
+ */
+export const useReplaceCareTeamInvitation = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceCareTeamInvitation>>, TError,{invitationId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof replaceCareTeamInvitation>>,
+        TError,
+        {invitationId: number},
+        TContext
+      > => {
+      return useMutation(getReplaceCareTeamInvitationMutationOptions(options));
+    }
+
+export const getLookupExistingTeacherUrl = () => {
+
+
+
+
+  return `/api/care-team-teachers/lookup`
+}
+
+/**
+ * @summary Check an exact email for an existing Teacher account
+ */
+export const lookupExistingTeacher = async (existingTeacherLookupInput: ExistingTeacherLookupInput, options?: Parameters<typeof customFetch>[1]): Promise<ExistingTeacherLookup> => {
+
+  return customFetch<ExistingTeacherLookup>(getLookupExistingTeacherUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(existingTeacherLookupInput)
+  }
+);}
+
+
+
+
+
+export const getLookupExistingTeacherMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof lookupExistingTeacher>>, TError,{data: BodyType<ExistingTeacherLookupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof lookupExistingTeacher>>, TError,{data: BodyType<ExistingTeacherLookupInput>}, TContext> => {
+
+const mutationKey = ['lookupExistingTeacher'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof lookupExistingTeacher>>, {data: BodyType<ExistingTeacherLookupInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  lookupExistingTeacher(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LookupExistingTeacherMutationResult = NonNullable<Awaited<ReturnType<typeof lookupExistingTeacher>>>
+    export type LookupExistingTeacherMutationBody = BodyType<ExistingTeacherLookupInput>
+    export type LookupExistingTeacherMutationError = ErrorType<void>
+
+    /**
+ * @summary Check an exact email for an existing Teacher account
+ */
+export const useLookupExistingTeacher = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof lookupExistingTeacher>>, TError,{data: BodyType<ExistingTeacherLookupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof lookupExistingTeacher>>,
+        TError,
+        {data: BodyType<ExistingTeacherLookupInput>},
+        TContext
+      > => {
+      return useMutation(getLookupExistingTeacherMutationOptions(options));
+    }
+
+export const getAssignExistingTeacherUrl = () => {
+
+
+
+
+  return `/api/care-team-teachers/assign`
+}
+
+/**
+ * @summary Assign an existing Teacher account to an additional student
+ */
+export const assignExistingTeacher = async (existingTeacherLookupInput: ExistingTeacherLookupInput, options?: Parameters<typeof customFetch>[1]): Promise<ExistingTeacherAssignment> => {
+
+  return customFetch<ExistingTeacherAssignment>(getAssignExistingTeacherUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(existingTeacherLookupInput)
+  }
+);}
+
+
+
+
+
+export const getAssignExistingTeacherMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignExistingTeacher>>, TError,{data: BodyType<ExistingTeacherLookupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignExistingTeacher>>, TError,{data: BodyType<ExistingTeacherLookupInput>}, TContext> => {
+
+const mutationKey = ['assignExistingTeacher'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignExistingTeacher>>, {data: BodyType<ExistingTeacherLookupInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  assignExistingTeacher(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignExistingTeacherMutationResult = NonNullable<Awaited<ReturnType<typeof assignExistingTeacher>>>
+    export type AssignExistingTeacherMutationBody = BodyType<ExistingTeacherLookupInput>
+    export type AssignExistingTeacherMutationError = ErrorType<void>
+
+    /**
+ * @summary Assign an existing Teacher account to an additional student
+ */
+export const useAssignExistingTeacher = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignExistingTeacher>>, TError,{data: BodyType<ExistingTeacherLookupInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof assignExistingTeacher>>,
+        TError,
+        {data: BodyType<ExistingTeacherLookupInput>},
+        TContext
+      > => {
+      return useMutation(getAssignExistingTeacherMutationOptions(options));
+    }
+
+export const getListStudentTransfersUrl = (params: ListStudentTransfersParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/student-transfers?${stringifiedParams}` : `/api/student-transfers`
+}
+
+/**
+ * @summary List transfer history for an assigned student
+ */
+export const listStudentTransfers = async (params: ListStudentTransfersParams, options?: Parameters<typeof customFetch>[1]): Promise<StudentTransfer[]> => {
+
+  return customFetch<StudentTransfer[]>(getListStudentTransfersUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListStudentTransfersQueryKey = (params?: ListStudentTransfersParams,) => {
+    return [
+    `/api/student-transfers`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getListStudentTransfersQueryOptions = <TData = Awaited<ReturnType<typeof listStudentTransfers>>, TError = ErrorType<void>>(params: ListStudentTransfersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStudentTransfers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListStudentTransfersQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listStudentTransfers>>> = ({ signal }) => listStudentTransfers(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listStudentTransfers>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListStudentTransfersQueryResult = NonNullable<Awaited<ReturnType<typeof listStudentTransfers>>>
+export type ListStudentTransfersQueryError = ErrorType<void>
+
+
+/**
+ * @summary List transfer history for an assigned student
+ */
+
+export function useListStudentTransfers<TData = Awaited<ReturnType<typeof listStudentTransfers>>, TError = ErrorType<void>>(
+ params: ListStudentTransfersParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listStudentTransfers>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListStudentTransfersQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateStudentTransferUrl = () => {
+
+
+
+
+  return `/api/student-transfers`
+}
+
+/**
+ * @summary Complete or request a primary SLP transfer
+ */
+export const createStudentTransfer = async (studentTransferInput: StudentTransferInput, options?: Parameters<typeof customFetch>[1]): Promise<StudentTransfer> => {
+
+  return customFetch<StudentTransfer>(getCreateStudentTransferUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(studentTransferInput)
+  }
+);}
+
+
+
+
+
+export const getCreateStudentTransferMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStudentTransfer>>, TError,{data: BodyType<StudentTransferInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createStudentTransfer>>, TError,{data: BodyType<StudentTransferInput>}, TContext> => {
+
+const mutationKey = ['createStudentTransfer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createStudentTransfer>>, {data: BodyType<StudentTransferInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createStudentTransfer(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateStudentTransferMutationResult = NonNullable<Awaited<ReturnType<typeof createStudentTransfer>>>
+    export type CreateStudentTransferMutationBody = BodyType<StudentTransferInput>
+    export type CreateStudentTransferMutationError = ErrorType<void>
+
+    /**
+ * @summary Complete or request a primary SLP transfer
+ */
+export const useCreateStudentTransfer = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createStudentTransfer>>, TError,{data: BodyType<StudentTransferInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createStudentTransfer>>,
+        TError,
+        {data: BodyType<StudentTransferInput>},
+        TContext
+      > => {
+      return useMutation(getCreateStudentTransferMutationOptions(options));
+    }
+
+export const getLookupStudentTransferSlpUrl = () => {
+
+
+
+
+  return `/api/student-transfers/lookup`
+}
+
+/**
+ * @summary Check an exact email for an eligible destination SLP account
+ */
+export const lookupStudentTransferSlp = async (studentTransferInput: StudentTransferInput, options?: Parameters<typeof customFetch>[1]): Promise<StudentTransferSlpLookup> => {
+
+  return customFetch<StudentTransferSlpLookup>(getLookupStudentTransferSlpUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(studentTransferInput)
+  }
+);}
+
+
+
+
+
+export const getLookupStudentTransferSlpMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof lookupStudentTransferSlp>>, TError,{data: BodyType<StudentTransferInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof lookupStudentTransferSlp>>, TError,{data: BodyType<StudentTransferInput>}, TContext> => {
+
+const mutationKey = ['lookupStudentTransferSlp'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof lookupStudentTransferSlp>>, {data: BodyType<StudentTransferInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  lookupStudentTransferSlp(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type LookupStudentTransferSlpMutationResult = NonNullable<Awaited<ReturnType<typeof lookupStudentTransferSlp>>>
+    export type LookupStudentTransferSlpMutationBody = BodyType<StudentTransferInput>
+    export type LookupStudentTransferSlpMutationError = ErrorType<void>
+
+    /**
+ * @summary Check an exact email for an eligible destination SLP account
+ */
+export const useLookupStudentTransferSlp = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof lookupStudentTransferSlp>>, TError,{data: BodyType<StudentTransferInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof lookupStudentTransferSlp>>,
+        TError,
+        {data: BodyType<StudentTransferInput>},
+        TContext
+      > => {
+      return useMutation(getLookupStudentTransferSlpMutationOptions(options));
+    }
+
+export const getCancelStudentTransferUrl = (transferId: number,) => {
+
+
+
+
+  return `/api/student-transfers/${transferId}/cancel`
+}
+
+/**
+ * @summary Cancel a pending primary SLP transfer
+ */
+export const cancelStudentTransfer = async (transferId: number, options?: Parameters<typeof customFetch>[1]): Promise<StudentTransfer> => {
+
+  return customFetch<StudentTransfer>(getCancelStudentTransferUrl(transferId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getCancelStudentTransferMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelStudentTransfer>>, TError,{transferId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof cancelStudentTransfer>>, TError,{transferId: number}, TContext> => {
+
+const mutationKey = ['cancelStudentTransfer'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof cancelStudentTransfer>>, {transferId: number}> = (props) => {
+          const {transferId} = props ?? {};
+
+          return  cancelStudentTransfer(transferId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CancelStudentTransferMutationResult = NonNullable<Awaited<ReturnType<typeof cancelStudentTransfer>>>
+
+    export type CancelStudentTransferMutationError = ErrorType<void>
+
+    /**
+ * @summary Cancel a pending primary SLP transfer
+ */
+export const useCancelStudentTransfer = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof cancelStudentTransfer>>, TError,{transferId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof cancelStudentTransfer>>,
+        TError,
+        {transferId: number},
+        TContext
+      > => {
+      return useMutation(getCancelStudentTransferMutationOptions(options));
     }
 
 export const getGetTeamInboxUrl = (params?: GetTeamInboxParams,) => {
@@ -11113,14 +11782,14 @@ export const getAcknowledgeBetaNoticeUrl = () => {
 /**
  * @summary Acknowledge the current beta participation notice
  */
-export const acknowledgeBetaNotice = async ( options?: Parameters<typeof customFetch>[1]): Promise<BetaNoticeAcknowledgement> => {
+export const acknowledgeBetaNotice = async (betaNoticeAcknowledgementInput: BetaNoticeAcknowledgementInput, options?: Parameters<typeof customFetch>[1]): Promise<BetaNoticeAcknowledgement> => {
 
   return customFetch<BetaNoticeAcknowledgement>(getAcknowledgeBetaNoticeUrl(),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(betaNoticeAcknowledgementInput)
   }
 );}
 
@@ -11129,8 +11798,8 @@ export const acknowledgeBetaNotice = async ( options?: Parameters<typeof customF
 
 
 export const getAcknowledgeBetaNoticeMutationOptions = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acknowledgeBetaNotice>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
-): UseMutationOptions<Awaited<ReturnType<typeof acknowledgeBetaNotice>>, TError,void, TContext> => {
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acknowledgeBetaNotice>>, TError,{data: BodyType<BetaNoticeAcknowledgementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof acknowledgeBetaNotice>>, TError,{data: BodyType<BetaNoticeAcknowledgementInput>}, TContext> => {
 
 const mutationKey = ['acknowledgeBetaNotice'];
 const {mutation: mutationOptions, request: requestOptions} = options ?
@@ -11142,10 +11811,10 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
 
 
 
-      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acknowledgeBetaNotice>>, void> = () => {
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof acknowledgeBetaNotice>>, {data: BodyType<BetaNoticeAcknowledgementInput>}> = (props) => {
+          const {data} = props ?? {};
 
-
-          return  acknowledgeBetaNotice(requestOptions)
+          return  acknowledgeBetaNotice(data,requestOptions)
         }
 
 
@@ -11156,18 +11825,18 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
   return  { mutationFn, ...mutationOptions }}
 
     export type AcknowledgeBetaNoticeMutationResult = NonNullable<Awaited<ReturnType<typeof acknowledgeBetaNotice>>>
-
+    export type AcknowledgeBetaNoticeMutationBody = BodyType<BetaNoticeAcknowledgementInput>
     export type AcknowledgeBetaNoticeMutationError = ErrorType<void>
 
     /**
  * @summary Acknowledge the current beta participation notice
  */
 export const useAcknowledgeBetaNotice = <TError = ErrorType<void>,
-    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acknowledgeBetaNotice>>, TError,void, TContext>, request?: SecondParameter<typeof customFetch>}
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof acknowledgeBetaNotice>>, TError,{data: BodyType<BetaNoticeAcknowledgementInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
  ): UseMutationResult<
         Awaited<ReturnType<typeof acknowledgeBetaNotice>>,
         TError,
-        void,
+        {data: BodyType<BetaNoticeAcknowledgementInput>},
         TContext
       > => {
       return useMutation(getAcknowledgeBetaNoticeMutationOptions(options));

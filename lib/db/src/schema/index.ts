@@ -44,3 +44,4 @@ export * from "./dictionary-duplicate-suggestions";
 export * from "./beta-access";
 export * from "./slp-onboarding";
 export * from "./user-settings";
+export * from "./student-transfers";

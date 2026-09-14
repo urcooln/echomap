@@ -14,7 +14,8 @@ const packagedClinicalSourceNames = [
   "ChildLed_AI__Clinical_Assessment_Protocol_&_Goal_Template_Manua_1787509198760.pdf",
 ];
 const parentLearningResourceName = "childled-parent-resources_1788210961456.pdf";
-const teacherResourceName = "childled-teacher-resources_1788216080991.pdf";
+const teacherResourceName = "childled-teacher-resources.pdf";
+const clinicianResourceName = "childled-clinician-resources.pdf";
 
 async function buildAll() {
   const distDir = path.resolve(artifactDir, "dist");
@@ -139,9 +140,17 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     path.resolve(sourceDir, parentLearningResourceName),
     path.resolve(parentResourceDir, parentLearningResourceName),
   );
+  const teacherResourceDir = path.resolve(distDir, "teacher-resources");
+  await mkdir(teacherResourceDir, { recursive: true });
   await copyFile(
     path.resolve(sourceDir, teacherResourceName),
-    path.resolve(parentResourceDir, teacherResourceName),
+    path.resolve(teacherResourceDir, teacherResourceName),
+  );
+  const clinicianResourceDir = path.resolve(distDir, "clinician-resources");
+  await mkdir(clinicianResourceDir, { recursive: true });
+  await copyFile(
+    path.resolve(sourceDir, clinicianResourceName),
+    path.resolve(clinicianResourceDir, clinicianResourceName),
   );
 }
 

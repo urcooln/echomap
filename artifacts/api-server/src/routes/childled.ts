@@ -173,8 +173,9 @@ import {
 } from "../lib/teacher-resource-center";
 import {
   CLINICIAN_LEARNING_DISCLAIMER,
+  CLINICIAN_LEARNING_HANDBOOK_FILENAME,
+  CLINICIAN_LEARNING_HANDBOOK_VERSION,
   CLINICIAN_LEARNING_RESOURCE_KEY,
-  clinicianLearningHandbookText,
   ensureClinicianLearningCenter,
   resolveClinicianLearningSectionProgress,
 } from "../lib/clinician-learning-center";
@@ -269,7 +270,31 @@ import {
   SlpOnboardingMembershipError,
 } from "../lib/slp-onboarding-account";
 import {
+  completeCareTeamOnboardingAccount,
+  CareTeamOnboardingMembershipError,
+} from "../lib/care-team-onboarding-account";
+import {
+  assignExistingTeacherAccount,
+  ExistingTeacherAssignmentError,
+  isValidTeacherEmail,
+  lookupExistingTeacherAccount,
+  normalizeTeacherEmail,
+} from "../lib/existing-teacher-assignment";
+import {
+  attachClerkInvitationToTransfer,
+  cancelPendingStudentTransfer,
+  completeExistingStudentTransfer,
+  createPendingStudentTransfer,
+  failPendingStudentTransferInvitation,
+  isValidSlpEmail,
+  lookupStudentTransferSlp,
+  pendingStudentTransferForCancellation,
+  StudentTransferError,
+  studentTransferHistory,
+} from "../lib/student-transfer";
+import {
   issueApplicationInvitation,
+  pendingApplicationInvitationUrls,
   revokeApplicationInvitation,
 } from "../lib/clerk-invitations";
 import {
@@ -278,6 +303,13 @@ import {
   seedDevelopmentSpeakerReviewFixture,
   seedDevelopmentDemo,
 } from "../lib/development-demo";
+import {
+  BETA_CONFIDENTIALITY_AGREEMENT_TYPE,
+  BETA_CONFIDENTIALITY_FALLBACK_TEXT,
+  betaAgreementAcceptedForSession,
+  betaLoginSessionHash,
+  currentBetaAgreementVersion,
+} from "../lib/beta-session-agreement";
 import {
   clearDevelopmentLoginFailures,
   developmentLoginRetryAfterSeconds,
@@ -302,6 +334,20 @@ import {
   CreateChildInterestQueryParams,
   CreateCareTeamInvitationBody,
   CreateCareTeamInvitationResponse,
+  ReplaceCareTeamInvitationParams,
+  ReplaceCareTeamInvitationResponse,
+  LookupExistingTeacherBody,
+  LookupExistingTeacherResponse,
+  AssignExistingTeacherBody,
+  AssignExistingTeacherResponse,
+  CancelStudentTransferParams,
+  CancelStudentTransferResponse,
+  CreateStudentTransferBody,
+  CreateStudentTransferResponse,
+  ListStudentTransfersQueryParams,
+  ListStudentTransfersResponse,
+  LookupStudentTransferSlpBody,
+  LookupStudentTransferSlpResponse,
   CreateTeamMessageBody,
   CreateTeamMessageResponse,
   DeleteChildInterestParams,
@@ -504,6 +550,9 @@ import {
   GetSlpOnboardingResponse,
   CompleteSlpOnboardingBody,
   CompleteSlpOnboardingResponse,
+  GetCareTeamOnboardingResponse,
+  CompleteCareTeamOnboardingBody,
+  CompleteCareTeamOnboardingResponse,
   ListClinicalKnowledgeInsightsQueryParams,
   ListClinicalKnowledgeInsightsResponse,
   ListClinicalKnowledgeSourcesResponse,
@@ -1404,7 +1453,7 @@ const authenticationError = (req: Request) =>
     : req.childledAuthFailure === "not_invited"
       ? "Your verified account has not been invited to this care team."
       : req.childledAuthFailure === "beta_notice_unacknowledged"
-        ? "Acknowledge the current beta participation notice to continue."
+        ? "Accept the ChildLed Beta Participation & Confidentiality Agreement to continue."
         : req.childledAuthFailure === "access_disabled"
           ? "This account or organization is not currently enabled for private beta access."
           : "Please sign in to access private care-team data.";
@@ -7574,10 +7623,11 @@ router.post("/development/login", async (req, res): Promise<void> => {
   clearDevelopmentLoginFailures(clientId);
   try {
     await seedDevelopmentDemo();
-    res.cookie(DEVELOPMENT_DEMO_COOKIE, "active", {
+    res.cookie(DEVELOPMENT_DEMO_COOKIE, randomUUID(), {
       httpOnly: true,
       sameSite: "lax",
       secure: runtimeConfig.isProduction,
+      signed: true,
       maxAge: 12 * 60 * 60 * 1000,
       path: "/",
     });
@@ -7599,6 +7649,18 @@ router.post("/development/login", async (req, res): Promise<void> => {
       error: "The demo workspace could not be prepared. Please try again.",
     });
   }
+});
+
+router.post("/development/logout", (_req, res): void => {
+  const cookieOptions = {
+    httpOnly: true,
+    sameSite: "lax" as const,
+    secure: runtimeConfig.isProduction,
+    path: "/",
+  };
+  res.clearCookie(DEVELOPMENT_DEMO_COOKIE, cookieOptions);
+  res.clearCookie(ROLE_PREVIEW_COOKIE, cookieOptions);
+  res.sendStatus(204);
 });
 
 router.post(
@@ -8082,6 +8144,7 @@ router.post("/slp-onboarding", async (req, res): Promise<void> => {
         SLP_AGREEMENTS.map((agreement) => [agreement.type, agreement.version]),
       ),
       licenseVerificationStatus: "unverified",
+      completedStudentTransfers: completion.completedTransferIds.length,
     },
   });
   res.json(
@@ -8089,6 +8152,147 @@ router.post("/slp-onboarding", async (req, res): Promise<void> => {
       completed: true,
       accountStatus: "active",
       onboardingCompletedAt: completedAt.toISOString(),
+    }),
+  );
+});
+
+type CareTeamOnboardingActor = ResolvedCareTeamActor & {
+  organizationId: number;
+  role: "Parent" | "Teacher";
+};
+
+const careTeamOnboardingActor = (
+  req: Request,
+): CareTeamOnboardingActor | null => {
+  const actor = req.childledActor;
+  if (
+    !actor ||
+    typeof actor.organizationId !== "number" ||
+    (actor.role !== "Parent" && actor.role !== "Teacher")
+  ) {
+    return null;
+  }
+  return actor as CareTeamOnboardingActor;
+};
+
+router.get("/care-team-onboarding", async (req, res): Promise<void> => {
+  const actor = careTeamOnboardingActor(req);
+  const clerkUserId = getAuth(req).userId;
+  if (!actor || !clerkUserId) {
+    res
+      .status(403)
+      .json({ error: "An invited Parent or Teacher account is required." });
+    return;
+  }
+  const [organizationRows, students, clerkUser] = await Promise.all([
+    db
+      .select({ name: organizationsTable.name })
+      .from(organizationsTable)
+      .where(eq(organizationsTable.id, actor.organizationId))
+      .limit(1),
+    db
+      .select({
+        id: childProfilesTable.id,
+        name: childProfilesTable.displayName,
+      })
+      .from(childProfilesTable)
+      .where(
+        and(
+          eq(childProfilesTable.organizationId, actor.organizationId),
+          inArray(
+            childProfilesTable.id,
+            actor.childIds.length ? actor.childIds : [-1],
+          ),
+          isNull(childProfilesTable.archivedAt),
+        ),
+      )
+      .orderBy(childProfilesTable.displayName),
+    clerkClient.users.getUser(clerkUserId),
+  ]);
+  const organization = organizationRows[0];
+  if (!organization || !students.length) {
+    res.status(403).json({
+      error: "The invited student assignment is no longer available.",
+    });
+    return;
+  }
+  res.json(
+    GetCareTeamOnboardingResponse.parse({
+      email:
+        clerkUser.emailAddresses.find(
+          (entry) => entry.verification?.status === "verified",
+        )?.emailAddress ?? "",
+      organizationName: organization.name,
+      role: actor.role,
+      firstName: clerkUser.firstName ?? "",
+      lastName: clerkUser.lastName ?? "",
+      students,
+    }),
+  );
+});
+
+router.post("/care-team-onboarding", async (req, res): Promise<void> => {
+  const actor = careTeamOnboardingActor(req);
+  const clerkUserId = getAuth(req).userId;
+  if (!actor || !clerkUserId) {
+    res
+      .status(403)
+      .json({ error: "An invited Parent or Teacher account is required." });
+    return;
+  }
+  const parsed = CompleteCareTeamOnboardingBody.safeParse(req.body);
+  const firstName = parsed.success ? parsed.data.firstName.trim() : "";
+  const lastName = parsed.success ? parsed.data.lastName.trim() : "";
+  if (!parsed.success || !firstName || !lastName) {
+    res.status(400).json({ error: "Enter your first and last name." });
+    return;
+  }
+
+  const completedAt = new Date();
+  let completion: Awaited<ReturnType<typeof completeCareTeamOnboardingAccount>>;
+  try {
+    completion = await completeCareTeamOnboardingAccount({
+      organizationId: actor.organizationId,
+      userId: actor.userId,
+      role: actor.role === "Parent" ? "parent" : "teacher",
+      firstName,
+      lastName,
+      completedAt,
+    });
+  } catch (error) {
+    req.log.error(
+      { err: error, userId: actor.userId },
+      "Could not complete invited care-team onboarding",
+    );
+    res
+      .status(error instanceof CareTeamOnboardingMembershipError ? 409 : 500)
+      .json({
+        error:
+          "Your account could not be activated. Your entries are unchanged; please try again.",
+      });
+    return;
+  }
+
+  await clerkClient.users
+    .updateUser(clerkUserId, { firstName, lastName })
+    .catch((error) =>
+      req.log.warn(
+        { err: error, clerkUserId },
+        "ChildLed identity saved but Clerk profile name could not be synchronized",
+      ),
+    );
+  await writeSecurityAudit({
+    actor,
+    action: `${actor.role.toUpperCase()}_ONBOARDING_COMPLETED`,
+    targetType: "organization_membership",
+    targetId: completion.membership.id,
+  });
+  res.json(
+    CompleteCareTeamOnboardingResponse.parse({
+      completed: true,
+      accountStatus: "active",
+      onboardingCompletedAt: completedAt.toISOString(),
+      displayName: completion.user.displayName,
     }),
   );
 });
@@ -12499,7 +12703,7 @@ router.get(
       res.setHeader("Content-Type", resource.pdfContentType);
       res.setHeader(
         "Content-Disposition",
-        'attachment; filename="ChildLed-Teacher-Resources.pdf"',
+        `${parsed.data.disposition === "inline" ? "inline" : "attachment"}; filename="ChildLed-Teacher-Resources.pdf"`,
       );
       res.setHeader("Cache-Control", "private, no-store");
       res.send(data);
@@ -12696,21 +12900,37 @@ router.get(
   async (req, res): Promise<void> => {
     const actor = requireClinicianLearningAccess(req, res);
     if (!actor) return;
-    await ensureClinicianLearningCenter(actor.organizationId);
-    await writeSecurityAudit({
-      actor,
-      action: "CLINICIAN_LEARNING_HANDBOOK_DOWNLOADED",
-      targetType: "clinician_learning_resource",
-      targetId: CLINICIAN_LEARNING_RESOURCE_KEY,
-      metadata: { contentVersion: "1.0" },
-    });
-    res.setHeader("Content-Type", "text/plain; charset=utf-8");
-    res.setHeader(
-      "Content-Disposition",
-      'attachment; filename="ChildLed-Clinician-Learning-Handbook.txt"',
-    );
-    res.setHeader("Cache-Control", "private, no-store");
-    res.send(clinicianLearningHandbookText());
+    try {
+      await ensureClinicianLearningCenter(actor.organizationId);
+      const data = await readFile(
+        path.resolve(
+          process.cwd(),
+          "dist",
+          "clinician-resources",
+          CLINICIAN_LEARNING_HANDBOOK_FILENAME,
+        ),
+      );
+      await writeSecurityAudit({
+        actor,
+        action: "CLINICIAN_LEARNING_HANDBOOK_DOWNLOADED",
+        targetType: "clinician_learning_resource",
+        targetId: CLINICIAN_LEARNING_RESOURCE_KEY,
+        metadata: { contentVersion: CLINICIAN_LEARNING_HANDBOOK_VERSION },
+      });
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader(
+        "Content-Disposition",
+        'attachment; filename="ChildLed-Clinician-Resources.pdf"',
+      );
+      res.setHeader("Cache-Control", "private, no-store");
+      res.send(data);
+    } catch (error) {
+      req.log.error(
+        { err: error },
+        "Could not download the clinician resource PDF",
+      );
+      res.status(404).json({ error: "Clinician handbook not found." });
+    }
   },
 );
 
@@ -12924,8 +13144,24 @@ router.get("/care-team-invitations", async (req, res) => {
           careTeamInvitationsTable.childId,
           actor.childIds.length ? actor.childIds : [-1],
         ),
+        sql`lower(${careTeamInvitationsTable.invitedRole}) in ('parent', 'teacher')`,
       ),
     );
+  let invitationUrls = new Map<string, string>();
+  try {
+    invitationUrls = await pendingApplicationInvitationUrls(
+      invitations.flatMap((invitation) =>
+        invitation.status === "pending" && invitation.clerkInvitationId
+          ? [invitation.clerkInvitationId]
+          : [],
+      ),
+    );
+  } catch (error) {
+    req.log.warn(
+      { err: error },
+      "Could not retrieve pending Clerk invitation links",
+    );
+  }
   return res.json(
     ListCareTeamInvitationsResponse.parse(
       invitations.map((invitation) => ({
@@ -12935,10 +13171,425 @@ router.get("/care-team-invitations", async (req, res) => {
         role: invitation.invitedRole,
         status: invitation.status,
         createdAt: invitation.createdAt.toISOString(),
+        ...(invitation.status === "pending" &&
+        invitation.clerkInvitationId &&
+        invitationUrls.has(invitation.clerkInvitationId)
+          ? {
+              invitationPath: invitationUrls.get(invitation.clerkInvitationId),
+            }
+          : {}),
       })),
     ),
   );
 });
+router.post("/care-team-teachers/lookup", async (req, res) => {
+  const body = LookupExistingTeacherBody.safeParse(req.body);
+  if (!body.success || !isValidTeacherEmail(body.data.email)) {
+    return fail(res, "Select a student and enter a valid Teacher email.");
+  }
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId) {
+    return res.status(401).json({ error: authenticationError(req) });
+  }
+  if (actor.role !== "SLP") {
+    return res.status(403).json({
+      error: "Only an SLP can look up a Teacher for a student.",
+    });
+  }
+  if (!requireChildAccess(req, res, body.data.childId)) return;
+
+  const lookup = await lookupExistingTeacherAccount({
+    organizationId: actor.organizationId,
+    childId: body.data.childId,
+    email: body.data.email,
+  });
+  return res.json(LookupExistingTeacherResponse.parse(lookup));
+});
+
+router.post("/care-team-teachers/assign", async (req, res) => {
+  const body = AssignExistingTeacherBody.safeParse(req.body);
+  if (!body.success || !isValidTeacherEmail(body.data.email)) {
+    return fail(res, "Select a student and enter a valid Teacher email.");
+  }
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId) {
+    return res.status(401).json({ error: authenticationError(req) });
+  }
+  if (actor.role !== "SLP") {
+    return res.status(403).json({
+      error: "Only an SLP can assign a Teacher to a student.",
+    });
+  }
+  if (!requireChildAccess(req, res, body.data.childId)) return;
+
+  try {
+    const assignment = await assignExistingTeacherAccount({
+      organizationId: actor.organizationId,
+      childId: body.data.childId,
+      email: body.data.email,
+      assignedByUserId: actor.userId,
+    });
+    await writeSecurityAudit({
+      actor,
+      action: "EXISTING_TEACHER_ASSIGNED_TO_CHILD",
+      targetType: "child_care_team_membership",
+      targetId: assignment.membershipId,
+      childId: assignment.childId,
+      metadata: { role: "Teacher", notificationId: assignment.notificationId },
+    });
+    return res.status(201).json(
+      AssignExistingTeacherResponse.parse({
+        childId: assignment.childId,
+        assigned: true,
+        notificationCreated: true,
+        teacher: assignment.teacher,
+      }),
+    );
+  } catch (error) {
+    if (error instanceof ExistingTeacherAssignmentError) {
+      if (error.code === "already_assigned") {
+        return res.status(409).json({
+          error: "This Teacher already has access to the selected student.",
+        });
+      }
+      return res.status(404).json({
+        error:
+          "An active Teacher account with that email was not found in this ChildLed workspace.",
+      });
+    }
+    req.log.error(
+      { err: error, childId: body.data.childId, actorUserId: actor.userId },
+      "Could not assign existing Teacher to child",
+    );
+    return res.status(500).json({
+      error: "The Teacher could not be added to this student.",
+    });
+  }
+});
+
+const studentTransferPayload = (
+  entry: Awaited<ReturnType<typeof studentTransferHistory>>[number],
+  invitationPath?: string,
+) => ({
+  id: entry.transfer.id,
+  childId: entry.transfer.childId,
+  childName: entry.child?.name ?? "Student",
+  childLedId: entry.child?.childLedId ?? "Unavailable",
+  fromSlpName: entry.fromSlpName,
+  destinationEmail: entry.transfer.destinationEmail,
+  ...(entry.destinationSlpName
+    ? { destinationSlpName: entry.destinationSlpName }
+    : {}),
+  transferMode: entry.transfer.transferMode,
+  status: entry.transfer.status,
+  ...(entry.transfer.invitationId
+    ? { invitationId: entry.transfer.invitationId }
+    : {}),
+  ...(invitationPath ? { invitationPath } : {}),
+  requestedAt: entry.transfer.requestedAt,
+  ...(entry.transfer.completedAt
+    ? { completedAt: entry.transfer.completedAt }
+    : {}),
+  ...(entry.transfer.cancelledAt
+    ? { cancelledAt: entry.transfer.cancelledAt }
+    : {}),
+});
+
+const transferErrorResponse = (res: any, error: StudentTransferError) => {
+  const messages: Record<StudentTransferError["code"], string> = {
+    child_not_found: "Student not found in this ChildLed workspace.",
+    source_not_authorized:
+      "Only the student's current SLP can transfer this student.",
+    destination_not_found: "The destination SLP account was not found.",
+    destination_not_eligible:
+      "This email is not an active, onboarded SLP in this ChildLed workspace.",
+    same_slp: "A student cannot be transferred to their current SLP.",
+    pending_transfer: "A transfer is already pending for this student.",
+    pending_invitation:
+      "A pending ChildLed invitation already exists for this email address.",
+    invitation_limit: "Invitation limit reached. Try again later.",
+    transfer_not_found: "The pending transfer was not found.",
+    transfer_not_pending: "This transfer is no longer pending.",
+  };
+  const status =
+    error.code === "child_not_found" || error.code === "transfer_not_found"
+      ? 404
+      : error.code === "source_not_authorized"
+        ? 403
+        : error.code === "invitation_limit"
+          ? 429
+          : 409;
+  return res.status(status).json({ error: messages[error.code] });
+};
+
+router.get("/student-transfers", async (req, res) => {
+  const query = ListStudentTransfersQueryParams.safeParse(req.query);
+  if (!query.success) return fail(res, "Select a valid student.");
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId)
+    return res.status(401).json({ error: authenticationError(req) });
+  if (actor.role !== "SLP") {
+    return res.status(403).json({ error: "Only an SLP can view transfers." });
+  }
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+
+  const history = await studentTransferHistory({
+    organizationId: actor.organizationId,
+    childId: query.data.childId,
+  });
+  const pendingInvitationIds = history.flatMap((entry) =>
+    entry.transfer.status === "pending" && entry.transfer.invitationId
+      ? [entry.transfer.invitationId]
+      : [],
+  );
+  const pendingInvitations = pendingInvitationIds.length
+    ? await db
+        .select({
+          id: careTeamInvitationsTable.id,
+          clerkInvitationId: careTeamInvitationsTable.clerkInvitationId,
+        })
+        .from(careTeamInvitationsTable)
+        .where(inArray(careTeamInvitationsTable.id, pendingInvitationIds))
+    : [];
+  let invitationUrls = new Map<string, string>();
+  try {
+    invitationUrls = await pendingApplicationInvitationUrls(
+      pendingInvitations.flatMap((invitation) =>
+        invitation.clerkInvitationId ? [invitation.clerkInvitationId] : [],
+      ),
+    );
+  } catch (error) {
+    req.log.warn({ err: error }, "Could not retrieve transfer invitation link");
+  }
+  const clerkIdByInvitationId = new Map(
+    pendingInvitations.map((invitation) => [
+      invitation.id,
+      invitation.clerkInvitationId,
+    ]),
+  );
+  return res.json(
+    ListStudentTransfersResponse.parse(
+      history.map((entry) => {
+        const clerkInvitationId = entry.transfer.invitationId
+          ? clerkIdByInvitationId.get(entry.transfer.invitationId)
+          : null;
+        return studentTransferPayload(
+          entry,
+          clerkInvitationId ? invitationUrls.get(clerkInvitationId) : undefined,
+        );
+      }),
+    ),
+  );
+});
+
+router.post("/student-transfers/lookup", async (req, res) => {
+  const body = LookupStudentTransferSlpBody.safeParse(req.body);
+  if (!body.success || !isValidSlpEmail(body.data.email)) {
+    return fail(res, "Select a student and enter a valid SLP email.");
+  }
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId)
+    return res.status(401).json({ error: authenticationError(req) });
+  if (actor.role !== "SLP") {
+    return res
+      .status(403)
+      .json({ error: "Only an SLP can transfer a student." });
+  }
+  if (!requireChildAccess(req, res, body.data.childId)) return;
+  const lookup = await lookupStudentTransferSlp({
+    organizationId: actor.organizationId,
+    childId: body.data.childId,
+    currentSlpUserId: actor.userId,
+    email: body.data.email,
+  });
+  return res.json(LookupStudentTransferSlpResponse.parse(lookup));
+});
+
+router.post("/student-transfers", async (req, res) => {
+  const body = CreateStudentTransferBody.safeParse(req.body);
+  if (!body.success || !isValidSlpEmail(body.data.email)) {
+    return fail(res, "Select a student and enter a valid SLP email.");
+  }
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId)
+    return res.status(401).json({ error: authenticationError(req) });
+  if (actor.role !== "SLP") {
+    return res
+      .status(403)
+      .json({ error: "Only an SLP can transfer a student." });
+  }
+  if (!requireChildAccess(req, res, body.data.childId)) return;
+
+  try {
+    const lookup = await lookupStudentTransferSlp({
+      organizationId: actor.organizationId,
+      childId: body.data.childId,
+      currentSlpUserId: actor.userId,
+      email: body.data.email,
+    });
+    let transferId: number;
+    let invitationPath: string | undefined;
+    if (lookup.status === "available") {
+      const result = await completeExistingStudentTransfer({
+        organizationId: actor.organizationId,
+        childId: body.data.childId,
+        currentSlpUserId: actor.userId,
+        email: body.data.email,
+      });
+      transferId = result.transfer.id;
+    } else if (lookup.status === "not_found") {
+      const token = createInvitationToken();
+      const pending = await createPendingStudentTransfer({
+        organizationId: actor.organizationId,
+        childId: body.data.childId,
+        currentSlpUserId: actor.userId,
+        email: body.data.email,
+        tokenHash: hashInvitationToken(token),
+        expiresAt: new Date(Date.now() + 7 * 86_400_000),
+      });
+      transferId = pending.transfer.id;
+      let clerkInvitationId: string | null = null;
+      try {
+        const issued = await issueApplicationInvitation({
+          emailAddress: pending.invitation.invitedEmail,
+          token,
+          childledInvitationId: pending.invitation.id,
+          invitedRole: "clinician",
+        });
+        clerkInvitationId = issued.clerkInvitationId;
+        invitationPath = issued.invitationPath;
+        if (clerkInvitationId) {
+          await attachClerkInvitationToTransfer({
+            transferId,
+            invitationId: pending.invitation.id,
+            clerkInvitationId,
+          });
+        }
+      } catch (error) {
+        await revokeApplicationInvitation(clerkInvitationId).catch(
+          () => undefined,
+        );
+        await failPendingStudentTransferInvitation({
+          transferId,
+          invitationId: pending.invitation.id,
+          cancelledByUserId: actor.userId,
+        });
+        throw error;
+      }
+    } else {
+      const messages = {
+        current_slp: "A student cannot be transferred to their current SLP.",
+        different_role:
+          "This email is already associated with a different ChildLed account type.",
+        different_workspace:
+          "This SLP belongs to a different ChildLed workspace. Cross-workspace transfers are not available yet.",
+        pending_transfer: "A transfer is already pending for this student.",
+      } as const;
+      return res.status(409).json({ error: messages[lookup.status] });
+    }
+
+    const history = await studentTransferHistory({
+      organizationId: actor.organizationId,
+      childId: body.data.childId,
+    });
+    const entry = history.find((item) => item.transfer.id === transferId);
+    if (!entry) throw new Error("Created transfer was not found.");
+    await writeSecurityAudit({
+      actor,
+      action:
+        entry.transfer.status === "completed"
+          ? "STUDENT_TRANSFER_COMPLETED"
+          : "STUDENT_TRANSFER_REQUESTED",
+      targetType: "student_transfer",
+      targetId: entry.transfer.id,
+      childId: entry.transfer.childId,
+      metadata: { transferMode: entry.transfer.transferMode },
+    });
+    return res
+      .status(201)
+      .json(
+        CreateStudentTransferResponse.parse(
+          studentTransferPayload(entry, invitationPath),
+        ),
+      );
+  } catch (error) {
+    if (error instanceof StudentTransferError) {
+      return transferErrorResponse(res, error);
+    }
+    req.log.error(
+      { err: error, childId: body.data.childId, actorUserId: actor.userId },
+      "Could not transfer student",
+    );
+    return res.status(502).json({
+      error: "The student transfer could not be completed. Please try again.",
+    });
+  }
+});
+
+router.post("/student-transfers/:transferId/cancel", async (req, res) => {
+  const params = CancelStudentTransferParams.safeParse(req.params);
+  if (!params.success) return fail(res, "Select a valid pending transfer.");
+  const actor = viewerFrom(req);
+  if (!actor?.organizationId)
+    return res.status(401).json({ error: authenticationError(req) });
+  if (actor.role !== "SLP") {
+    return res
+      .status(403)
+      .json({ error: "Only an SLP can cancel a transfer." });
+  }
+  const pending = await pendingStudentTransferForCancellation({
+    organizationId: actor.organizationId,
+    transferId: params.data.transferId,
+    currentSlpUserId: actor.userId,
+  });
+  if (!pending) {
+    return res.status(404).json({ error: "Pending transfer not found." });
+  }
+  if (!requireChildAccess(req, res, pending.childId)) return;
+  if (pending.invitationStatus === "pending") {
+    try {
+      await revokeApplicationInvitation(pending.clerkInvitationId);
+    } catch (error) {
+      req.log.error(
+        { err: error, transferId: pending.id },
+        "Could not revoke pending transfer invitation",
+      );
+      return res.status(502).json({
+        error:
+          "The invitation could not be revoked, so the transfer was left pending.",
+      });
+    }
+  }
+  try {
+    await cancelPendingStudentTransfer({
+      organizationId: actor.organizationId,
+      transferId: pending.id,
+      currentSlpUserId: actor.userId,
+    });
+    const history = await studentTransferHistory({
+      organizationId: actor.organizationId,
+      childId: pending.childId,
+    });
+    const entry = history.find((item) => item.transfer.id === pending.id);
+    if (!entry) throw new Error("Cancelled transfer was not found.");
+    await writeSecurityAudit({
+      actor,
+      action: "STUDENT_TRANSFER_CANCELLED",
+      targetType: "student_transfer",
+      targetId: pending.id,
+      childId: pending.childId,
+    });
+    return res.json(
+      CancelStudentTransferResponse.parse(studentTransferPayload(entry)),
+    );
+  } catch (error) {
+    if (error instanceof StudentTransferError) {
+      return transferErrorResponse(res, error);
+    }
+    throw error;
+  }
+});
+
 router.post("/care-team-invitations", async (req, res) => {
   const body = CreateCareTeamInvitationBody.safeParse(req.body);
   if (!body.success)
@@ -12991,9 +13642,33 @@ router.post("/care-team-invitations", async (req, res) => {
     return res
       .status(404)
       .json({ error: "Child not found in this organization." });
-  const email = body.data.email.trim().toLowerCase();
+  const email = normalizeTeacherEmail(body.data.email);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
     return fail(res, "Use a valid email address for the invitation.");
+  if (body.data.role === "Teacher") {
+    const existingTeacher = await lookupExistingTeacherAccount({
+      organizationId: actor.organizationId,
+      childId: body.data.childId,
+      email,
+    });
+    if (existingTeacher.status === "available") {
+      return res.status(409).json({
+        error:
+          "An existing ChildLed Teacher was found. Confirm Add to Student instead of creating another invitation.",
+      });
+    }
+    if (existingTeacher.status === "already_assigned") {
+      return res.status(409).json({
+        error: "This Teacher already has access to the selected student.",
+      });
+    }
+    if (existingTeacher.status === "different_role") {
+      return res.status(409).json({
+        error:
+          "This email is already associated with a different ChildLed account type.",
+      });
+    }
+  }
   const token = invitationToken();
   const issuance = await db.transaction(async (tx) => {
     await tx
@@ -13118,6 +13793,155 @@ router.post("/care-team-invitations", async (req, res) => {
     }),
   );
 });
+router.post(
+  "/care-team-invitations/:invitationId/replace",
+  async (req, res) => {
+    const params = ReplaceCareTeamInvitationParams.safeParse(req.params);
+    if (!params.success || !Number.isInteger(params.data.invitationId)) {
+      return fail(res, "Select a valid pending invitation.");
+    }
+    const actor = viewerFrom(req);
+    if (!actor?.organizationId)
+      return res.status(401).json({ error: authenticationError(req) });
+    if (!canManageClinicalData(actor.role) && !isNativeDevelopmentDemo(actor)) {
+      return res.status(403).json({
+        error: "Only an SLP can replace a care-team invitation.",
+      });
+    }
+
+    const [invitation] = await db
+      .select()
+      .from(careTeamInvitationsTable)
+      .where(
+        and(
+          eq(careTeamInvitationsTable.id, params.data.invitationId),
+          eq(careTeamInvitationsTable.organizationId, actor.organizationId),
+          eq(careTeamInvitationsTable.status, "pending"),
+          isNull(careTeamInvitationsTable.revokedAt),
+        ),
+      )
+      .limit(1);
+    if (!invitation?.childId) {
+      return res.status(404).json({ error: "Pending invitation not found." });
+    }
+    if (!requireChildAccess(req, res, invitation.childId)) return;
+
+    const [organization] = await db
+      .select()
+      .from(organizationsTable)
+      .where(eq(organizationsTable.id, actor.organizationId))
+      .limit(1);
+    const [controls] = await db
+      .select()
+      .from(betaControlsTable)
+      .where(eq(betaControlsTable.id, 1))
+      .limit(1);
+    if (
+      !organization ||
+      organization.disabledAt ||
+      (!isNativeDevelopmentDemo(actor) &&
+        (!organization.betaApprovedAt || !controls || !controls.enabled))
+    ) {
+      return res.status(403).json({
+        error:
+          "This organization is not currently approved to invite private-beta members.",
+      });
+    }
+
+    const token = invitationToken();
+    let replacement: Awaited<ReturnType<typeof issueApplicationInvitation>>;
+    try {
+      replacement = await issueApplicationInvitation({
+        emailAddress: invitation.invitedEmail,
+        token,
+        childledInvitationId: invitation.id,
+        invitedRole: invitation.invitedRole,
+      });
+    } catch (error) {
+      logger.error(
+        { err: error, invitationId: invitation.id },
+        "Could not issue replacement Clerk application invitation",
+      );
+      return res.status(502).json({
+        error:
+          "A new invitation could not be issued. The existing invitation was not changed.",
+      });
+    }
+
+    let updated: typeof invitation | undefined;
+    try {
+      [updated] = await db
+        .update(careTeamInvitationsTable)
+        .set({
+          tokenHash: invitationTokenHash(token),
+          clerkInvitationId: replacement.clerkInvitationId,
+          expiresAt: new Date(Date.now() + 7 * 86_400_000),
+        })
+        .where(
+          and(
+            eq(careTeamInvitationsTable.id, invitation.id),
+            eq(careTeamInvitationsTable.organizationId, actor.organizationId),
+            eq(careTeamInvitationsTable.status, "pending"),
+            isNull(careTeamInvitationsTable.revokedAt),
+            invitation.clerkInvitationId
+              ? eq(
+                  careTeamInvitationsTable.clerkInvitationId,
+                  invitation.clerkInvitationId,
+                )
+              : isNull(careTeamInvitationsTable.clerkInvitationId),
+          ),
+        )
+        .returning();
+    } catch (error) {
+      await revokeApplicationInvitation(replacement.clerkInvitationId).catch(
+        () => undefined,
+      );
+      logger.error(
+        { err: error, invitationId: invitation.id },
+        "Could not save replacement care-team invitation",
+      );
+      return res.status(500).json({
+        error: "The new invitation could not be saved. Please try again.",
+      });
+    }
+    if (!updated) {
+      await revokeApplicationInvitation(replacement.clerkInvitationId).catch(
+        () => undefined,
+      );
+      return res.status(409).json({
+        error:
+          "This invitation is no longer pending. Refresh the team and try again.",
+      });
+    }
+
+    await revokeApplicationInvitation(invitation.clerkInvitationId).catch(
+      (error) =>
+        logger.warn(
+          { err: error, clerkInvitationId: invitation.clerkInvitationId },
+          "Could not revoke superseded Clerk invitation",
+        ),
+    );
+    await writeSecurityAudit({
+      actor,
+      action: "CARE_TEAM_INVITATION_REPLACED",
+      targetType: "care_team_invitation",
+      targetId: updated.id,
+      childId: updated.childId,
+      metadata: { role: updated.invitedRole },
+    });
+    return res.json(
+      ReplaceCareTeamInvitationResponse.parse({
+        id: String(updated.id),
+        childId: updated.childId,
+        email: updated.invitedEmail,
+        role: updated.invitedRole,
+        status: updated.status,
+        createdAt: updated.createdAt.toISOString(),
+        invitationPath: replacement.invitationPath,
+      }),
+    );
+  },
+);
 router.get("/team-inbox", async (req, res) => {
   const query = GetTeamInboxQueryParams.safeParse(req.query);
   if (!query.success) return fail(res, "The Inbox filters are invalid.");
@@ -23169,33 +23993,21 @@ router.get("/beta-notice", async (req, res): Promise<void> => {
     res.status(401).json({ error: authenticationError(req) });
     return;
   }
-  const [controls] = await db
-    .select()
-    .from(betaControlsTable)
-    .where(eq(betaControlsTable.id, 1))
-    .limit(1);
-  const version = controls?.currentNoticeVersion ?? "1";
+  const version = await currentBetaAgreementVersion();
   const [notice] = await db
     .select()
     .from(betaNoticesTable)
     .where(eq(betaNoticesTable.version, version))
     .limit(1);
-  const [acknowledgement] = await db
-    .select({ id: betaNoticeAcknowledgementsTable.id })
-    .from(betaNoticeAcknowledgementsTable)
-    .where(
-      and(
-        eq(betaNoticeAcknowledgementsTable.userId, actor.userId),
-        eq(betaNoticeAcknowledgementsTable.noticeVersion, version),
-      ),
-    )
-    .limit(1);
+  const acknowledged = runtimeConfig.betaAgreement.required
+    ? await betaAgreementAcceptedForSession({ actor, version })
+    : true;
   res.json({
+    agreementType: BETA_CONFIDENTIALITY_AGREEMENT_TYPE,
     version,
-    text:
-      notice?.body ??
-      "This private beta requires appropriate care-team authorization and safeguarding of confidential information.",
-    acknowledged: Boolean(acknowledgement),
+    text: notice?.body ?? BETA_CONFIDENTIALITY_FALLBACK_TEXT,
+    required: runtimeConfig.betaAgreement.required,
+    acknowledged,
   });
 });
 router.post("/beta-notice/acknowledge", async (req, res): Promise<void> => {
@@ -23204,17 +24016,42 @@ router.post("/beta-notice/acknowledge", async (req, res): Promise<void> => {
     res.status(401).json({ error: authenticationError(req) });
     return;
   }
-  const [controls] = await db
-    .select()
-    .from(betaControlsTable)
-    .where(eq(betaControlsTable.id, 1))
-    .limit(1);
-  const version = controls?.currentNoticeVersion ?? "1";
+  if (req.body?.accepted !== true) {
+    res.status(400).json({
+      error: "You must agree before continuing to ChildLed.",
+    });
+    return;
+  }
+  const version = await currentBetaAgreementVersion();
+  if (!runtimeConfig.betaAgreement.required) {
+    res.json({
+      acknowledged: true,
+      agreementType: BETA_CONFIDENTIALITY_AGREEMENT_TYPE,
+      version,
+    });
+    return;
+  }
+  if (!actor.loginSessionId || !actor.organizationId) {
+    res.status(403).json({ error: "The current login session is not valid." });
+    return;
+  }
   await db
     .insert(betaNoticeAcknowledgementsTable)
-    .values({ userId: actor.userId, noticeVersion: version })
+    .values({
+      organizationId: actor.organizationId,
+      userId: actor.userId,
+      clerkUserId: actor.clerkUserId ?? null,
+      role: actor.role,
+      agreementType: BETA_CONFIDENTIALITY_AGREEMENT_TYPE,
+      noticeVersion: version,
+      loginSessionHash: betaLoginSessionHash(actor.loginSessionId),
+    })
     .onConflictDoNothing();
-  res.json({ acknowledged: true, version });
+  res.json({
+    acknowledged: true,
+    agreementType: BETA_CONFIDENTIALITY_AGREEMENT_TYPE,
+    version,
+  });
 });
 
 router.post(

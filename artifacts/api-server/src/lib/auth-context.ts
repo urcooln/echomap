@@ -26,6 +26,9 @@ export type ResolvedCareTeamActor = {
   >;
   expiresAt: number;
   organizationId?: number;
+  /** Server-issued identity for the current login, never accepted from the browser. */
+  loginSessionId?: string;
+  clerkUserId?: string;
   accountStatus?: "onboarding" | "active";
   onboardingComplete?: boolean;
 };

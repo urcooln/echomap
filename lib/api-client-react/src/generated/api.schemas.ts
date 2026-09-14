@@ -257,6 +257,55 @@ export interface SlpOnboardingCompletion {
   onboardingCompletedAt: string;
 }
 
+export interface CareTeamOnboardingStudent {
+  id: number;
+  name: string;
+}
+
+export type CareTeamOnboardingRole = typeof CareTeamOnboardingRole[keyof typeof CareTeamOnboardingRole];
+
+
+export const CareTeamOnboardingRole = {
+  Parent: 'Parent',
+  Teacher: 'Teacher',
+} as const;
+
+export interface CareTeamOnboarding {
+  email: string;
+  organizationName: string;
+  role: CareTeamOnboardingRole;
+  firstName: string;
+  lastName: string;
+  students: CareTeamOnboardingStudent[];
+}
+
+export interface CareTeamOnboardingInput {
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  firstName: string;
+  /**
+     * @minLength 1
+     * @maxLength 120
+     */
+  lastName: string;
+}
+
+export type CareTeamOnboardingCompletionAccountStatus = typeof CareTeamOnboardingCompletionAccountStatus[keyof typeof CareTeamOnboardingCompletionAccountStatus];
+
+
+export const CareTeamOnboardingCompletionAccountStatus = {
+  active: 'active',
+} as const;
+
+export interface CareTeamOnboardingCompletion {
+  completed: boolean;
+  accountStatus: CareTeamOnboardingCompletionAccountStatus;
+  onboardingCompletedAt: string;
+  displayName: string;
+}
+
 export type RolePreviewInputRole = typeof RolePreviewInputRole[keyof typeof RolePreviewInputRole];
 
 
@@ -905,6 +954,122 @@ export interface CareTeamInvitationInput {
      */
   email: string;
   role: CareTeamInvitationInputRole;
+}
+
+export interface ExistingTeacherLookupInput {
+  childId: number;
+  /**
+     * @minLength 3
+     * @maxLength 320
+     */
+  email: string;
+}
+
+export type ExistingTeacherSummaryRole = typeof ExistingTeacherSummaryRole[keyof typeof ExistingTeacherSummaryRole];
+
+
+export const ExistingTeacherSummaryRole = {
+  Teacher: 'Teacher',
+} as const;
+
+export interface ExistingTeacherSummary {
+  name: string;
+  role: ExistingTeacherSummaryRole;
+}
+
+export type ExistingTeacherLookupStatus = typeof ExistingTeacherLookupStatus[keyof typeof ExistingTeacherLookupStatus];
+
+
+export const ExistingTeacherLookupStatus = {
+  available: 'available',
+  already_assigned: 'already_assigned',
+  not_found: 'not_found',
+  different_role: 'different_role',
+} as const;
+
+export interface ExistingTeacherLookup {
+  status: ExistingTeacherLookupStatus;
+  teacher?: ExistingTeacherSummary;
+}
+
+export interface ExistingTeacherAssignment {
+  childId: number;
+  assigned: boolean;
+  notificationCreated: boolean;
+  teacher: ExistingTeacherSummary;
+}
+
+export interface StudentTransferInput {
+  childId: number;
+  /**
+     * @minLength 3
+     * @maxLength 320
+     */
+  email: string;
+}
+
+export type StudentTransferSlpSummaryRole = typeof StudentTransferSlpSummaryRole[keyof typeof StudentTransferSlpSummaryRole];
+
+
+export const StudentTransferSlpSummaryRole = {
+  SLP: 'SLP',
+} as const;
+
+export interface StudentTransferSlpSummary {
+  name: string;
+  role: StudentTransferSlpSummaryRole;
+  professionalTitle: string;
+}
+
+export type StudentTransferSlpLookupStatus = typeof StudentTransferSlpLookupStatus[keyof typeof StudentTransferSlpLookupStatus];
+
+
+export const StudentTransferSlpLookupStatus = {
+  available: 'available',
+  current_slp: 'current_slp',
+  not_found: 'not_found',
+  different_role: 'different_role',
+  different_workspace: 'different_workspace',
+  pending_transfer: 'pending_transfer',
+} as const;
+
+export interface StudentTransferSlpLookup {
+  status: StudentTransferSlpLookupStatus;
+  slp?: StudentTransferSlpSummary;
+}
+
+export type StudentTransferTransferMode = typeof StudentTransferTransferMode[keyof typeof StudentTransferTransferMode];
+
+
+export const StudentTransferTransferMode = {
+  existing_account: 'existing_account',
+  invitation: 'invitation',
+} as const;
+
+export type StudentTransferStatus = typeof StudentTransferStatus[keyof typeof StudentTransferStatus];
+
+
+export const StudentTransferStatus = {
+  pending: 'pending',
+  completed: 'completed',
+  cancelled: 'cancelled',
+} as const;
+
+export interface StudentTransfer {
+  id: number;
+  childId: number;
+  childName: string;
+  childLedId: string;
+  fromSlpName: string;
+  destinationEmail: string;
+  destinationSlpName?: string;
+  transferMode: StudentTransferTransferMode;
+  status: StudentTransferStatus;
+  invitationId?: number;
+  invitationPath?: string;
+  requestedAt: string;
+  completedAt?: string;
+  cancelledAt?: string;
 }
 
 export interface SensoryProfile {
@@ -4532,13 +4697,20 @@ export interface InvitationAcceptance {
 }
 
 export interface BetaNotice {
+  agreementType: string;
   version: string;
   text: string;
+  required: boolean;
   acknowledged: boolean;
+}
+
+export interface BetaNoticeAcknowledgementInput {
+  accepted: boolean;
 }
 
 export interface BetaNoticeAcknowledgement {
   acknowledged: boolean;
+  agreementType: string;
   version: string;
 }
 
@@ -4670,7 +4842,16 @@ childId: number;
 
 export type DownloadTeacherResourceHandbookParams = {
 childId: number;
+disposition?: DownloadTeacherResourceHandbookDisposition;
 };
+
+export type DownloadTeacherResourceHandbookDisposition = typeof DownloadTeacherResourceHandbookDisposition[keyof typeof DownloadTeacherResourceHandbookDisposition];
+
+
+export const DownloadTeacherResourceHandbookDisposition = {
+  inline: 'inline',
+  attachment: 'attachment',
+} as const;
 
 export type ListAdminTeamConversationsParams = {
 /**
@@ -4733,6 +4914,10 @@ sessionId: number;
 export type UpdateSessionSoapNoteParams = {
 childId: number;
 sessionId: number;
+};
+
+export type ListStudentTransfersParams = {
+childId: number;
 };
 
 export type GetTeamInboxParams = {

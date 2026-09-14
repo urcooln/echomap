@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import test from "node:test";
 import {
   CLINICIAN_LEARNING_DISCLAIMER,
+  CLINICIAN_LEARNING_HANDBOOK_FILENAME,
   CLINICIAN_LEARNING_SAFETY_POINTS,
   clinicianLearningModuleDefinitions,
   clinicianLearningHandbookText,
@@ -9,6 +12,19 @@ import {
 } from "../src/lib/clinician-learning-center";
 
 const searchableLibrary = JSON.stringify(clinicianLearningModuleDefinitions).toLocaleLowerCase();
+
+test("packages the supplied clinician handbook as a PDF", () => {
+  const handbook = readFileSync(
+    path.resolve(
+      process.cwd(),
+      "../..",
+      "attached_assets",
+      CLINICIAN_LEARNING_HANDBOOK_FILENAME,
+    ),
+  );
+  assert.equal(handbook.subarray(0, 5).toString("ascii"), "%PDF-");
+  assert.ok(handbook.length > 90_000);
+});
 
 test("covers the professional handbook topics from the clinician brief", () => {
   const requiredTopics = [

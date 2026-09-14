@@ -6,7 +6,7 @@ import {
 } from "../src/lib/clerk-invitation-metadata";
 import {
   hasEveryCurrentSlpAgreement,
-  invitationRequiresSlpOnboarding,
+  invitationRequiresRoleOnboarding,
   SLP_AGREEMENTS,
 } from "../src/lib/slp-onboarding";
 
@@ -39,13 +39,13 @@ test("SLP activation requires every current agreement at its exact version", () 
   );
 });
 
-test("moving into the SLP role always requires setup unless SLP onboarding is already complete", () => {
+test("an invited role requires setup unless onboarding for that same role is already complete", () => {
   assert.equal(
-    invitationRequiresSlpOnboarding({ membershipRole: "clinician" }),
+    invitationRequiresRoleOnboarding({ membershipRole: "clinician" }),
     true,
   );
   assert.equal(
-    invitationRequiresSlpOnboarding({
+    invitationRequiresRoleOnboarding({
       membershipRole: "clinician",
       existingMembership: {
         role: "teacher",
@@ -56,7 +56,7 @@ test("moving into the SLP role always requires setup unless SLP onboarding is al
     true,
   );
   assert.equal(
-    invitationRequiresSlpOnboarding({
+    invitationRequiresRoleOnboarding({
       membershipRole: "clinician",
       existingMembership: {
         role: "clinician",
@@ -67,7 +67,7 @@ test("moving into the SLP role always requires setup unless SLP onboarding is al
     true,
   );
   assert.equal(
-    invitationRequiresSlpOnboarding({
+    invitationRequiresRoleOnboarding({
       membershipRole: "clinician",
       existingMembership: {
         role: "clinician",
@@ -78,7 +78,18 @@ test("moving into the SLP role always requires setup unless SLP onboarding is al
     false,
   );
   assert.equal(
-    invitationRequiresSlpOnboarding({ membershipRole: "teacher" }),
+    invitationRequiresRoleOnboarding({ membershipRole: "teacher" }),
+    true,
+  );
+  assert.equal(
+    invitationRequiresRoleOnboarding({
+      membershipRole: "parent",
+      existingMembership: {
+        role: "parent",
+        accountStatus: "active",
+        onboardingCompletedAt: new Date(),
+      },
+    }),
     false,
   );
 });

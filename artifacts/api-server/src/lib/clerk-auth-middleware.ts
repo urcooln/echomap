@@ -1,11 +1,10 @@
 import type { NextFunction, Request, Response } from "express";
 import { clerkClient, getAuth } from "@clerk/express";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import {
   childCareTeamMembershipsTable,
   childProfilesTable,
   betaControlsTable,
-  betaNoticeAcknowledgementsTable,
   db,
   organizationMembershipsTable,
   organizationsTable,
@@ -101,12 +100,11 @@ export const attachClerkActor = async (
           eq(organizationMembershipsTable.userId, user.id),
           eq(organizationMembershipsTable.active, true),
         ),
-      );
+      )
+      .orderBy(desc(organizationMembershipsTable.updatedAt));
     const organizationId =
       requestedOrganizationId(request) ??
-      (memberships.length === 1
-        ? (memberships[0]?.organizationId ?? null)
-        : null);
+      (memberships[0]?.organizationId ?? null);
     const membership = organizationId
       ? memberships.find(
           (candidate) => candidate.organizationId === organizationId,
@@ -177,6 +175,8 @@ export const attachClerkActor = async (
       isAdmin,
       isSuperAdmin,
       organizationId: membership.organizationId,
+      loginSessionId: auth.sessionId ?? undefined,
+      clerkUserId: auth.userId,
       accountStatus:
         membership.accountStatus === "onboarding" ? "onboarding" : "active",
       onboardingComplete,
@@ -185,23 +185,6 @@ export const attachClerkActor = async (
           ? auth.sessionClaims.exp * 1000
           : Date.now() + 60_000,
     };
-    if (controls && onboardingComplete) {
-      const [acknowledgement] = await db
-        .select({ userId: betaNoticeAcknowledgementsTable.userId })
-        .from(betaNoticeAcknowledgementsTable)
-        .where(
-          and(
-            eq(betaNoticeAcknowledgementsTable.userId, user.id),
-            eq(
-              betaNoticeAcknowledgementsTable.noticeVersion,
-              controls.currentNoticeVersion,
-            ),
-          ),
-        )
-        .limit(1);
-      if (!acknowledgement)
-        request.childledAuthFailure = "beta_notice_unacknowledged";
-    }
   } catch (error) {
     request.childledAuthFailure = "session_invalid";
     logger.warn({ err: error }, "Clerk actor resolution failed");

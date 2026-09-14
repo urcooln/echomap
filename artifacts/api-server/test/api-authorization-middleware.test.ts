@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  childLedAccessFailure,
   isPublicChildLedApiRequest,
   requireChildLedApiActor,
 } from "../src/lib/api-authorization-middleware";
@@ -68,6 +69,15 @@ test("protected API routes reject missing or failed ChildLed actors", () => {
     }).statusCode,
     403,
   );
+  assert.deepEqual(childLedAccessFailure("not_invited"), {
+    code: "not_invited",
+    error:
+      "Your Clerk sign-in succeeded, but this account is not connected to an active ChildLed invitation.",
+  });
+  assert.deepEqual(childLedAccessFailure("session_invalid"), {
+    code: "session_invalid",
+    error: "We could not verify your session. Please sign in again.",
+  });
 });
 
 test("protected API routes continue only for a valid ChildLed actor", () => {
@@ -115,6 +125,44 @@ test("an invited SLP in onboarding can only use viewer and setup routes", () => 
   );
 });
 
+test("invited Parents and Teachers can only use their identity setup routes", () => {
+  for (const role of ["Parent", "Teacher"] as const) {
+    const onboardingActor = {
+      ...actor,
+      role,
+      accountStatus: "onboarding" as const,
+      onboardingComplete: false,
+    };
+    for (const [method, path] of [
+      ["GET", "/auth/viewer"],
+      ["GET", "/care-team-onboarding"],
+      ["POST", "/care-team-onboarding"],
+    ]) {
+      assert.equal(
+        runBoundary({ method, path, childledActor: onboardingActor })
+          .nextCalled,
+        true,
+      );
+    }
+    assert.equal(
+      runBoundary({
+        method: "GET",
+        path: "/children",
+        childledActor: onboardingActor,
+      }).statusCode,
+      403,
+    );
+    assert.equal(
+      runBoundary({
+        method: "GET",
+        path: "/slp-onboarding",
+        childledActor: onboardingActor,
+      }).statusCode,
+      403,
+    );
+  }
+});
+
 test("an invited actor can acknowledge the required pilot notice", () => {
   for (const [method, path] of [
     ["GET", "/auth/viewer"],
@@ -131,4 +179,27 @@ test("an invited actor can acknowledge the required pilot notice", () => {
       true,
     );
   }
+});
+
+test("an unacknowledged beta session cannot bypass the gate", () => {
+  for (const role of ["SLP", "Teacher", "Parent", "Administrator"] as const) {
+    assert.equal(
+      runBoundary({
+        method: "GET",
+        path: "/children",
+        childledActor: { ...actor, role },
+        childledAuthFailure: "beta_notice_unacknowledged",
+      }).statusCode,
+      403,
+    );
+  }
+  assert.equal(
+    runBoundary({
+      method: "GET",
+      path: "/slp-onboarding",
+      childledActor: { ...actor, onboardingComplete: false },
+      childledAuthFailure: "beta_notice_unacknowledged",
+    }).statusCode,
+    403,
+  );
 });

@@ -10,6 +10,7 @@ import { logger } from "./lib/logger";
 import { runtimeConfig } from "./lib/runtime-config";
 import { attachClerkActor } from "./lib/clerk-auth-middleware";
 import { attachDevelopmentDemoActor } from "./lib/development-demo";
+import { attachBetaAgreementStatus } from "./lib/beta-session-agreement";
 import {
   CLERK_PROXY_PATH,
   clerkProxyMiddleware,
@@ -75,6 +76,7 @@ app.use(
 );
 app.use(attachClerkActor);
 app.use(attachDevelopmentDemoActor);
+app.use(attachBetaAgreementStatus);
 app.use(express.json({ limit: "32mb" }));
 app.use(express.urlencoded({ extended: true }));
 

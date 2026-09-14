@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'wouter';
 import { AlertCircle, Leaf, Shield, CheckCircle } from 'lucide-react';
 import { Button } from './ui/button';
+import { Checkbox } from './ui/checkbox';
 import type { Viewer } from '@workspace/api-client-react';
 
 export function RequestBetaAccessPage() {
@@ -111,15 +112,47 @@ export function RequestBetaAccessPage() {
   );
 }
 
-export function BetaNoticeScreen({ notice, onAcknowledge }: { notice: { text: string; version: string }; onAcknowledge: () => void }) {
+type BetaNotice = {
+  agreementType: string;
+  text: string;
+  version: string;
+};
+
+export function BetaNoticeScreen({
+  notice,
+  onAcknowledge,
+  onSignOut,
+}: {
+  notice: BetaNotice;
+  onAcknowledge: () => void;
+  onSignOut: () => void | Promise<void>;
+}) {
+  const [accepted, setAccepted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(false);
+  const lines = notice.text
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const introduction = lines.find((line) => !line.startsWith("-"));
+  const agreementPoints = lines
+    .filter((line) => line.startsWith("-"))
+    .map((line) => line.slice(1).trim());
+  const supportingParagraphs = lines.filter(
+    (line) => !line.startsWith("-") && line !== introduction,
+  );
 
   const handleAcknowledge = async () => {
+    if (!accepted) return;
     setSubmitting(true);
     setError(false);
     try {
-      const res = await fetch('/api/beta-notice/acknowledge', { method: 'POST', credentials: 'include' });
+      const res = await fetch("/api/beta-notice/acknowledge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ accepted: true }),
+        credentials: "include",
+      });
       if (res.ok) {
         onAcknowledge();
       } else {
@@ -133,32 +166,98 @@ export function BetaNoticeScreen({ notice, onAcknowledge }: { notice: { text: st
   };
 
   return (
-    <main className="paper-grain grid min-h-[100dvh] place-items-center bg-background px-3 py-5 sm:px-5 sm:py-8">
-      <section className="w-full max-w-2xl rounded-2xl border border-border bg-card p-5 soft-shadow sm:rounded-[2rem] sm:p-8">
-        <div className="flex items-center gap-3 border-b border-border pb-5">
-          <Shield className="text-primary" size={24} />
-          <h1 className="serif text-2xl font-semibold">Beta Participation Notice</h1>
+    <main className="paper-grain flex min-h-[100dvh] items-center justify-center bg-background p-3 sm:p-6">
+      <section className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-border bg-card soft-shadow sm:max-h-[calc(100dvh-3rem)] sm:rounded-3xl">
+        <div className="flex shrink-0 items-start gap-3 border-b border-border p-5 sm:p-7">
+          <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-accent text-primary">
+            <Shield size={23} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase text-muted-foreground">
+              ChildLed Beta
+            </p>
+            <h1 className="serif mt-1 text-2xl font-semibold leading-tight sm:text-3xl">
+              ChildLed Beta Participation &amp; Confidentiality
+            </h1>
+            <p className="mt-1 text-xs text-muted-foreground">
+              Agreement version {notice.version}
+            </p>
+          </div>
         </div>
-        
-        <div className="prose prose-sm mt-6 max-h-[50vh] max-w-none overflow-y-auto rounded-xl bg-secondary/30 p-5 text-muted-foreground">
-          {notice.text.split('\n').map((paragraph, i) => (
-            <p key={i} className="mb-4 last:mb-0">{paragraph}</p>
+
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-5 sm:p-7">
+          {introduction ? (
+            <p className="text-sm font-medium leading-6 text-foreground">
+              {introduction}
+            </p>
+          ) : null}
+          <ul className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground">
+            {agreementPoints.map((point) => (
+              <li key={point} className="flex gap-3">
+                <CheckCircle className="mt-0.5 size-5 shrink-0 text-primary" />
+                <span>{point}</span>
+              </li>
+            ))}
+          </ul>
+          {supportingParagraphs.map((paragraph) => (
+            <p
+              key={paragraph}
+              className="mt-5 rounded-xl border border-border bg-secondary/40 p-4 text-sm leading-6 text-foreground"
+            >
+              {paragraph}
+            </p>
           ))}
         </div>
-        
-        {error && (
-          <p className="mt-4 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
-            We couldn't record your acknowledgment. Please try again or contact support.
-          </p>
-        )}
-        
-        <div className="mt-8 flex flex-col items-center justify-between gap-4 border-t border-border pt-6 sm:flex-row">
-          <p className="text-xs text-muted-foreground">
-            Review our <Link href="/privacy" className="text-primary underline">Privacy Policy</Link> and <Link href="/terms" className="text-primary underline">Terms of Use</Link>.
-          </p>
-          <Button className="w-full sm:w-auto" onClick={handleAcknowledge} disabled={submitting}>
-            {submitting ? 'Acknowledging...' : 'Acknowledge and Continue'}
-          </Button>
+
+        <div className="shrink-0 border-t border-border bg-card p-5 sm:p-7">
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-border bg-background p-4 text-sm font-medium leading-6">
+            <Checkbox
+              checked={accepted}
+              onCheckedChange={(checked) => setAccepted(checked === true)}
+              className="mt-0.5 size-5"
+              aria-label="Accept the ChildLed Beta Participation and Confidentiality Agreement"
+            />
+            <span>
+              I have read and agree to the ChildLed Beta Participation &amp;
+              Confidentiality Agreement.
+            </span>
+          </label>
+
+          {error && (
+            <p className="mt-4 rounded-xl bg-destructive/10 p-3 text-sm text-destructive">
+              We couldn't record your acknowledgment. Please try again or
+              contact support.
+            </p>
+          )}
+
+          <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="text-xs text-muted-foreground">
+              Review our{" "}
+              <Link href="/privacy" className="text-primary underline">
+                Privacy Policy
+              </Link>{" "}
+              and{" "}
+              <Link href="/terms" className="text-primary underline">
+                Terms of Use
+              </Link>
+              .
+            </p>
+            <div className="grid shrink-0 gap-2 sm:flex">
+              <Button
+                variant="outline"
+                onClick={() => void onSignOut()}
+                disabled={submitting}
+              >
+                Sign out
+              </Button>
+              <Button
+                onClick={handleAcknowledge}
+                disabled={!accepted || submitting}
+              >
+                {submitting ? "Saving..." : "Continue to ChildLed"}
+              </Button>
+            </div>
+          </div>
         </div>
       </section>
     </main>

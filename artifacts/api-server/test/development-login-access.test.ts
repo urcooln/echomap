@@ -52,12 +52,13 @@ test("a successful development login clears failed attempts", () => {
 });
 
 test("a Clerk-authenticated browser never falls back to the development actor", () => {
+  const serverIssuedSessionId = "52e74fe8-80ef-48f0-86c1-b397f2c23402";
   assert.equal(
     canAttachDevelopmentDemoActor({
       demoEnabled: true,
       hasChildledActor: false,
       clerkUserId: "user_clerk",
-      demoCookie: "active",
+      demoCookie: serverIssuedSessionId,
     }),
     false,
   );
@@ -66,8 +67,22 @@ test("a Clerk-authenticated browser never falls back to the development actor", 
       demoEnabled: true,
       hasChildledActor: false,
       clerkUserId: null,
-      demoCookie: "active",
+      demoCookie: serverIssuedSessionId,
     }),
     true,
   );
+});
+
+test("the development actor requires a server-issued UUID session cookie", () => {
+  for (const demoCookie of [undefined, false, "active", "attacker-value"]) {
+    assert.equal(
+      canAttachDevelopmentDemoActor({
+        demoEnabled: true,
+        hasChildledActor: false,
+        clerkUserId: null,
+        demoCookie,
+      }),
+      false,
+    );
+  }
 });

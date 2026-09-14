@@ -8,6 +8,15 @@ test("uses safe development defaults without production providers", () => {
   assert.equal(config.audioStorage.driver, "local-encrypted");
   assert.equal(config.demoLogin.enabled, false);
   assert.equal(config.clerkInvitations.enabled, false);
+  assert.equal(config.betaAgreement.required, true);
+});
+
+test("the per-login beta agreement can be disabled by server configuration", () => {
+  const config = loadRuntimeConfig({
+    NODE_ENV: "development",
+    BETA_AGREEMENT_REQUIRED: "false",
+  });
+  assert.equal(config.betaAgreement.required, false);
 });
 
 test("development login requires an explicit owner access key", () => {

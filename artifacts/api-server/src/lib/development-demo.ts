@@ -29,10 +29,7 @@ import { logger } from "./logger";
 import { runtimeConfig } from "./runtime-config";
 import { ensurePackagedClinicalKnowledge } from "./clinical-knowledge-bootstrap";
 import { canAttachDevelopmentDemoActor } from "./development-demo-actor";
-import type {
-  CareTeamRole,
-  DevelopmentDemoPersonaActor,
-} from "./auth-context";
+import type { CareTeamRole, DevelopmentDemoPersonaActor } from "./auth-context";
 import { DEVELOPMENT_DEMO_PERSONAS } from "./development-demo-personas";
 
 export const DEVELOPMENT_DEMO_COOKIE = "childled_development_demo";
@@ -121,8 +118,7 @@ const ensureDevelopmentDemo = async (): Promise<DevelopmentDemo> => {
           await tx
             .update(organizationsTable)
             .set({
-              betaApprovedAt:
-                existingOrganization.betaApprovedAt ?? new Date(),
+              betaApprovedAt: existingOrganization.betaApprovedAt ?? new Date(),
               disabledAt: null,
               disabledReason: null,
             })
@@ -274,6 +270,80 @@ const ensureDevelopmentDemo = async (): Promise<DevelopmentDemo> => {
           },
         })
         .where(eq(childProfilesTable.id, child.id));
+    }
+    const existingClassmate = (
+      await tx
+        .select()
+        .from(childProfilesTable)
+        .where(
+          and(
+            eq(childProfilesTable.organizationId, organization.id),
+            eq(childProfilesTable.displayName, "Mia Carter"),
+            isNull(childProfilesTable.archivedAt),
+          ),
+        )
+        .limit(1)
+    )[0];
+    const classmate =
+      existingClassmate ??
+      (
+        await tx
+          .insert(childProfilesTable)
+          .values({
+            organizationId: organization.id,
+            displayName: "Mia Carter",
+            dateOfBirth: "2018-11-08",
+            school: "Maple Grove Elementary",
+            grade: "2nd grade",
+            communicationStyle: "Multimodal communicator",
+            profileDetails: {
+              age: 7,
+              strengths: [
+                "Enjoys collaborative art projects",
+                "Uses gestures clearly",
+                "Connects through shared humor",
+              ],
+              sensoryPreferences: [
+                "Visual schedules",
+                "Quiet response time",
+                "Movement between activities",
+              ],
+              sensorySupports: [
+                "Preview transitions with a visual schedule.",
+                "Allow extra response time before repeating a prompt.",
+                "Offer gesture, speech, and pointing as equal response options.",
+              ],
+              specialInterests: ["Art", "Animals", "Music"],
+              regulationNotes:
+                "Mia participates most comfortably when changes are previewed and response time is unhurried.",
+            },
+          })
+          .returning()
+      )[0];
+
+    if (!classmate)
+      throw new Error("Could not create the second development demo child.");
+
+    for (const member of [
+      { userId: demoAdmin.id, role: "administrator" },
+      { userId: demoClinician.id, role: "clinician" },
+      { userId: demoTeacher.id, role: "teacher" },
+    ]) {
+      await tx
+        .insert(childCareTeamMembershipsTable)
+        .values({
+          childId: classmate.id,
+          userId: member.userId,
+          role: member.role,
+          active: true,
+        })
+        .onConflictDoUpdate({
+          target: [
+            childCareTeamMembershipsTable.childId,
+            childCareTeamMembershipsTable.userId,
+          ],
+          set: { role: member.role, active: true, updatedAt: new Date() },
+        });
     }
     const demoAacValue: AacProfileHistoryValue = {
       communicationModalities: ["aac", "spoken_language", "gestures"],
@@ -761,12 +831,14 @@ export const attachDevelopmentDemoActor = async (
       path: "/",
     });
   }
-  if (!canAttachDevelopmentDemoActor({
-    demoEnabled: runtimeConfig.demoLogin.enabled,
-    hasChildledActor: Boolean(request.childledActor),
-    clerkUserId,
-    demoCookie: request.cookies?.[DEVELOPMENT_DEMO_COOKIE],
-  })) {
+  if (
+    !canAttachDevelopmentDemoActor({
+      demoEnabled: runtimeConfig.demoLogin.enabled,
+      hasChildledActor: Boolean(request.childledActor),
+      clerkUserId,
+      demoCookie: request.signedCookies?.[DEVELOPMENT_DEMO_COOKIE],
+    })
+  ) {
     return next();
   }
 
@@ -814,6 +886,7 @@ export const attachDevelopmentDemoActor = async (
       isDevelopmentDemo: true,
       developmentDemoPersonas,
       organizationId: demo.organizationId,
+      loginSessionId: request.signedCookies?.[DEVELOPMENT_DEMO_COOKIE],
       expiresAt: Date.now() + 12 * 60 * 60 * 1000,
     };
     request.childledAuthFailure = undefined;

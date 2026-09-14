@@ -23,6 +23,9 @@ export type RuntimeConfig = {
   clerkInvitations: {
     enabled: boolean;
   };
+  betaAgreement: {
+    required: boolean;
+  };
   recording: RecordingLimits;
 };
 
@@ -66,6 +69,8 @@ export const loadRuntimeConfig = (
   const clerkInvitationsEnabled =
     isProduction ||
     readOptional(env, "CHILDLED_CLERK_INVITATIONS_ENABLED") === "true";
+  const betaAgreementRequired =
+    readOptional(env, "BETA_AGREEMENT_REQUIRED") !== "false";
   const storageDriver = (readOptional(env, "CHILDLED_AUDIO_STORAGE_DRIVER") ??
     (isProduction ? "app-storage" : "local-encrypted")) as AudioStorageDriver;
 
@@ -158,6 +163,9 @@ export const loadRuntimeConfig = (
     },
     clerkInvitations: {
       enabled: clerkInvitationsEnabled,
+    },
+    betaAgreement: {
+      required: betaAgreementRequired,
     },
     recording: loadRecordingLimits(env),
   };

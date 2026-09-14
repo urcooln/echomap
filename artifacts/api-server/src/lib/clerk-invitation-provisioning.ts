@@ -1,4 +1,4 @@
-import { and, eq, gt, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import {
   betaControlsTable,
   careTeamInvitationsTable,
@@ -14,7 +14,7 @@ import {
   hashInvitationToken,
 } from "./invitation-security";
 import type { ClerkInvitationReference } from "./clerk-invitation-metadata";
-import { invitationRequiresSlpOnboarding } from "./slp-onboarding";
+import { invitationRequiresRoleOnboarding } from "./slp-onboarding";
 
 type ClerkInvitationUser = {
   id: string;
@@ -73,8 +73,14 @@ export const provisionClerkInvitation = async ({
           sql`lower(${careTeamInvitationsTable.invitedEmail}) = ${email}`,
           eq(careTeamInvitationsTable.status, "pending"),
           isNull(careTeamInvitationsTable.revokedAt),
-          isNotNull(careTeamInvitationsTable.clerkInvitationId),
           gt(careTeamInvitationsTable.expiresAt, acceptedAt),
+          or(
+            isNotNull(careTeamInvitationsTable.clerkInvitationId),
+            and(
+              eq(careTeamInvitationsTable.invitedRole, "clinician"),
+              eq(careTeamInvitationsTable.accessScope, "organization"),
+            ),
+          ),
         ),
       )
       .limit(2);
@@ -260,7 +266,7 @@ export const provisionClerkInvitation = async ({
       return null;
     }
 
-    const onboardingRequired = invitationRequiresSlpOnboarding({
+    const onboardingRequired = invitationRequiresRoleOnboarding({
       membershipRole: role.membershipRole,
       existingMembership,
     });

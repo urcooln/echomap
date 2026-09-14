@@ -675,6 +675,11 @@ paths:
           name: childId
           required: true
           schema: { type: number }
+        - in: query
+          name: disposition
+          required: false
+          schema:
+            { type: string, enum: [inline, attachment], default: attachment }
       responses:
         "200":
           {
@@ -797,13 +802,13 @@ paths:
     get:
       operationId: downloadClinicianLearningHandbook
       tags: [clinician-learning]
-      summary: Download the clinician learning handbook
+      summary: Download the clinician resource handbook PDF
       responses:
         "200":
           {
-            description: Protected clinician handbook,
+            description: Protected clinician handbook PDF,
             content:
-              { text/plain: { schema: { type: string, format: binary } } },
+              { application/pdf: { schema: { type: string, format: binary } } },
           }
         "401": { description: Authentication required }
         "403": { description: Authorized clinician access required }
@@ -884,6 +889,40 @@ paths:
         "401": { description: Authentication required }
         "403": { description: Invited SLP account required }
         "409": { description: SLP membership is no longer eligible for setup }
+        "500": { description: Account activation could not be completed }
+  /care-team-onboarding:
+    get:
+      operationId: getCareTeamOnboarding
+      tags: [security]
+      summary: Get Parent or Teacher account setup
+      responses:
+        "200":
+          description: Invited care-team account setup
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CareTeamOnboarding" }
+        "401": { description: Authentication required }
+        "403": { description: Invited Parent or Teacher account required }
+    post:
+      operationId: completeCareTeamOnboarding
+      tags: [security]
+      summary: Complete Parent or Teacher account setup
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CareTeamOnboardingInput" }
+      responses:
+        "200":
+          description: Care-team account activated
+          content:
+            application/json:
+              schema:
+                { $ref: "#/components/schemas/CareTeamOnboardingCompletion" }
+        "400": { description: Required identity fields missing }
+        "401": { description: Authentication required }
+        "403": { description: Invited Parent or Teacher account required }
+        "409": { description: Membership is no longer eligible for setup }
         "500": { description: Account activation could not be completed }
   /admin/security-overview:
     get:
@@ -1368,6 +1407,135 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/CareTeamInvitation" }
         "403": { description: Clinician access and assigned child required }
+  /care-team-invitations/{invitationId}/replace:
+    post:
+      operationId: replaceCareTeamInvitation
+      tags: [collaboration]
+      summary: Replace a pending invitation with a fresh Clerk invitation link
+      parameters:
+        - in: path
+          name: invitationId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Refreshed pending invitation
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CareTeamInvitation" }
+        "403": { description: Clinician access and assigned child required }
+        "404": { description: Pending invitation not found }
+        "409": { description: Invitation is no longer pending }
+  /care-team-teachers/lookup:
+    post:
+      operationId: lookupExistingTeacher
+      tags: [collaboration]
+      summary: Check an exact email for an existing Teacher account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExistingTeacherLookupInput" }
+      responses:
+        "200":
+          description: Exact-email Teacher lookup result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExistingTeacherLookup" }
+        "400": { description: Invalid email or child }
+        "403": { description: SLP access to the selected child required }
+  /care-team-teachers/assign:
+    post:
+      operationId: assignExistingTeacher
+      tags: [collaboration]
+      summary: Assign an existing Teacher account to an additional student
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ExistingTeacherLookupInput" }
+      responses:
+        "201":
+          description: Existing Teacher assigned to the student
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ExistingTeacherAssignment" }
+        "400": { description: Invalid email or child }
+        "403": { description: SLP access to the selected child required }
+        "404": { description: Eligible Teacher account not found }
+        "409": { description: Teacher already assigned to the student }
+  /student-transfers:
+    get:
+      operationId: listStudentTransfers
+      tags: [collaboration]
+      summary: List transfer history for an assigned student
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Authorized student transfer history
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/StudentTransfer" }
+        "403": { description: SLP access to the selected child required }
+    post:
+      operationId: createStudentTransfer
+      tags: [collaboration]
+      summary: Complete or request a primary SLP transfer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StudentTransferInput" }
+      responses:
+        "201":
+          description: Completed existing-account transfer or pending invitation transfer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudentTransfer" }
+        "403": { description: Current primary SLP access required }
+        "409": { description: Transfer cannot be started }
+  /student-transfers/lookup:
+    post:
+      operationId: lookupStudentTransferSlp
+      tags: [collaboration]
+      summary: Check an exact email for an eligible destination SLP account
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StudentTransferInput" }
+      responses:
+        "200":
+          description: Exact-email destination SLP lookup result
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudentTransferSlpLookup" }
+        "403": { description: Current primary SLP access required }
+  /student-transfers/{transferId}/cancel:
+    post:
+      operationId: cancelStudentTransfer
+      tags: [collaboration]
+      summary: Cancel a pending primary SLP transfer
+      parameters:
+        - in: path
+          name: transferId
+          required: true
+          schema: { type: number }
+      responses:
+        "200":
+          description: Cancelled transfer
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StudentTransfer" }
+        "403": { description: Current primary SLP access required }
+        "404": { description: Pending transfer not found }
+        "409": { description: Transfer can no longer be cancelled }
   /team-inbox:
     get:
       operationId: getTeamInbox
@@ -3117,6 +3285,12 @@ paths:
       operationId: acknowledgeBetaNotice
       tags: [security]
       summary: Acknowledge the current beta participation notice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BetaNoticeAcknowledgementInput"
       responses:
         {
           "200":
@@ -3133,7 +3307,9 @@ paths:
                     },
                 },
             },
+          "400": { description: Explicit agreement is required },
           "401": { description: Authentication required },
+          "403": { description: Current login session is not valid },
         }
   /admin/beta-access-requests:
     get:
@@ -3564,6 +3740,38 @@ components:
         completed: { type: boolean }
         accountStatus: { type: string, enum: [active] }
         onboardingCompletedAt: { type: string, format: date-time }
+    CareTeamOnboardingStudent:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: number }
+        name: { type: string }
+    CareTeamOnboarding:
+      type: object
+      required: [email, organizationName, role, firstName, lastName, students]
+      properties:
+        email: { type: string }
+        organizationName: { type: string }
+        role: { type: string, enum: [Parent, Teacher] }
+        firstName: { type: string }
+        lastName: { type: string }
+        students:
+          type: array
+          items: { $ref: "#/components/schemas/CareTeamOnboardingStudent" }
+    CareTeamOnboardingInput:
+      type: object
+      required: [firstName, lastName]
+      properties:
+        firstName: { type: string, minLength: 1, maxLength: 120 }
+        lastName: { type: string, minLength: 1, maxLength: 120 }
+    CareTeamOnboardingCompletion:
+      type: object
+      required: [completed, accountStatus, onboardingCompletedAt, displayName]
+      properties:
+        completed: { type: boolean }
+        accountStatus: { type: string, enum: [active] }
+        onboardingCompletedAt: { type: string, format: date-time }
+        displayName: { type: string }
     RolePreviewInput:
       type: object
       required: [role]
@@ -4186,6 +4394,93 @@ components:
         childId: { type: number }
         email: { type: string, minLength: 3, maxLength: 320 }
         role: { type: string, enum: [Parent, Teacher] }
+    ExistingTeacherLookupInput:
+      type: object
+      required: [childId, email]
+      properties:
+        childId: { type: number }
+        email: { type: string, minLength: 3, maxLength: 320 }
+    ExistingTeacherSummary:
+      type: object
+      required: [name, role]
+      properties:
+        name: { type: string }
+        role: { type: string, enum: [Teacher] }
+    ExistingTeacherLookup:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [available, already_assigned, not_found, different_role]
+        teacher: { $ref: "#/components/schemas/ExistingTeacherSummary" }
+    ExistingTeacherAssignment:
+      type: object
+      required: [childId, assigned, notificationCreated, teacher]
+      properties:
+        childId: { type: number }
+        assigned: { type: boolean }
+        notificationCreated: { type: boolean }
+        teacher: { $ref: "#/components/schemas/ExistingTeacherSummary" }
+    StudentTransferInput:
+      type: object
+      required: [childId, email]
+      properties:
+        childId: { type: number }
+        email: { type: string, minLength: 3, maxLength: 320 }
+    StudentTransferSlpSummary:
+      type: object
+      required: [name, role, professionalTitle]
+      properties:
+        name: { type: string }
+        role: { type: string, enum: [SLP] }
+        professionalTitle: { type: string }
+    StudentTransferSlpLookup:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum:
+            [
+              available,
+              current_slp,
+              not_found,
+              different_role,
+              different_workspace,
+              pending_transfer,
+            ]
+        slp: { $ref: "#/components/schemas/StudentTransferSlpSummary" }
+    StudentTransfer:
+      type: object
+      required:
+        [
+          id,
+          childId,
+          childName,
+          childLedId,
+          fromSlpName,
+          destinationEmail,
+          transferMode,
+          status,
+          requestedAt,
+        ]
+      properties:
+        id: { type: number }
+        childId: { type: number }
+        childName: { type: string }
+        childLedId: { type: string }
+        fromSlpName: { type: string }
+        destinationEmail: { type: string }
+        destinationSlpName: { type: string }
+        transferMode:
+          { type: string, enum: [existing_account, invitation] }
+        status: { type: string, enum: [pending, completed, cancelled] }
+        invitationId: { type: number }
+        invitationPath: { type: string }
+        requestedAt: { type: string, format: date-time }
+        completedAt: { type: string, format: date-time }
+        cancelledAt: { type: string, format: date-time }
     SensoryProfile:
       type: object
       required: [childId, supports, challenges, updatedAt]
@@ -7985,14 +8280,25 @@ components:
         role: { type: string }
     BetaNotice:
       type: object
-      required: [version, text, acknowledged]
+      required: [agreementType, version, text, required, acknowledged]
       properties:
         {
+          agreementType: { type: string },
           version: { type: string },
           text: { type: string },
+          required: { type: boolean },
           acknowledged: { type: boolean },
         }
+    BetaNoticeAcknowledgementInput:
+      type: object
+      required: [accepted]
+      properties: { accepted: { type: boolean } }
     BetaNoticeAcknowledgement:
       type: object
-      required: [acknowledged, version]
-      properties: { acknowledged: { type: boolean }, version: { type: string } }
+      required: [acknowledged, agreementType, version]
+      properties:
+        {
+          acknowledged: { type: boolean },
+          agreementType: { type: string },
+          version: { type: string },
+        }

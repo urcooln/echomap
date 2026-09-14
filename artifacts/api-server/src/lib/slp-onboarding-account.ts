@@ -7,6 +7,7 @@ import {
   usersTable,
 } from "@workspace/db";
 import { SLP_AGREEMENTS } from "./slp-onboarding";
+import { completePendingStudentTransfersForSlp } from "./student-transfer";
 
 export type SlpOnboardingProfileValues = {
   firstName: string;
@@ -86,9 +87,19 @@ export const completeSlpOnboardingAccount = async ({
       )
       .returning({ id: organizationMembershipsTable.id });
     if (!membership) throw new SlpOnboardingMembershipError();
-    await tx
+    const [user] = await tx
       .update(usersTable)
       .set({ displayName: `${profile.firstName} ${profile.lastName}`.trim() })
-      .where(eq(usersTable.id, userId));
-    return membership;
+      .where(eq(usersTable.id, userId))
+      .returning({ email: usersTable.email });
+    const completedTransferIds = user?.email
+      ? await completePendingStudentTransfersForSlp({
+          transaction: tx,
+          organizationId,
+          destinationUserId: userId,
+          destinationEmail: user.email,
+          completedAt,
+        })
+      : [];
+    return { ...membership, completedTransferIds };
   });

@@ -83,6 +83,7 @@ jobs:
             GCS_PRIVATE_BUCKET=${{ vars.GCS_PRIVATE_BUCKET }}
             GCS_PRIVATE_OBJECT_PREFIX=${{ vars.GCS_PRIVATE_OBJECT_PREFIX }}
             CHILDLED_ENABLE_DEMO_LOGIN=true
+            BETA_AGREEMENT_REQUIRED=true
             CHILDLED_LEGACY_S3_MIGRATION_COMPLETE=true
             CLERK_PUBLISHABLE_KEY=${{ vars.VITE_CLERK_PUBLISHABLE_KEY }}
           secrets: |-

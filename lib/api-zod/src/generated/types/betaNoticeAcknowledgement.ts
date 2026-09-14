@@ -8,5 +8,6 @@
 
 export interface BetaNoticeAcknowledgement {
   acknowledged: boolean;
+  agreementType: string;
   version: string;
 }

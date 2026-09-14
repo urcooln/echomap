@@ -49,7 +49,7 @@ export const betaControlsTable = pgTable("beta_controls", {
   defaultCohort: text("default_cohort"),
   defaultOrganizationUserLimit: integer("default_organization_user_limit"),
   invitationLimitPerDay: integer("invitation_limit_per_day").notNull().default(25),
-  currentNoticeVersion: text("current_notice_version").notNull().default("1"),
+  currentNoticeVersion: text("current_notice_version").notNull().default("1.0"),
   updatedByUserId: text("updated_by_user_id").references(() => usersTable.id, { onDelete: "restrict" }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -72,13 +72,35 @@ export const betaNoticeAcknowledgementsTable = pgTable(
   "beta_notice_acknowledgements",
   {
     id: serial("id").primaryKey(),
-    userId: text("user_id").notNull().references(() => usersTable.id, { onDelete: "restrict" }),
+    organizationId: integer("organization_id").references(
+      () => organizationsTable.id,
+      { onDelete: "restrict" },
+    ),
+    userId: text("user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    clerkUserId: text("clerk_user_id"),
+    role: text("role"),
+    agreementType: text("agreement_type")
+      .notNull()
+      .default("beta_confidentiality"),
     noticeVersion: text("notice_version").notNull(),
-    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }).notNull().defaultNow(),
+    loginSessionHash: text("login_session_hash"),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
   },
   (table) => [
-    uniqueIndex("beta_notice_acknowledgements_user_version_unique").on(table.userId, table.noticeVersion),
+    uniqueIndex("beta_notice_acknowledgements_session_unique").on(
+      table.userId,
+      table.agreementType,
+      table.noticeVersion,
+      table.loginSessionHash,
+    ),
     index("beta_notice_acknowledgements_user_idx").on(table.userId),
+    index("beta_notice_acknowledgements_session_idx").on(
+      table.loginSessionHash,
+    ),
   ],
 );
 
