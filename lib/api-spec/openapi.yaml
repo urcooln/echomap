@@ -4250,6 +4250,8 @@ components:
           school,
           grade,
           communicationStyle,
+          languagesSpokenAtHome,
+          primaryHomeLanguage,
           gestaltCount,
           team,
         ]
@@ -4268,6 +4270,11 @@ components:
         school: { type: string }
         grade: { type: string }
         communicationStyle: { type: string }
+        languagesSpokenAtHome:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 80 }
+        primaryHomeLanguage: { type: ["string", "null"], maxLength: 80 }
         aacSnapshot:
           $ref: "#/components/schemas/AacSnapshot"
         glpNotes: { type: string }
@@ -4295,6 +4302,11 @@ components:
         school: { type: string }
         grade: { type: string }
         communicationStyle: { type: string }
+        languagesSpokenAtHome:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 80 }
+        primaryHomeLanguage: { type: ["string", "null"], maxLength: 80 }
         glpNotes: { type: string }
         strengths: { type: array, items: { type: string } }
         sensoryPreferences: { type: array, items: { type: string } }
@@ -4316,6 +4328,11 @@ components:
         grade: { type: string, maxLength: 80 }
         dateOfBirth: { type: ["string", "null"], format: date }
         pronouns: { type: ["string", "null"], maxLength: 80 }
+        languagesSpokenAtHome:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 80 }
+        primaryHomeLanguage: { type: ["string", "null"], maxLength: 80 }
     SharedChildProfileSection:
       type: string
       enum: [strengths, interests, sensory_supports, regulation_notes]
@@ -5565,6 +5582,7 @@ components:
           sessionsMissed,
           sessionsRemaining,
           outstandingMakeups,
+          lastSessionDate,
           minutesCompleted,
           minutesRemaining,
           status,
@@ -5590,6 +5608,7 @@ components:
         sessionsMissed: { type: number, minimum: 0 }
         sessionsRemaining: { type: number, minimum: 0 }
         outstandingMakeups: { type: number, minimum: 0 }
+        lastSessionDate: { type: ["string", "null"] }
         minutesCompleted: { type: number, minimum: 0 }
         minutesRemaining: { type: number, minimum: 0 }
         status:
@@ -5601,6 +5620,10 @@ components:
         [
           individual,
           group,
+          group_not_to_exceed_2,
+          group_not_to_exceed_3,
+          group_not_to_exceed_4,
+          group_not_to_exceed_5,
           co_treat,
           co_treat_ot,
           co_treat_pt,
@@ -7620,6 +7643,8 @@ components:
           createdAt,
           updatedAt,
           updatedBy,
+          languagesSpokenAtHome,
+          primaryHomeLanguage,
         ]
       properties:
         exists: { type: boolean }
@@ -7635,14 +7660,32 @@ components:
         createdAt: { type: [string, "null"], format: date-time }
         updatedAt: { type: [string, "null"], format: date-time }
         updatedBy: { type: [string, "null"] }
+        languagesSpokenAtHome:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 80 }
+        primaryHomeLanguage: { type: ["string", "null"], maxLength: 80 }
     CommunicationPassportDraft:
       type: object
-      required: [childId, templateKey, language, content]
+      required:
+        [
+          childId,
+          templateKey,
+          language,
+          content,
+          languagesSpokenAtHome,
+          primaryHomeLanguage,
+        ]
       properties:
         childId: { type: number }
         templateKey: { type: string }
         language: { type: string }
         content: { $ref: "#/components/schemas/CommunicationPassportContent" }
+        languagesSpokenAtHome:
+          type: array
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 80 }
+        primaryHomeLanguage: { type: ["string", "null"], maxLength: 80 }
     CommunicationPassportGenerateInput:
       type: object
       required: [childId]

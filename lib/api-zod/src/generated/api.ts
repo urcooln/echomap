@@ -150,7 +150,7 @@ export const GetManualSessionSetupResponse = zod.object({
   "serviceRequirements": zod.array(zod.object({
   "id": zod.number(),
   "childId": zod.number(),
-  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "serviceType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
@@ -166,6 +166,7 @@ export const GetManualSessionSetupResponse = zod.object({
   "sessionsMissed": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemSessionsMissedMin),
   "sessionsRemaining": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemSessionsRemainingMin),
   "outstandingMakeups": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemOutstandingMakeupsMin),
+  "lastSessionDate": zod.string().nullable(),
   "minutesCompleted": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemMinutesCompletedMin),
   "minutesRemaining": zod.number().min(getManualSessionSetupResponseServiceRequirementsItemMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
@@ -302,7 +303,7 @@ export const ListMissedSessionsResponseItem = zod.object({
   "childId": zod.number(),
   "serviceRequirementId": zod.number(),
   "serviceName": zod.string(),
-  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "serviceType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "sessionDate": zod.coerce.date(),
   "missedReason": zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),
   "missedReasonDetail": zod.string().nullable(),
@@ -342,7 +343,7 @@ export const CreateMissedSessionResponse = zod.object({
   "childId": zod.number(),
   "serviceRequirementId": zod.number(),
   "serviceName": zod.string(),
-  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "serviceType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "sessionDate": zod.coerce.date(),
   "missedReason": zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),
   "missedReasonDetail": zod.string().nullable(),
@@ -380,7 +381,7 @@ export const UpdateMissedSessionResponse = zod.object({
   "childId": zod.number(),
   "serviceRequirementId": zod.number(),
   "serviceName": zod.string(),
-  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "serviceType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "sessionDate": zod.coerce.date(),
   "missedReason": zod.enum(['student_absent', 'student_illness', 'school_event', 'field_trip', 'early_dismissal', 'school_closure', 'caregiver_cancellation', 'student_refused', 'clinician_unavailable', 'scheduling_conflict', 'other']),
   "missedReasonDetail": zod.string().nullable(),
@@ -419,7 +420,7 @@ export const listIepServiceRequirementsResponseMinutesRemainingMin = 0;
 export const ListIepServiceRequirementsResponseItem = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
-  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "serviceType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
@@ -435,6 +436,7 @@ export const ListIepServiceRequirementsResponseItem = zod.object({
   "sessionsMissed": zod.number().min(listIepServiceRequirementsResponseSessionsMissedMin),
   "sessionsRemaining": zod.number().min(listIepServiceRequirementsResponseSessionsRemainingMin),
   "outstandingMakeups": zod.number().min(listIepServiceRequirementsResponseOutstandingMakeupsMin),
+  "lastSessionDate": zod.string().nullable(),
   "minutesCompleted": zod.number().min(listIepServiceRequirementsResponseMinutesCompletedMin),
   "minutesRemaining": zod.number().min(listIepServiceRequirementsResponseMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
@@ -462,7 +464,7 @@ export const upsertIepServiceRequirementBodyCustomFrequencyDescriptionMax = 500;
 
 export const UpsertIepServiceRequirementBody = zod.object({
   "requirementId": zod.number().nullish(),
-  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "serviceType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "requiredSessions": zod.number().min(1).max(upsertIepServiceRequirementBodyRequiredSessionsMax),
   "requiredMinutes": zod.number().min(1).max(upsertIepServiceRequirementBodyRequiredMinutesMax),
   "sessionDurationMinutes": zod.number().min(1).max(upsertIepServiceRequirementBodySessionDurationMinutesMax),
@@ -489,7 +491,7 @@ export const upsertIepServiceRequirementResponseMinutesRemainingMin = 0;
 export const UpsertIepServiceRequirementResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
-  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "serviceType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
@@ -505,6 +507,7 @@ export const UpsertIepServiceRequirementResponse = zod.object({
   "sessionsMissed": zod.number().min(upsertIepServiceRequirementResponseSessionsMissedMin),
   "sessionsRemaining": zod.number().min(upsertIepServiceRequirementResponseSessionsRemainingMin),
   "outstandingMakeups": zod.number().min(upsertIepServiceRequirementResponseOutstandingMakeupsMin),
+  "lastSessionDate": zod.string().nullable(),
   "minutesCompleted": zod.number().min(upsertIepServiceRequirementResponseMinutesCompletedMin),
   "minutesRemaining": zod.number().min(upsertIepServiceRequirementResponseMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
@@ -531,12 +534,12 @@ export const UpdateCaseloadServiceSettingsQueryParams = zod.object({
 })
 
 export const UpdateCaseloadServiceSettingsBody = zod.object({
-  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology'])
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology'])
 })
 
 export const UpdateCaseloadServiceSettingsResponse = zod.object({
   "childId": zod.number(),
-  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "updatedAt": zod.coerce.date()
 })
 
@@ -558,6 +561,12 @@ export const GetDashboardQueryParams = zod.object({
 })
 
 export const getDashboardResponseChildChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+export const getDashboardResponseChildLanguagesSpokenAtHomeItemMax = 80;
+
+export const getDashboardResponseChildLanguagesSpokenAtHomeMax = 20;
+
+export const getDashboardResponseChildPrimaryHomeLanguageMax = 80;
+
 
 
 export const GetDashboardResponse = zod.object({
@@ -575,6 +584,8 @@ export const GetDashboardResponse = zod.object({
   "school": zod.string(),
   "grade": zod.string(),
   "communicationStyle": zod.string(),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(getDashboardResponseChildLanguagesSpokenAtHomeItemMax)).max(getDashboardResponseChildLanguagesSpokenAtHomeMax),
+  "primaryHomeLanguage": zod.string().max(getDashboardResponseChildPrimaryHomeLanguageMax).nullable(),
   "aacSnapshot": zod.object({
   "isUser": zod.boolean(),
   "device": zod.string().nullable(),
@@ -784,13 +795,13 @@ export const GetClinicianOverviewResponse = zod.object({
   "latestActivityAt": zod.coerce.date().nullable(),
   "latestActivityLabel": zod.string(),
   "teacherNames": zod.array(zod.string()),
-  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "lastSessionDate": zod.string().nullable(),
   "nextSessionDate": zod.string().nullable(),
   "serviceRequirements": zod.array(zod.object({
   "id": zod.number(),
   "childId": zod.number(),
-  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "serviceType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
@@ -806,6 +817,7 @@ export const GetClinicianOverviewResponse = zod.object({
   "sessionsMissed": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsMissedMin),
   "sessionsRemaining": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin),
   "outstandingMakeups": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemOutstandingMakeupsMin),
+  "lastSessionDate": zod.string().nullable(),
   "minutesCompleted": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin),
   "minutesRemaining": zod.number().min(getClinicianOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
@@ -881,13 +893,13 @@ export const GetTeacherOverviewResponse = zod.object({
   "latestActivityAt": zod.coerce.date().nullable(),
   "latestActivityLabel": zod.string(),
   "teacherNames": zod.array(zod.string()),
-  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "primaryServiceDeliveryType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "lastSessionDate": zod.string().nullable(),
   "nextSessionDate": zod.string().nullable(),
   "serviceRequirements": zod.array(zod.object({
   "id": zod.number(),
   "childId": zod.number(),
-  "serviceType": zod.enum(['individual', 'group', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
+  "serviceType": zod.enum(['individual', 'group', 'group_not_to_exceed_2', 'group_not_to_exceed_3', 'group_not_to_exceed_4', 'group_not_to_exceed_5', 'co_treat', 'co_treat_ot', 'co_treat_pt', 'integrated_group', 'consult', 'assistive_technology']),
   "serviceName": zod.string(),
   "requiredSessions": zod.number(),
   "requiredMinutes": zod.number(),
@@ -903,6 +915,7 @@ export const GetTeacherOverviewResponse = zod.object({
   "sessionsMissed": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsMissedMin),
   "sessionsRemaining": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemSessionsRemainingMin),
   "outstandingMakeups": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemOutstandingMakeupsMin),
+  "lastSessionDate": zod.string().nullable(),
   "minutesCompleted": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesCompletedMin),
   "minutesRemaining": zod.number().min(getTeacherOverviewResponseChildrenItemServiceRequirementsItemMinutesRemainingMin),
   "status": zod.enum(['on_track', 'needs_attention', 'behind', 'complete']),
@@ -2475,6 +2488,12 @@ export const UpdateSessionSoapNoteResponse = zod.object({
  * @summary List children
  */
 export const listChildrenResponseChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+export const listChildrenResponseLanguagesSpokenAtHomeItemMax = 80;
+
+export const listChildrenResponseLanguagesSpokenAtHomeMax = 20;
+
+export const listChildrenResponsePrimaryHomeLanguageMax = 80;
+
 
 
 export const ListChildrenResponseItem = zod.object({
@@ -2491,6 +2510,8 @@ export const ListChildrenResponseItem = zod.object({
   "school": zod.string(),
   "grade": zod.string(),
   "communicationStyle": zod.string(),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(listChildrenResponseLanguagesSpokenAtHomeItemMax)).max(listChildrenResponseLanguagesSpokenAtHomeMax),
+  "primaryHomeLanguage": zod.string().max(listChildrenResponsePrimaryHomeLanguageMax).nullable(),
   "aacSnapshot": zod.object({
   "isUser": zod.boolean(),
   "device": zod.string().nullable(),
@@ -2521,6 +2542,12 @@ export const ListChildrenResponse = zod.array(ListChildrenResponseItem)
  */
 
 
+export const createChildBodyLanguagesSpokenAtHomeItemMax = 80;
+
+export const createChildBodyLanguagesSpokenAtHomeMax = 20;
+
+export const createChildBodyPrimaryHomeLanguageMax = 80;
+
 
 
 export const CreateChildBody = zod.object({
@@ -2534,6 +2561,8 @@ export const CreateChildBody = zod.object({
   "school": zod.string(),
   "grade": zod.string(),
   "communicationStyle": zod.string(),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(createChildBodyLanguagesSpokenAtHomeItemMax)).max(createChildBodyLanguagesSpokenAtHomeMax).optional(),
+  "primaryHomeLanguage": zod.string().max(createChildBodyPrimaryHomeLanguageMax).nullish(),
   "glpNotes": zod.string().optional(),
   "strengths": zod.array(zod.string()).optional(),
   "sensoryPreferences": zod.array(zod.string()).optional(),
@@ -2545,6 +2574,12 @@ export const CreateChildBody = zod.object({
 })
 
 export const createChildResponseChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+export const createChildResponseLanguagesSpokenAtHomeItemMax = 80;
+
+export const createChildResponseLanguagesSpokenAtHomeMax = 20;
+
+export const createChildResponsePrimaryHomeLanguageMax = 80;
+
 
 
 export const CreateChildResponse = zod.object({
@@ -2561,6 +2596,8 @@ export const CreateChildResponse = zod.object({
   "school": zod.string(),
   "grade": zod.string(),
   "communicationStyle": zod.string(),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(createChildResponseLanguagesSpokenAtHomeItemMax)).max(createChildResponseLanguagesSpokenAtHomeMax),
+  "primaryHomeLanguage": zod.string().max(createChildResponsePrimaryHomeLanguageMax).nullable(),
   "aacSnapshot": zod.object({
   "isUser": zod.boolean(),
   "device": zod.string().nullable(),
@@ -2988,6 +3025,12 @@ export const getCommunicationPassportResponseContentOneCurrentGoalsMax = 20;
 
 export const getCommunicationPassportResponseContentOneAdditionalInformationMax = 2000;
 
+export const getCommunicationPassportResponseLanguagesSpokenAtHomeItemMax = 80;
+
+export const getCommunicationPassportResponseLanguagesSpokenAtHomeMax = 20;
+
+export const getCommunicationPassportResponsePrimaryHomeLanguageMax = 80;
+
 
 
 export const GetCommunicationPassportResponse = zod.object({
@@ -3023,7 +3066,9 @@ export const GetCommunicationPassportResponse = zod.object({
   "version": zod.number().nullable(),
   "createdAt": zod.coerce.date().nullable(),
   "updatedAt": zod.coerce.date().nullable(),
-  "updatedBy": zod.string().nullable()
+  "updatedBy": zod.string().nullable(),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(getCommunicationPassportResponseLanguagesSpokenAtHomeItemMax)).max(getCommunicationPassportResponseLanguagesSpokenAtHomeMax),
+  "primaryHomeLanguage": zod.string().max(getCommunicationPassportResponsePrimaryHomeLanguageMax).nullable()
 })
 
 
@@ -3180,6 +3225,12 @@ export const saveCommunicationPassportResponseContentOneCurrentGoalsMax = 20;
 
 export const saveCommunicationPassportResponseContentOneAdditionalInformationMax = 2000;
 
+export const saveCommunicationPassportResponseLanguagesSpokenAtHomeItemMax = 80;
+
+export const saveCommunicationPassportResponseLanguagesSpokenAtHomeMax = 20;
+
+export const saveCommunicationPassportResponsePrimaryHomeLanguageMax = 80;
+
 
 
 export const SaveCommunicationPassportResponse = zod.object({
@@ -3215,7 +3266,9 @@ export const SaveCommunicationPassportResponse = zod.object({
   "version": zod.number().nullable(),
   "createdAt": zod.coerce.date().nullable(),
   "updatedAt": zod.coerce.date().nullable(),
-  "updatedBy": zod.string().nullable()
+  "updatedBy": zod.string().nullable(),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(saveCommunicationPassportResponseLanguagesSpokenAtHomeItemMax)).max(saveCommunicationPassportResponseLanguagesSpokenAtHomeMax),
+  "primaryHomeLanguage": zod.string().max(saveCommunicationPassportResponsePrimaryHomeLanguageMax).nullable()
 })
 
 
@@ -3292,6 +3345,12 @@ export const generateCommunicationPassportResponseContentCurrentGoalsMax = 20;
 
 export const generateCommunicationPassportResponseContentAdditionalInformationMax = 2000;
 
+export const generateCommunicationPassportResponseLanguagesSpokenAtHomeItemMax = 80;
+
+export const generateCommunicationPassportResponseLanguagesSpokenAtHomeMax = 20;
+
+export const generateCommunicationPassportResponsePrimaryHomeLanguageMax = 80;
+
 
 
 export const GenerateCommunicationPassportResponse = zod.object({
@@ -3321,7 +3380,9 @@ export const GenerateCommunicationPassportResponse = zod.object({
   "interests": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentInterestsItemMax)).max(generateCommunicationPassportResponseContentInterestsMax),
   "currentGoals": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseContentCurrentGoalsItemMax)).max(generateCommunicationPassportResponseContentCurrentGoalsMax),
   "additionalInformation": zod.string().max(generateCommunicationPassportResponseContentAdditionalInformationMax)
-})
+}),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(generateCommunicationPassportResponseLanguagesSpokenAtHomeItemMax)).max(generateCommunicationPassportResponseLanguagesSpokenAtHomeMax),
+  "primaryHomeLanguage": zod.string().max(generateCommunicationPassportResponsePrimaryHomeLanguageMax).nullable()
 })
 
 
@@ -3333,6 +3394,12 @@ export const GetChildQueryParams = zod.object({
 })
 
 export const getChildResponseChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+export const getChildResponseLanguagesSpokenAtHomeItemMax = 80;
+
+export const getChildResponseLanguagesSpokenAtHomeMax = 20;
+
+export const getChildResponsePrimaryHomeLanguageMax = 80;
+
 
 
 export const GetChildResponse = zod.object({
@@ -3349,6 +3416,8 @@ export const GetChildResponse = zod.object({
   "school": zod.string(),
   "grade": zod.string(),
   "communicationStyle": zod.string(),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(getChildResponseLanguagesSpokenAtHomeItemMax)).max(getChildResponseLanguagesSpokenAtHomeMax),
+  "primaryHomeLanguage": zod.string().max(getChildResponsePrimaryHomeLanguageMax).nullable(),
   "aacSnapshot": zod.object({
   "isUser": zod.boolean(),
   "device": zod.string().nullable(),
@@ -3395,6 +3464,12 @@ export const updateChildProfileBodyGradeMax = 80;
 
 export const updateChildProfileBodyPronounsMax = 80;
 
+export const updateChildProfileBodyLanguagesSpokenAtHomeItemMax = 80;
+
+export const updateChildProfileBodyLanguagesSpokenAtHomeMax = 20;
+
+export const updateChildProfileBodyPrimaryHomeLanguageMax = 80;
+
 
 
 export const UpdateChildProfileBody = zod.object({
@@ -3404,10 +3479,18 @@ export const UpdateChildProfileBody = zod.object({
   "school": zod.string().max(updateChildProfileBodySchoolMax),
   "grade": zod.string().max(updateChildProfileBodyGradeMax),
   "dateOfBirth": zod.coerce.date().nullish(),
-  "pronouns": zod.string().max(updateChildProfileBodyPronounsMax).nullish()
+  "pronouns": zod.string().max(updateChildProfileBodyPronounsMax).nullish(),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(updateChildProfileBodyLanguagesSpokenAtHomeItemMax)).max(updateChildProfileBodyLanguagesSpokenAtHomeMax).optional(),
+  "primaryHomeLanguage": zod.string().max(updateChildProfileBodyPrimaryHomeLanguageMax).nullish()
 })
 
 export const updateChildProfileResponseChildLedIdRegExp = new RegExp('^CLID-[A-Z0-9]{6}$');
+export const updateChildProfileResponseLanguagesSpokenAtHomeItemMax = 80;
+
+export const updateChildProfileResponseLanguagesSpokenAtHomeMax = 20;
+
+export const updateChildProfileResponsePrimaryHomeLanguageMax = 80;
+
 
 
 export const UpdateChildProfileResponse = zod.object({
@@ -3424,6 +3507,8 @@ export const UpdateChildProfileResponse = zod.object({
   "school": zod.string(),
   "grade": zod.string(),
   "communicationStyle": zod.string(),
+  "languagesSpokenAtHome": zod.array(zod.string().min(1).max(updateChildProfileResponseLanguagesSpokenAtHomeItemMax)).max(updateChildProfileResponseLanguagesSpokenAtHomeMax),
+  "primaryHomeLanguage": zod.string().max(updateChildProfileResponsePrimaryHomeLanguageMax).nullable(),
   "aacSnapshot": zod.object({
   "isUser": zod.boolean(),
   "device": zod.string().nullable(),

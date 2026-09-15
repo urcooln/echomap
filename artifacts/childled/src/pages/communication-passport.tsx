@@ -239,9 +239,13 @@ function TextList({ values }: { values: string[] }) {
 function PassportDocument({
   content,
   updatedAt,
+  languagesSpokenAtHome,
+  primaryHomeLanguage,
 }: {
   content: CommunicationPassportContent;
   updatedAt: string | null;
+  languagesSpokenAtHome: string[];
+  primaryHomeLanguage: string | null;
 }) {
   const updatedLabel = updatedAt
     ? new Date(updatedAt).toLocaleDateString("en-US", {
@@ -289,6 +293,18 @@ function PassportDocument({
               <p className="whitespace-pre-line text-sm leading-relaxed">
                 {content.aboutMe}
               </p>
+            </PrintSection>
+          ) : null}
+          {languagesSpokenAtHome.length ? (
+            <PrintSection title="Languages at Home">
+              <p className="break-words text-sm leading-relaxed">
+                Languages spoken at home: {languagesSpokenAtHome.join(", ")}.
+              </p>
+              {primaryHomeLanguage ? (
+                <p className="break-words text-sm leading-relaxed">
+                  Primary home language: {primaryHomeLanguage}.
+                </p>
+              ) : null}
             </PrintSection>
           ) : null}
           {content.communicationMethods.length || communication.length ? (
@@ -457,6 +473,17 @@ export function CommunicationPassportPage({ childId }: { childId: number }) {
       const result = await generatePassport.mutateAsync({
         data: { childId, templateKey: "general", language: "en" },
       });
+      queryClient.setQueryData(
+        getGetCommunicationPassportQueryKey({ childId }),
+        (current) =>
+          current
+            ? {
+                ...current,
+                languagesSpokenAtHome: result.languagesSpokenAtHome,
+                primaryHomeLanguage: result.primaryHomeLanguage,
+              }
+            : current,
+      );
       setDraft(result.content);
       setMode("edit");
       setMessage(
@@ -546,6 +573,8 @@ export function CommunicationPassportPage({ childId }: { childId: number }) {
   }
 
   const canEdit = Boolean(passportQuery.data?.canEdit);
+  const languagesSpokenAtHome = passportQuery.data?.languagesSpokenAtHome ?? [];
+  const primaryHomeLanguage = passportQuery.data?.primaryHomeLanguage ?? null;
   if (!draft) {
     return (
       <main className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
@@ -695,6 +724,27 @@ export function CommunicationPassportPage({ childId }: { childId: number }) {
               />
             </label>
           </div>
+          <section className="space-y-2 border-t border-border/70 pt-5">
+            <FieldHeading
+              title="Languages at Home"
+              hint="This information comes from the student profile and stays synchronized automatically."
+            />
+            <div
+              className="min-w-0 rounded-md border border-border bg-muted/50 px-3 py-3 text-sm"
+              data-testid="passport-home-languages"
+            >
+              <p className="break-words">
+                {languagesSpokenAtHome.length
+                  ? languagesSpokenAtHome.join(" · ")
+                  : "Not added"}
+              </p>
+              {primaryHomeLanguage ? (
+                <p className="mt-1 break-words text-xs text-muted-foreground">
+                  Primary home language: {primaryHomeLanguage}
+                </p>
+              ) : null}
+            </div>
+          </section>
           <ParagraphField
             title="About Me"
             hint="Include only background information a communication partner needs."
@@ -805,6 +855,8 @@ export function CommunicationPassportPage({ childId }: { childId: number }) {
           <PassportDocument
             content={draft}
             updatedAt={passportQuery.data?.updatedAt ?? null}
+            languagesSpokenAtHome={languagesSpokenAtHome}
+            primaryHomeLanguage={primaryHomeLanguage}
           />
         </div>
       )}

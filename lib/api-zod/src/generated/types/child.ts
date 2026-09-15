@@ -26,6 +26,17 @@ export interface Child {
   school: string;
   grade: string;
   communicationStyle: string;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 80
+     */
+  languagesSpokenAtHome: string[];
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  primaryHomeLanguage: string | null;
   aacSnapshot?: AacSnapshot;
   glpNotes?: string;
   strengths?: string[];

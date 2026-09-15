@@ -34,6 +34,8 @@ export interface IepServiceRequirement {
   sessionsRemaining: number;
   /** @minimum 0 */
   outstandingMakeups: number;
+  /** @nullable */
+  lastSessionDate: string | null;
   /** @minimum 0 */
   minutesCompleted: number;
   /** @minimum 0 */

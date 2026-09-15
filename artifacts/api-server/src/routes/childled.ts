@@ -824,6 +824,8 @@ type Child = {
   school: string;
   grade: string;
   communicationStyle: string;
+  languagesSpokenAtHome: string[];
+  primaryHomeLanguage: string | null;
   glpNotes: string;
   aacSnapshot?: AacSnapshot;
   strengths: string[];
@@ -885,6 +887,8 @@ const children: Child[] = [
     school: "Maple Grove Elementary",
     grade: "1st grade",
     communicationStyle: "Gestalt Language Processor",
+    languagesSpokenAtHome: ["English"],
+    primaryHomeLanguage: "English",
     aacSnapshot: {
       isUser: true,
       device: "TD I-110",
@@ -956,6 +960,47 @@ const ageFromDateOfBirth = (dateOfBirth: string | null) => {
     age -= 1;
   return Math.max(age, 0);
 };
+const homeLanguagesFromDetails = (details: Record<string, unknown>) => {
+  const seen = new Set<string>();
+  const languages = (
+    Array.isArray(details.languagesSpokenAtHome)
+      ? details.languagesSpokenAtHome.flatMap((value) => {
+          if (typeof value !== "string") return [];
+          const language = value.replace(/\s+/g, " ").trim();
+          const key = language.toLocaleLowerCase();
+          if (!language || seen.has(key)) return [];
+          seen.add(key);
+          return [language];
+        })
+      : []
+  ).slice(0, 20);
+  const requestedPrimary =
+    typeof details.primaryHomeLanguage === "string"
+      ? details.primaryHomeLanguage.replace(/\s+/g, " ").trim()
+      : "";
+  const primaryHomeLanguage =
+    languages.find(
+      (language) =>
+        language.toLocaleLowerCase() === requestedPrimary.toLocaleLowerCase(),
+    ) ?? null;
+  return { languagesSpokenAtHome: languages, primaryHomeLanguage };
+};
+const normalizeHomeLanguageInput = (
+  languages: string[] | undefined,
+  primary: string | null | undefined,
+) => {
+  const details = homeLanguagesFromDetails({
+    languagesSpokenAtHome: languages ?? [],
+    primaryHomeLanguage: primary ?? null,
+  });
+  if (primary?.trim() && !details.primaryHomeLanguage) {
+    return {
+      error:
+        "Primary home language must be one of the languages spoken at home.",
+    } as const;
+  }
+  return { value: details } as const;
+};
 const childFromProfile = (
   profile: typeof childProfilesTable.$inferSelect,
   gestaltCount = 0,
@@ -1026,6 +1071,7 @@ const childFromProfile = (
     } satisfies AacSnapshot;
   })();
   const names = canonicalChildNames(profile);
+  const homeLanguages = homeLanguagesFromDetails(details);
   return {
     id: profile.id,
     childLedId: profile.childLedId,
@@ -1044,6 +1090,7 @@ const childFromProfile = (
     school: profile.school,
     grade: profile.grade,
     communicationStyle: profile.communicationStyle,
+    ...homeLanguages,
     ...(aacSnapshot ? { aacSnapshot } : {}),
     glpNotes: typeof details.glpNotes === "string" ? details.glpNotes : "",
     strengths: arrayDetail("strengths"),
@@ -2531,28 +2578,33 @@ const generatedCommunicationPassportFor = async (
         .filter(Boolean)
         .join("\n")
     : "";
-  return normalizeCommunicationPassportContent({
-    childName: passportName,
-    preferredName: communicationPassportPreferredName(profile),
-    aboutMe: profile.communicationStyle
-      ? `${passportName} communicates ${profile.communicationStyle.toLocaleLowerCase()}.`
-      : "",
-    communicationMethods,
-    communicationStrengths: entriesFor("strengths"),
-    wantsAndNeeds: "",
-    commonPhrases: reviewedPhrases,
-    gestures: confirmedAac?.communicationModalities.includes("gestures")
-      ? ["Uses gestures and nonverbal communication."]
-      : [],
-    aacInformation: aacDetails,
-    helpfulStrategies: entriesFor("sensory_supports", "support"),
-    communicationChallenges: entriesFor("sensory_supports", "challenge"),
-    frustrationSupports: entriesFor("regulation_notes"),
-    importantWords: [],
-    interests: entriesFor("interests"),
-    currentGoals: goals.map((goal) => goal.title),
-    additionalInformation: "",
-  });
+  return {
+    content: normalizeCommunicationPassportContent({
+      childName: passportName,
+      preferredName: communicationPassportPreferredName(profile),
+      aboutMe: profile.communicationStyle
+        ? `${passportName} communicates ${profile.communicationStyle.toLocaleLowerCase()}.`
+        : "",
+      communicationMethods,
+      communicationStrengths: entriesFor("strengths"),
+      wantsAndNeeds: "",
+      commonPhrases: reviewedPhrases,
+      gestures: confirmedAac?.communicationModalities.includes("gestures")
+        ? ["Uses gestures and nonverbal communication."]
+        : [],
+      aacInformation: aacDetails,
+      helpfulStrategies: entriesFor("sensory_supports", "support"),
+      communicationChallenges: entriesFor("sensory_supports", "challenge"),
+      frustrationSupports: entriesFor("regulation_notes"),
+      importantWords: [],
+      interests: entriesFor("interests"),
+      currentGoals: goals.map((goal) => goal.title),
+      additionalInformation: "",
+    }),
+    ...homeLanguagesFromDetails(
+      profile.profileDetails as Record<string, unknown>,
+    ),
+  };
 };
 const communicationPassportResponse = async (
   profile: typeof childProfilesTable.$inferSelect,
@@ -2583,6 +2635,9 @@ const communicationPassportResponse = async (
     createdAt: passport?.createdAt.toISOString() ?? null,
     updatedAt: passport?.updatedAt.toISOString() ?? null,
     updatedBy: updatedBy?.displayName ?? null,
+    ...homeLanguagesFromDetails(
+      profile.profileDetails as Record<string, unknown>,
+    ),
   };
 };
 const sharedProfileResponse = async (
@@ -5096,6 +5151,11 @@ const serviceRequirementResponseFromSessions = (
   ).length;
   const creditedSessions = ordinaryDelivered + sessionsMissed;
   const sessionsCompleted = deliveredSessions.length;
+  const lastSessionDate = deliveredSessions.reduce<string | null>(
+    (latest, session) =>
+      !latest || session.sessionDate > latest ? session.sessionDate : latest,
+    null,
+  );
   const sessionsRemaining = Math.max(
     requirement.requiredSessions - creditedSessions,
     0,
@@ -5140,6 +5200,7 @@ const serviceRequirementResponseFromSessions = (
     sessionsMissed,
     sessionsRemaining,
     outstandingMakeups,
+    lastSessionDate,
     minutesCompleted,
     minutesRemaining,
     status,
@@ -5284,6 +5345,10 @@ const activeServiceRequirementsFor = async (
 const serviceTypeLabels = {
   individual: "Individual",
   group: "Group",
+  group_not_to_exceed_2: "Group (not to exceed 2)",
+  group_not_to_exceed_3: "Group (not to exceed 3)",
+  group_not_to_exceed_4: "Group (not to exceed 4)",
+  group_not_to_exceed_5: "Group (not to exceed 5)",
   co_treat: "Co-Treat",
   co_treat_ot: "Co-Treat OT",
   co_treat_pt: "Co-Treat PT",
@@ -13072,6 +13137,12 @@ router.post("/children", async (req, res) => {
       const preferredName = childInput.preferredName?.trim() ?? "";
       const displayName =
         preferredName || [firstName, lastName].filter(Boolean).join(" ");
+      const homeLanguageInput = normalizeHomeLanguageInput(
+        childInput.languagesSpokenAtHome,
+        childInput.primaryHomeLanguage,
+      );
+      if ("error" in homeLanguageInput && homeLanguageInput.error)
+        return fail(res, homeLanguageInput.error);
       let profile: typeof childProfilesTable.$inferSelect | undefined;
       for (let attempt = 0; attempt < 10; attempt += 1) {
         try {
@@ -13101,6 +13172,7 @@ router.post("/children", async (req, res) => {
                 regulationNotes: childInput.regulationNotes ?? "",
                 sensorySupports: childInput.sensorySupports ?? [],
                 sensoryChallenges: childInput.sensoryChallenges ?? [],
+                ...homeLanguageInput.value,
               },
             })
             .returning();
@@ -14684,6 +14756,26 @@ router.patch("/child", async (req, res) => {
   const dateOfBirth = body.data.dateOfBirth
     ? body.data.dateOfBirth.toISOString().slice(0, 10)
     : null;
+  const existingDetails = profile.profileDetails as Record<string, unknown>;
+  const currentHomeLanguages = homeLanguagesFromDetails(existingDetails);
+  const requestedLanguages =
+    body.data.languagesSpokenAtHome ??
+    currentHomeLanguages.languagesSpokenAtHome;
+  const preservedPrimary = currentHomeLanguages.primaryHomeLanguage
+    ? (requestedLanguages.find(
+        (language) =>
+          language.toLocaleLowerCase() ===
+          currentHomeLanguages.primaryHomeLanguage?.toLocaleLowerCase(),
+      ) ?? null)
+    : null;
+  const homeLanguageInput = normalizeHomeLanguageInput(
+    requestedLanguages,
+    body.data.primaryHomeLanguage === undefined
+      ? preservedPrimary
+      : body.data.primaryHomeLanguage,
+  );
+  if ("error" in homeLanguageInput && homeLanguageInput.error)
+    return fail(res, homeLanguageInput.error);
   if (!firstName) return fail(res, "First name is required.");
   if (dateOfBirth && dateOfBirth > new Date().toISOString().slice(0, 10)) {
     return fail(res, "Date of birth cannot be in the future.");
@@ -14699,6 +14791,16 @@ router.patch("/child", async (req, res) => {
     ["grade", profile.grade, grade],
     ["dateOfBirth", profile.dateOfBirth, dateOfBirth],
     ["pronouns", profile.pronouns, pronouns],
+    [
+      "languagesSpokenAtHome",
+      currentHomeLanguages.languagesSpokenAtHome.join("|"),
+      homeLanguageInput.value.languagesSpokenAtHome.join("|"),
+    ],
+    [
+      "primaryHomeLanguage",
+      currentHomeLanguages.primaryHomeLanguage,
+      homeLanguageInput.value.primaryHomeLanguage,
+    ],
   ]
     .filter(([, previous, next]) => previous !== next)
     .map(([field]) => field);
@@ -14713,6 +14815,10 @@ router.patch("/child", async (req, res) => {
       grade,
       dateOfBirth,
       pronouns,
+      profileDetails: {
+        ...existingDetails,
+        ...homeLanguageInput.value,
+      },
       updatedAt: new Date(),
     })
     .where(
@@ -15076,11 +15182,11 @@ router.post("/communication-passport/generate", async (req, res) => {
   if (!requireChildAccess(req, res, body.data.childId)) return;
   const actor = requireClinician(req, res);
   if (!actor?.organizationId) return;
-  const content = await generatedCommunicationPassportFor(
+  const generated = await generatedCommunicationPassportFor(
     actor.organizationId,
     body.data.childId,
   );
-  if (!content) return res.status(404).json({ error: "Child not found." });
+  if (!generated) return res.status(404).json({ error: "Child not found." });
   await writeSecurityAudit({
     actor,
     action: "COMMUNICATION_PASSPORT_DRAFT_GENERATED",
@@ -15096,7 +15202,9 @@ router.post("/communication-passport/generate", async (req, res) => {
       childId: body.data.childId,
       templateKey: body.data.templateKey,
       language: body.data.language,
-      content,
+      content: generated.content,
+      languagesSpokenAtHome: generated.languagesSpokenAtHome,
+      primaryHomeLanguage: generated.primaryHomeLanguage,
     }),
   );
 });

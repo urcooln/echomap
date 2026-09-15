@@ -100,6 +100,7 @@ import {
   getGetTeacherCommunicationHelperQueryKey,
   getGetPhraseTrendsQueryKey,
   getGetChildQueryKey,
+  getGetCommunicationPassportQueryKey,
   getGetDashboardQueryKey,
   getGetClinicianOverviewQueryKey,
   getGetTeacherOverviewQueryKey,
@@ -3533,12 +3534,12 @@ const caseloadStatusPresentation = {
     icon: TrendingUp,
   },
   behind: {
-    label: "Behind",
+    label: "Behind on sessions",
     className: "bg-red-100 text-red-800",
     icon: AlertCircle,
   },
   needs_attention: {
-    label: "Needs Attention",
+    label: "Below expected pace",
     className: "bg-amber-100 text-amber-900",
     icon: Clock3,
   },
@@ -4342,7 +4343,7 @@ function CaseloadOverviewPage({
   preparing,
   overviewError,
   caseloadChildren,
-  onOpenChild,
+  onOpenCareTeam,
   onAddStudent,
   onStartRecordedSession,
   onStartManualSession,
@@ -4360,7 +4361,7 @@ function CaseloadOverviewPage({
   preparing: boolean;
   overviewError?: string;
   caseloadChildren: Child[];
-  onOpenChild: (childId: number) => void;
+  onOpenCareTeam: (childId: number) => void;
   onAddStudent: () => void;
   onStartRecordedSession: (
     childId: number,
@@ -4408,7 +4409,7 @@ function CaseloadOverviewPage({
     childName: string;
     service: IepServiceRequirement;
   } | null>(null);
-  const [collapsedStudents, setCollapsedStudents] = useState<Set<number>>(
+  const [expandedStudents, setExpandedStudents] = useState<Set<number>>(
     () => new Set(),
   );
   const [studentSearch, setStudentSearch] = useState("");
@@ -4512,6 +4513,9 @@ function CaseloadOverviewPage({
   ];
 
   const statusBadge = (serviceStatus: CaseloadServiceStatus) => {
+    if (serviceStatus === "on_track" || serviceStatus === "complete") {
+      return null;
+    }
     const status = caseloadStatusPresentation[serviceStatus];
     const StatusIcon = status.icon;
     return (
@@ -4528,14 +4532,13 @@ function CaseloadOverviewPage({
       ? Math.round(
           Math.min(
             1,
-            (requirement.requiredSessions - requirement.sessionsRemaining) /
-              requirement.requiredSessions,
+            requirement.sessionsCompleted / requirement.requiredSessions,
           ) * 100,
         )
       : 0;
 
   const toggleStudent = (childId: number) =>
-    setCollapsedStudents((current) => {
+    setExpandedStudents((current) => {
       const next = new Set(current);
       if (next.has(childId)) next.delete(childId);
       else next.add(childId);
@@ -4679,12 +4682,12 @@ function CaseloadOverviewPage({
           <div className="hidden lg:block">
             <table className="w-full table-fixed border-collapse text-left text-xs">
               <colgroup>
-                <col className="w-[22%]" />
-                <col className="w-[19%]" />
-                <col className="w-[19%]" />
-                <col className="w-[11%]" />
-                <col className="w-[10%]" />
-                <col className="w-[19%]" />
+                <col className="w-[21%]" />
+                <col className="w-[15%]" />
+                <col className="w-[18%]" />
+                <col className="w-[14%]" />
+                <col className="w-[14%]" />
+                <col className="w-[18%]" />
               </colgroup>
               <thead className="bg-muted/45 text-[11px] font-bold uppercase text-muted-foreground">
                 <tr>
@@ -4698,25 +4701,9 @@ function CaseloadOverviewPage({
               </thead>
               <tbody>
                 {filteredStudents.map((student, studentIndex) => {
-                  const collapsed = collapsedStudents.has(student.childId);
+                  const expanded = expandedStudents.has(student.childId);
                   const studentTone =
                     studentIndex % 2 === 0 ? "bg-card" : "bg-secondary/30";
-                  const totalRequired = student.serviceRequirements.reduce(
-                    (total, service) => total + service.requiredSessions,
-                    0,
-                  );
-                  const totalCompleted = student.serviceRequirements.reduce(
-                    (total, service) => total + service.sessionsCompleted,
-                    0,
-                  );
-                  const totalMissed = student.serviceRequirements.reduce(
-                    (total, service) => total + service.sessionsMissed,
-                    0,
-                  );
-                  const totalRemaining = student.serviceRequirements.reduce(
-                    (total, service) => total + service.sessionsRemaining,
-                    0,
-                  );
                   return (
                     <Fragment key={student.childId}>
                       <tr
@@ -4727,13 +4714,15 @@ function CaseloadOverviewPage({
                           <button
                             type="button"
                             onClick={() => toggleStudent(student.childId)}
-                            aria-expanded={!collapsed}
+                            aria-expanded={expanded}
                             className="flex max-w-full items-center gap-2 rounded-sm text-left focus-ring"
                           >
-                            <ChevronDown
-                              size={16}
-                              className={`shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`}
-                            />
+                            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-secondary/70 text-primary">
+                              <ChevronDown
+                                size={17}
+                                className={`transition-transform ${expanded ? "" : "-rotate-90"}`}
+                              />
+                            </span>
                             <span className="min-w-0">
                               <span className="block truncate font-bold text-primary">
                                 {student.childName}
@@ -4753,32 +4742,85 @@ function CaseloadOverviewPage({
                             </span>
                           </button>
                         </td>
-                        <td className="px-2 py-3">
-                          <span className="block font-semibold">
-                            {student.serviceRequirements.length} service
+                        <td colSpan={4} className="px-2 py-3">
+                          <span className="block font-semibold text-primary">
+                            {student.serviceRequirements.length} active service
                             {student.serviceRequirements.length === 1
                               ? ""
                               : "s"}
                           </span>
-                          <span className="mt-1 inline-flex">
-                            {statusBadge(student.serviceStatus)}
-                          </span>
-                        </td>
-                        <td className="px-2 py-3 text-muted-foreground">
-                          {student.serviceRequirements.length
-                            ? "Details below"
-                            : "Setup required"}
-                        </td>
-                        <td className="px-2 py-3 text-center font-semibold">
-                          {totalRequired
-                            ? `${totalCompleted} delivered · ${totalMissed} missed`
-                            : "-"}
-                        </td>
-                        <td className="px-2 py-3 text-center font-semibold">
-                          {totalRequired ? totalRemaining : "-"}
+                          {!student.serviceRequirements.length ? (
+                            <span className="mt-0.5 block text-[11px] font-semibold text-amber-800">
+                              Service setup required
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-3 py-3 text-right">
                           <div className="flex justify-end gap-1">
+                            {student.serviceRequirements.length > 1 ? (
+                              <DropdownMenu>
+                                <DropdownMenuTrigger asChild>
+                                  <Button
+                                    className="h-8 min-h-8 px-2 text-[11px]"
+                                    title={`Choose a service for ${student.childName}`}
+                                    aria-label={`Choose a service to log for ${student.childName}`}
+                                  >
+                                    <ClipboardList size={13} /> Log
+                                  </Button>
+                                </DropdownMenuTrigger>
+                                <DropdownMenuContent
+                                  align="end"
+                                  className="isolate w-64 border-primary/25 bg-card text-foreground opacity-100 shadow-xl"
+                                >
+                                  {student.serviceRequirements.map(
+                                    (service) => (
+                                      <DropdownMenuItem
+                                        key={service.id}
+                                        onSelect={() =>
+                                          openSessionLogger(
+                                            student.childId,
+                                            student.childName,
+                                            service,
+                                          )
+                                        }
+                                      >
+                                        <ClipboardList />
+                                        <span>
+                                          <span className="block font-semibold">
+                                            {serviceTypeLabel(
+                                              service.serviceType,
+                                            )}
+                                          </span>
+                                          <span className="block text-xs text-muted-foreground">
+                                            {service.periodLabel}
+                                          </span>
+                                        </span>
+                                      </DropdownMenuItem>
+                                    ),
+                                  )}
+                                </DropdownMenuContent>
+                              </DropdownMenu>
+                            ) : (
+                              <Button
+                                className="h-8 min-h-8 px-2 text-[11px]"
+                                disabled={!student.serviceRequirements.length}
+                                onClick={() => {
+                                  const service =
+                                    student.serviceRequirements[0];
+                                  if (service) {
+                                    openSessionLogger(
+                                      student.childId,
+                                      student.childName,
+                                      service,
+                                    );
+                                  }
+                                }}
+                                title={`Log a session for ${student.childName}`}
+                                aria-label={`Log a session for ${student.childName}`}
+                              >
+                                <ClipboardList size={13} /> Log
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               className="h-8 min-h-8 bg-card px-2 text-[11px] text-primary"
@@ -4796,12 +4838,12 @@ function CaseloadOverviewPage({
                             <Button
                               variant="outline"
                               className="relative size-9 min-h-9 overflow-hidden bg-card p-0 text-primary"
-                              onClick={() => onOpenChild(student.childId)}
-                              title={`View ${student.childName}`}
-                              aria-label={`View ${student.childName}`}
+                              onClick={() => onOpenCareTeam(student.childId)}
+                              title={`Manage ${student.childName}'s care team`}
+                              aria-label={`Manage ${student.childName}'s care team`}
                             >
                               <span className="relative z-10 grid size-6 place-items-center text-primary">
-                                <UserRound
+                                <Users
                                   aria-hidden="true"
                                   className="!size-5"
                                   strokeWidth={2.5}
@@ -4811,7 +4853,7 @@ function CaseloadOverviewPage({
                           </div>
                         </td>
                       </tr>
-                      {!collapsed && student.serviceRequirements.length
+                      {expanded && student.serviceRequirements.length
                         ? student.serviceRequirements.map(
                             (service, serviceIndex) => {
                               const progress = requirementProgress(service);
@@ -4822,10 +4864,7 @@ function CaseloadOverviewPage({
                                   data-testid={`overview-service-${service.id}`}
                                 >
                                   <td className="px-3 py-3 pl-9">
-                                    <span className="block font-semibold text-primary">
-                                      {student.childName}
-                                    </span>
-                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                    <span className="block border-l-2 border-primary/25 pl-3 text-[11px] font-semibold text-muted-foreground">
                                       Service {serviceIndex + 1}
                                     </span>
                                   </td>
@@ -4839,23 +4878,44 @@ function CaseloadOverviewPage({
                                   </td>
                                   <td className="px-2 py-3">
                                     <span className="block font-semibold capitalize">
-                                      {service.period}
+                                      {service.period === "custom"
+                                        ? "Custom schedule"
+                                        : service.period}
                                     </span>
                                     <span className="mt-0.5 block text-[11px] text-muted-foreground">
                                       {service.requiredSessions} ×{" "}
                                       {service.sessionDurationMinutes} min
                                     </span>
+                                    {service.period === "custom" &&
+                                    service.customFrequencyDescription ? (
+                                      <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                        {service.customFrequencyDescription}
+                                      </span>
+                                    ) : null}
                                     <span className="mt-0.5 block text-[11px] text-muted-foreground">
                                       {service.periodLabel}
+                                    </span>
+                                    <span className="mt-1 block text-[11px] text-muted-foreground">
+                                      Last session:{" "}
+                                      {service.lastSessionDate
+                                        ? formatDate(service.lastSessionDate)
+                                        : "None"}
                                     </span>
                                   </td>
                                   <td className="px-2 py-3 text-center">
                                     <span className="block font-bold">
-                                      {service.sessionsCompleted} delivered
+                                      {service.sessionsCompleted} /{" "}
+                                      {service.requiredSessions} delivered
                                     </span>
                                     <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                                      {service.sessionsMissed} missed
+                                      {service.minutesCompleted} /{" "}
+                                      {service.requiredMinutes} min delivered
                                     </span>
+                                    {service.sessionsMissed ? (
+                                      <span className="mt-0.5 block text-[11px] font-semibold text-amber-800">
+                                        Missed: {service.sessionsMissed}
+                                      </span>
+                                    ) : null}
                                     <div className="mx-auto mt-1.5 h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-muted">
                                       <div
                                         className="h-full rounded-full bg-primary"
@@ -4863,9 +4923,12 @@ function CaseloadOverviewPage({
                                       />
                                     </div>
                                   </td>
-                                  <td className="px-2 py-3 text-center">
+                                  <td className="px-2 py-3">
                                     <span className="block font-bold text-primary">
-                                      {service.sessionsRemaining}
+                                      Sessions: {service.sessionsRemaining}
+                                    </span>
+                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                      Minutes: {service.minutesRemaining} min
                                     </span>
                                     {service.sessionsMissed ? (
                                       <button
@@ -4881,9 +4944,13 @@ function CaseloadOverviewPage({
                                         aria-label={`${service.outstandingMakeups} outstanding makeups for ${student.childName}`}
                                       >
                                         <RefreshCw size={11} />
-                                        {service.outstandingMakeups} makeup
+                                        Makeups: {service.outstandingMakeups}
                                       </button>
-                                    ) : null}
+                                    ) : (
+                                      <span className="mt-1 block text-[10px] font-semibold text-muted-foreground">
+                                        Makeups: 0
+                                      </span>
+                                    )}
                                   </td>
                                   <td className="px-3 py-3">
                                     <div className="flex items-center justify-end gap-1">
@@ -4980,7 +5047,7 @@ function CaseloadOverviewPage({
                             },
                           )
                         : null}
-                      {!collapsed && !student.serviceRequirements.length ? (
+                      {expanded && !student.serviceRequirements.length ? (
                         <tr className={`${studentTone} border-t border-border`}>
                           <td
                             colSpan={6}
@@ -5010,7 +5077,7 @@ function CaseloadOverviewPage({
 
           <div className="divide-y-[10px] divide-muted/80 lg:hidden">
             {filteredStudents.map((student, studentIndex) => {
-              const collapsed = collapsedStudents.has(student.childId);
+              const expanded = expandedStudents.has(student.childId);
               return (
                 <article
                   key={student.childId}
@@ -5021,13 +5088,15 @@ function CaseloadOverviewPage({
                     <button
                       type="button"
                       onClick={() => toggleStudent(student.childId)}
-                      aria-expanded={!collapsed}
+                      aria-expanded={expanded}
                       className="flex min-w-0 items-start gap-2 rounded-sm text-left focus-ring"
                     >
-                      <ChevronDown
-                        size={17}
-                        className={`mt-0.5 shrink-0 transition-transform ${collapsed ? "-rotate-90" : ""}`}
-                      />
+                      <span className="grid size-7 shrink-0 place-items-center rounded-md bg-secondary/70 text-primary">
+                        <ChevronDown
+                          size={17}
+                          className={`transition-transform ${expanded ? "" : "-rotate-90"}`}
+                        />
+                      </span>
                       <span className="min-w-0">
                         <span className="block truncate font-bold text-primary">
                           {student.childName}
@@ -5044,10 +5113,13 @@ function CaseloadOverviewPage({
                         </span>
                       </span>
                     </button>
-                    {statusBadge(student.serviceStatus)}
+                    <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                      {student.serviceRequirements.length} service
+                      {student.serviceRequirements.length === 1 ? "" : "s"}
+                    </span>
                   </div>
 
-                  {!collapsed ? (
+                  {expanded ? (
                     <div className="mt-4 space-y-3">
                       {student.serviceRequirements.map((service) => {
                         const progress = requirementProgress(service);
@@ -5072,13 +5144,26 @@ function CaseloadOverviewPage({
                                   {serviceTypeLabel(service.serviceType)}
                                 </span>
                                 <span className="mt-0.5 block text-xs capitalize text-muted-foreground">
-                                  {service.period} · {service.periodLabel}
+                                  {service.period === "custom"
+                                    ? "Custom schedule"
+                                    : service.period}{" "}
+                                  · {service.periodLabel}
                                 </span>
+                                <span className="mt-0.5 block text-xs text-muted-foreground">
+                                  {service.requiredSessions} ×{" "}
+                                  {service.sessionDurationMinutes} min · Last{" "}
+                                  {service.lastSessionDate
+                                    ? formatDate(service.lastSessionDate)
+                                    : "none"}
+                                </span>
+                                {service.period === "custom" &&
+                                service.customFrequencyDescription ? (
+                                  <span className="mt-0.5 block text-xs text-muted-foreground">
+                                    {service.customFrequencyDescription}
+                                  </span>
+                                ) : null}
                               </button>
                               <span className="flex shrink-0 items-center gap-2">
-                                <span className="text-sm font-bold text-primary">
-                                  {service.requiredSessions} required
-                                </span>
                                 <Button
                                   type="button"
                                   variant="outline"
@@ -5103,47 +5188,56 @@ function CaseloadOverviewPage({
                                 style={{ width: `${progress}%` }}
                               />
                             </div>
-                            <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+                            <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                               <span className="rounded-md bg-muted/45 p-2">
                                 <strong className="block text-sm text-primary">
-                                  {service.sessionsCompleted}
+                                  {service.sessionsCompleted} /{" "}
+                                  {service.requiredSessions}
                                 </strong>
-                                Delivered
+                                Sessions delivered
+                                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                  {service.minutesCompleted} /{" "}
+                                  {service.requiredMinutes} min
+                                </span>
+                              </span>
+                              <span className="rounded-md bg-muted/45 p-2">
+                                <strong className="block text-sm text-primary">
+                                  {service.sessionsRemaining} sessions
+                                </strong>
+                                Remaining
+                                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                  {service.minutesRemaining} min remaining
+                                </span>
                               </span>
                               <span className="rounded-md bg-muted/45 p-2">
                                 <strong className="block text-sm text-primary">
                                   {service.sessionsMissed}
                                 </strong>
-                                Missed
+                                Missed sessions
                               </span>
-                              <span className="rounded-md bg-muted/45 p-2">
+                              <button
+                                type="button"
+                                disabled={!service.sessionsMissed}
+                                onClick={() =>
+                                  setMakeupManager({
+                                    childId: student.childId,
+                                    childName: student.childName,
+                                    service,
+                                  })
+                                }
+                                className={`rounded-md p-2 text-left ${service.outstandingMakeups ? "bg-amber-100 text-amber-900" : "bg-muted/45 text-foreground"}`}
+                                aria-label={`${service.outstandingMakeups} outstanding makeups for ${student.childName}`}
+                              >
                                 <strong className="block text-sm text-primary">
-                                  {service.sessionsRemaining}
+                                  {service.outstandingMakeups}
                                 </strong>
-                                Remaining
-                              </span>
+                                Outstanding makeups
+                              </button>
                             </div>
                             <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                              {service.sessionsMissed ? (
-                                <Button
-                                  variant="outline"
-                                  className="min-h-9"
-                                  onClick={() =>
-                                    setMakeupManager({
-                                      childId: student.childId,
-                                      childName: student.childName,
-                                      service,
-                                    })
-                                  }
-                                >
-                                  <RefreshCw size={14} />
-                                  {service.outstandingMakeups} Makeup
-                                </Button>
-                              ) : (
-                                <span className="text-xs text-muted-foreground">
-                                  {service.sessionDurationMinutes} min/session
-                                </span>
-                              )}
+                              <span className="text-xs text-muted-foreground">
+                                {service.sessionDurationMinutes} min/session
+                              </span>
                               {statusBadge(service.status)}
                             </div>
                             <div className="mt-3">
@@ -5182,9 +5276,9 @@ function CaseloadOverviewPage({
                         </Button>
                         <Button
                           variant="outline"
-                          onClick={() => onOpenChild(student.childId)}
+                          onClick={() => onOpenCareTeam(student.childId)}
                         >
-                          <UserRound size={15} /> View Student
+                          <Users size={15} /> Care Team
                         </Button>
                       </div>
                     </div>
@@ -8848,6 +8942,24 @@ function ChildPage({
               ? ` · Latest session: ${formatDate(latestSessionDate)}`
               : ""}
           </p>
+          <div
+            className="mt-5 border-t border-primary-foreground/15 pt-5"
+            data-testid="profile-home-languages"
+          >
+            <p className="mono text-[10px] uppercase tracking-[.18em] text-accent">
+              Languages spoken at home
+            </p>
+            <p className="mt-2 break-words text-sm leading-6 text-primary-foreground/85">
+              {child.languagesSpokenAtHome.length
+                ? child.languagesSpokenAtHome.join(" · ")
+                : "Not added"}
+            </p>
+            {child.primaryHomeLanguage ? (
+              <p className="mt-1 break-words text-xs text-primary-foreground/65">
+                Primary home language: {child.primaryHomeLanguage}
+              </p>
+            ) : null}
+          </div>
           <div className="mt-8 border-t border-primary-foreground/15 pt-6">
             <p className="mono text-[10px] uppercase tracking-[.18em] text-accent">
               GLP notes
@@ -16937,6 +17049,125 @@ function SessionRecorderPage({
   );
 }
 
+function HomeLanguagesField({
+  languages,
+  primaryLanguage,
+  onLanguagesChange,
+  onPrimaryLanguageChange,
+}: {
+  languages: string[];
+  primaryLanguage: string | null;
+  onLanguagesChange: (languages: string[]) => void;
+  onPrimaryLanguageChange: (language: string | null) => void;
+}) {
+  const [draft, setDraft] = useState("");
+  const addLanguages = () => {
+    const existing = new Set(
+      languages.map((language) => language.toLocaleLowerCase()),
+    );
+    const additions = draft
+      .split(",")
+      .map((language) => language.replace(/\s+/g, " ").trim())
+      .filter((language) => {
+        const key = language.toLocaleLowerCase();
+        if (!language || existing.has(key)) return false;
+        existing.add(key);
+        return true;
+      });
+    if (!additions.length) return;
+    onLanguagesChange([...languages, ...additions].slice(0, 20));
+    setDraft("");
+  };
+  const removeLanguage = (language: string) => {
+    onLanguagesChange(languages.filter((candidate) => candidate !== language));
+    if (primaryLanguage === language) onPrimaryLanguageChange(null);
+  };
+  return (
+    <fieldset className="min-w-0 space-y-3 rounded-xl border border-border bg-secondary/20 p-4">
+      <legend className="px-1 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+        Language(s) Spoken at Home
+      </legend>
+      <p className="text-xs leading-5 text-muted-foreground">
+        Add one language at a time, or separate several with commas.
+      </p>
+      <div className="flex min-w-0 gap-2">
+        <input
+          data-testid="input-home-language"
+          value={draft}
+          maxLength={400}
+          onChange={(event) => setDraft(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            addLanguages();
+          }}
+          placeholder="e.g. English, Spanish"
+          className="h-11 min-w-0 flex-1 rounded-xl border border-input bg-background px-3 text-sm outline-none transition-shadow focus-ring"
+        />
+        <Button
+          type="button"
+          variant="outline"
+          className="size-11 shrink-0"
+          onClick={addLanguages}
+          disabled={!draft.trim() || languages.length >= 20}
+          aria-label="Add home language"
+          title="Add home language"
+          data-testid="button-add-home-language"
+        >
+          <Plus size={17} />
+        </Button>
+      </div>
+      {languages.length ? (
+        <div
+          className="flex min-w-0 flex-wrap gap-2"
+          data-testid="list-home-languages"
+        >
+          {languages.map((language) => (
+            <span
+              key={language}
+              className="inline-flex max-w-full items-center gap-1.5 rounded-full bg-secondary px-3 py-1.5 text-sm text-foreground"
+            >
+              <span className="break-words">{language}</span>
+              <button
+                type="button"
+                className="focus-ring grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-background hover:text-destructive"
+                onClick={() => removeLanguage(language)}
+                aria-label={`Remove ${language}`}
+                title={`Remove ${language}`}
+              >
+                <X size={13} />
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-muted-foreground">No languages added yet.</p>
+      )}
+      <label className="block space-y-2">
+        <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+          Primary home language <span className="font-normal">(optional)</span>
+        </span>
+        <select
+          data-testid="select-primary-home-language"
+          value={primaryLanguage ?? ""}
+          disabled={!languages.length}
+          onChange={(event) =>
+            onPrimaryLanguageChange(event.target.value || null)
+          }
+          className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition-shadow focus-ring disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <option value="">No primary language selected</option>
+          {languages.map((language) => (
+            <option key={language} value={language}>
+              {language}
+            </option>
+          ))}
+        </select>
+      </label>
+    </fieldset>
+  );
+}
+
 function EditChildProfileForm({
   child,
   onClose,
@@ -16955,6 +17186,12 @@ function EditChildProfileForm({
   const [grade, setGrade] = useState(child.grade);
   const [dateOfBirth, setDateOfBirth] = useState(child.dateOfBirth ?? "");
   const [pronouns, setPronouns] = useState(child.pronouns ?? "");
+  const [languagesSpokenAtHome, setLanguagesSpokenAtHome] = useState(
+    child.languagesSpokenAtHome,
+  );
+  const [primaryHomeLanguage, setPrimaryHomeLanguage] = useState<string | null>(
+    child.primaryHomeLanguage,
+  );
   const submit = (event: FormEvent) => {
     event.preventDefault();
     mutation.mutate(
@@ -16968,6 +17205,8 @@ function EditChildProfileForm({
           grade: grade.trim(),
           dateOfBirth: dateOfBirth || null,
           pronouns: pronouns.trim() || null,
+          languagesSpokenAtHome,
+          primaryHomeLanguage,
         },
       },
       {
@@ -16984,6 +17223,11 @@ function EditChildProfileForm({
             queryKey: getGetClinicianOverviewQueryKey(),
           });
           client.invalidateQueries({ queryKey: getGetTeamInboxQueryKey() });
+          client.invalidateQueries({
+            queryKey: getGetCommunicationPassportQueryKey({
+              childId: child.id,
+            }),
+          });
           onSaved(updated);
         },
       },
@@ -17054,6 +17298,14 @@ function EditChildProfileForm({
               className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition-shadow focus-ring"
             />
           </label>
+          <div className="sm:col-span-2">
+            <HomeLanguagesField
+              languages={languagesSpokenAtHome}
+              primaryLanguage={primaryHomeLanguage}
+              onLanguagesChange={setLanguagesSpokenAtHome}
+              onPrimaryLanguageChange={setPrimaryHomeLanguage}
+            />
+          </div>
         </div>
         {mutation.isError && (
           <p
@@ -17103,6 +17355,12 @@ function ChildForm({
   const [grade, setGrade] = useState("");
   const [style, setStyle] = useState("Gestalt language processor");
   const [notes, setNotes] = useState("");
+  const [languagesSpokenAtHome, setLanguagesSpokenAtHome] = useState<string[]>(
+    [],
+  );
+  const [primaryHomeLanguage, setPrimaryHomeLanguage] = useState<string | null>(
+    null,
+  );
   const [legalAuthorityConfirmed, setLegalAuthorityConfirmed] = useState(false);
   const [inviteDrafts, setInviteDrafts] = useState<
     Array<{
@@ -17232,6 +17490,8 @@ function ChildForm({
           sensoryPreferences: [],
           specialInterests: [],
           regulationNotes: "",
+          languagesSpokenAtHome,
+          primaryHomeLanguage,
           legalAuthorityConfirmed,
         },
       });
@@ -17478,6 +17738,12 @@ function ChildForm({
             </select>
           </label>
         </div>
+        <HomeLanguagesField
+          languages={languagesSpokenAtHome}
+          primaryLanguage={primaryHomeLanguage}
+          onLanguagesChange={setLanguagesSpokenAtHome}
+          onPrimaryLanguageChange={setPrimaryHomeLanguage}
+        />
         <label className="block space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
             A note for the team
@@ -22581,7 +22847,10 @@ function Workspace() {
           : undefined
       }
       caseloadChildren={children}
-      onOpenChild={openChildWorkspace}
+      onOpenCareTeam={(childId) => {
+        setSelectedId(childId);
+        setLocation(`/children?childId=${childId}&section=team`);
+      }}
       onAddStudent={() => setModal("child")}
       onStartRecordedSession={(childId, serviceId, makeupForSessionId) => {
         setSelectedId(childId);

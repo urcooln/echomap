@@ -59,6 +59,7 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
       grade: "",
       pronouns: "they/them",
       dateOfBirth: "2019-04-03",
+      profileDetails: { existingDetail: "preserve me" },
     })
     .returning();
   assert.ok(child);
@@ -114,6 +115,7 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
+  const getChild = () => fetch(`${base}/child?childId=${child.id}`);
   const create = (body: Record<string, unknown>) =>
     fetch(`${base}/children`, {
       method: "POST",
@@ -128,6 +130,8 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
     grade: "2nd grade",
     dateOfBirth: "2019-04-03",
     pronouns: "they/them",
+    languagesSpokenAtHome: ["English", "Spanish", "english"],
+    primaryHomeLanguage: "Spanish",
   };
   const createdChildIds: number[] = [];
 
@@ -142,6 +146,12 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
     assert.equal((await update(completeProfile)).status, 404);
 
     currentActor = clinician;
+    const existingResponse = await getChild();
+    assert.equal(existingResponse.status, 200);
+    const existing = (await existingResponse.json()) as Record<string, unknown>;
+    assert.deepEqual(existing.languagesSpokenAtHome, []);
+    assert.equal(existing.primaryHomeLanguage, null);
+
     const response = await update(completeProfile);
     assert.equal(response.status, 200);
     const updated = (await response.json()) as Record<string, unknown>;
@@ -154,6 +164,14 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
     assert.equal(updated.grade, "2nd grade");
     assert.equal(updated.pronouns, "they/them");
     assert.equal(updated.childLedId, child.childLedId);
+    assert.deepEqual(updated.languagesSpokenAtHome, ["English", "Spanish"]);
+    assert.equal(updated.primaryHomeLanguage, "Spanish");
+
+    const invalidPrimary = await update({
+      ...completeProfile,
+      primaryHomeLanguage: "French",
+    });
+    assert.equal(invalidPrimary.status, 400);
 
     const clearedResponse = await update({
       ...completeProfile,
@@ -168,6 +186,21 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
     assert.equal(cleared.pronouns, null);
     assert.equal(cleared.dateOfBirth, null);
     assert.equal(cleared.childLedId, child.childLedId);
+    assert.deepEqual(cleared.languagesSpokenAtHome, ["English", "Spanish"]);
+    assert.equal(cleared.primaryHomeLanguage, "Spanish");
+
+    const oneLanguageResponse = await update({
+      ...completeProfile,
+      languagesSpokenAtHome: ["English"],
+      primaryHomeLanguage: null,
+    });
+    assert.equal(oneLanguageResponse.status, 200);
+    const oneLanguage = (await oneLanguageResponse.json()) as Record<
+      string,
+      unknown
+    >;
+    assert.deepEqual(oneLanguage.languagesSpokenAtHome, ["English"]);
+    assert.equal(oneLanguage.primaryHomeLanguage, null);
 
     const sameNameInput = {
       name: "Taylor Morgan",
@@ -176,6 +209,8 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
       school: "Cedar Grove School",
       grade: "2nd grade",
       communicationStyle: "Multimodal communicator",
+      languagesSpokenAtHome: ["Haitian Creole", "English"],
+      primaryHomeLanguage: "Haitian Creole",
       legalAuthorityConfirmed: true,
       childLedId: "CLID-FORCED",
     };
@@ -198,6 +233,11 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
     assert.match(String(secondCreated.childLedId), /^CLID-[A-Z0-9]{6}$/);
     assert.notEqual(firstCreated.childLedId, secondCreated.childLedId);
     assert.notEqual(firstCreated.childLedId, sameNameInput.childLedId);
+    assert.deepEqual(firstCreated.languagesSpokenAtHome, [
+      "Haitian Creole",
+      "English",
+    ]);
+    assert.equal(firstCreated.primaryHomeLanguage, "Haitian Creole");
 
     await assert.rejects(
       db.insert(childProfilesTable).values({
@@ -225,6 +265,10 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
       .where(eq(childProfilesTable.id, child.id));
     assert.equal(persisted?.id, child.id);
     assert.equal(persisted?.organizationId, organization.id);
+    assert.equal(
+      (persisted?.profileDetails as Record<string, unknown>).existingDetail,
+      "preserve me",
+    );
     const [persistedGestalt] = await db
       .select()
       .from(clinicalGestaltsTable)
@@ -242,7 +286,7 @@ test("child profile edits are clinician-only, tenant-scoped, audited, and preser
           eq(securityAuditLogsTable.childId, child.id),
         ),
       );
-    assert.equal(audits.length, 2);
+    assert.equal(audits.length, 3);
     assert.equal(audits[0]?.actorName, "Profile Clinician");
     assert.ok(audits[0]?.occurredAt instanceof Date);
     assert.match(String(audits[0]?.metadata.changedFields), /firstName/);

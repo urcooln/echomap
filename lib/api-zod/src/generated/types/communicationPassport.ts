@@ -22,4 +22,15 @@ export interface CommunicationPassport {
   updatedAt: Date | null;
   /** @nullable */
   updatedBy: string | null;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 80
+     */
+  languagesSpokenAtHome: string[];
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  primaryHomeLanguage: string | null;
 }

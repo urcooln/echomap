@@ -95,6 +95,8 @@ test("communication passports are SLP-controlled, child-scoped, and share-safe",
         sensoryChallenges: ["Rapid questions"],
         regulationNotes: "Offer a quiet pause and keep language simple.",
         glpNotes: "PRIVATE CLINICAL NOTE - NEVER SHARE",
+        languagesSpokenAtHome: ["English", "Spanish"],
+        primaryHomeLanguage: "Spanish",
       },
     })
     .returning();
@@ -210,6 +212,8 @@ test("communication passports are SLP-controlled, child-scoped, and share-safe",
     assert.equal(empty.body.exists, false);
     assert.equal(empty.body.canEdit, true);
     assert.equal(empty.body.content, null);
+    assert.deepEqual(empty.body.languagesSpokenAtHome, ["English", "Spanish"]);
+    assert.equal(empty.body.primaryHomeLanguage, "Spanish");
 
     actor = actorFor(userIds.parent, "Parent", organization.id, [child.id]);
     assert.equal(
@@ -228,6 +232,11 @@ test("communication passports are SLP-controlled, child-scoped, and share-safe",
     assert.equal(generated.status, 200);
     assert.equal(generated.body.content.childName, "Alexander M.");
     assert.equal(generated.body.content.preferredName, "Alex");
+    assert.deepEqual(generated.body.languagesSpokenAtHome, [
+      "English",
+      "Spanish",
+    ]);
+    assert.equal(generated.body.primaryHomeLanguage, "Spanish");
     assert.equal(generated.body.content.commonPhrases.length, 1);
     assert.equal(generated.body.content.commonPhrases[0].phrase, "All aboard");
     assert.ok(generated.body.content.interests.includes("Trains"));
@@ -269,6 +278,34 @@ test("communication passports are SLP-controlled, child-scoped, and share-safe",
     assert.equal(teacherView.body.canEdit, false);
     assert.equal(teacherView.body.content.childName, "Alexander M.");
     assert.equal(teacherView.body.content.aboutMe, content.aboutMe);
+    assert.deepEqual(teacherView.body.languagesSpokenAtHome, [
+      "English",
+      "Spanish",
+    ]);
+
+    await db
+      .update(childProfilesTable)
+      .set({
+        profileDetails: {
+          ...(child.profileDetails as Record<string, unknown>),
+          languagesSpokenAtHome: ["Haitian Creole", "English"],
+          primaryHomeLanguage: "Haitian Creole",
+        },
+      })
+      .where(eq(childProfilesTable.id, child.id));
+    const refreshedTeacherView = await request(
+      `/communication-passport?childId=${child.id}`,
+    );
+    assert.equal(refreshedTeacherView.status, 200);
+    assert.deepEqual(refreshedTeacherView.body.languagesSpokenAtHome, [
+      "Haitian Creole",
+      "English",
+    ]);
+    assert.equal(
+      refreshedTeacherView.body.primaryHomeLanguage,
+      "Haitian Creole",
+    );
+    assert.equal(refreshedTeacherView.body.content.aboutMe, content.aboutMe);
     assert.equal(
       (
         await json("PUT", "/communication-passport", {

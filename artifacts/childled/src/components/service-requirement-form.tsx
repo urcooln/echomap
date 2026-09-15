@@ -20,24 +20,57 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Trash2 } from "lucide-react";
 
-export const serviceTypeOptions: Array<{
-  value: CaseloadServiceDeliveryType;
-  label: string;
-}> = [
-  { value: "individual", label: "Individual" },
-  { value: "group", label: "Group" },
-  { value: "co_treat_ot", label: "Co-Treat OT" },
-  { value: "co_treat_pt", label: "Co-Treat PT" },
-  { value: "integrated_group", label: "Integrated Group" },
-  { value: "consult", label: "Consult" },
-  {
-    value: "assistive_technology",
-    label: "Assistive Technology Services",
-  },
-];
+export const serviceTypeLabels: Record<CaseloadServiceDeliveryType, string> = {
+  individual: "Individual",
+  group: "Group",
+  group_not_to_exceed_2: "Group (not to exceed 2)",
+  group_not_to_exceed_3: "Group (not to exceed 3)",
+  group_not_to_exceed_4: "Group (not to exceed 4)",
+  group_not_to_exceed_5: "Group (not to exceed 5)",
+  co_treat: "Co-Treat",
+  co_treat_ot: "Co-Treat OT",
+  co_treat_pt: "Co-Treat PT",
+  integrated_group: "Integrated Group",
+  consult: "Consult",
+  assistive_technology: "Assistive Technology Services",
+};
+
+const selectableServiceTypes = [
+  "individual",
+  "group_not_to_exceed_2",
+  "group_not_to_exceed_3",
+  "group_not_to_exceed_4",
+  "group_not_to_exceed_5",
+  "co_treat_ot",
+  "co_treat_pt",
+  "integrated_group",
+  "consult",
+  "assistive_technology",
+] satisfies CaseloadServiceDeliveryType[];
+
+export const serviceTypeOptions = selectableServiceTypes.map((value) => ({
+  value,
+  label: serviceTypeLabels[value],
+}));
 
 export const serviceTypeLabel = (value: CaseloadServiceDeliveryType) =>
-  serviceTypeOptions.find((option) => option.value === value)?.label ?? value;
+  serviceTypeLabels[value] ?? value;
+
+const legacyServiceTypeOption = (requirement?: IepServiceRequirement) => {
+  if (
+    !requirement ||
+    serviceTypeOptions.some(
+      (option) => option.value === requirement.serviceType,
+    )
+  ) {
+    return null;
+  }
+
+  return {
+    value: requirement.serviceType,
+    label: serviceTypeLabel(requirement.serviceType),
+  };
+};
 
 const frequencyOptions: Array<{
   value: ServiceFrequencyPeriod;
@@ -180,6 +213,7 @@ export function ServiceRequirementForm({
     requirement?.customFrequencyDescription ?? "",
   );
   const [error, setError] = useState("");
+  const legacyOption = legacyServiceTypeOption(requirement);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -252,6 +286,9 @@ export function ServiceRequirementForm({
             }
             className="h-11 w-full rounded-md border border-input bg-background px-3 text-sm"
           >
+            {legacyOption ? (
+              <option value={legacyOption.value}>{legacyOption.label}</option>
+            ) : null}
             {serviceTypeOptions.map((option) => (
               <option key={option.value} value={option.value}>
                 {option.label}

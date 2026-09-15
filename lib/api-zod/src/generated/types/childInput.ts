@@ -22,6 +22,17 @@ export interface ChildInput {
   school: string;
   grade: string;
   communicationStyle: string;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 80
+     */
+  languagesSpokenAtHome?: string[];
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  primaryHomeLanguage?: string | null;
   glpNotes?: string;
   strengths?: string[];
   sensoryPreferences?: string[];

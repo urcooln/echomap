@@ -269,6 +269,69 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     );
     assert.equal(coTreatRequirement.status, 200);
 
+    const groupServiceTypes = [
+      ["group_not_to_exceed_2", "Group (not to exceed 2)"],
+      ["group_not_to_exceed_3", "Group (not to exceed 3)"],
+      ["group_not_to_exceed_4", "Group (not to exceed 4)"],
+      ["group_not_to_exceed_5", "Group (not to exceed 5)"],
+    ] as const;
+    for (const [serviceType, serviceName] of groupServiceTypes) {
+      const updatedGroupRequirement = await json(
+        "PUT",
+        `/iep-service-requirements?childId=${child.id}`,
+        {
+          requirementId: coTreatRequirement.body.id,
+          serviceType,
+          requiredSessions: 1,
+          requiredMinutes: 30,
+          sessionDurationMinutes: 30,
+          period: "custom",
+          customFrequencyDescription: "September group service",
+          effectiveFrom: "2026-09-01",
+          effectiveTo: "2026-09-30",
+        },
+      );
+      assert.equal(updatedGroupRequirement.status, 200);
+      assert.equal(updatedGroupRequirement.body.serviceType, serviceType);
+      assert.equal(updatedGroupRequirement.body.serviceName, serviceName);
+    }
+
+    const legacyGroupRequirement = await json(
+      "PUT",
+      `/iep-service-requirements?childId=${child.id}`,
+      {
+        requirementId: coTreatRequirement.body.id,
+        serviceType: "group",
+        requiredSessions: 1,
+        requiredMinutes: 30,
+        sessionDurationMinutes: 30,
+        period: "custom",
+        customFrequencyDescription: "Existing group service",
+        effectiveFrom: "2026-09-01",
+        effectiveTo: "2026-09-30",
+      },
+    );
+    assert.equal(legacyGroupRequirement.status, 200);
+    assert.equal(legacyGroupRequirement.body.serviceType, "group");
+    assert.equal(legacyGroupRequirement.body.serviceName, "Group");
+
+    const restoredCoTreatRequirement = await json(
+      "PUT",
+      `/iep-service-requirements?childId=${child.id}`,
+      {
+        requirementId: coTreatRequirement.body.id,
+        serviceType: "co_treat_ot",
+        requiredSessions: 1,
+        requiredMinutes: 30,
+        sessionDurationMinutes: 30,
+        period: "custom",
+        customFrequencyDescription: "September OT co-treatment",
+        effectiveFrom: "2026-09-01",
+        effectiveTo: "2026-09-30",
+      },
+    );
+    assert.equal(restoredCoTreatRequirement.status, 200);
+
     const nextPeriod = await json(
       "PUT",
       `/iep-service-requirements?childId=${child.id}`,
@@ -471,8 +534,10 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     assert.equal(updatedIndividual.sessionsRemaining, 1);
     assert.equal(updatedIndividual.minutesCompleted, 30);
     assert.equal(updatedIndividual.minutesRemaining, 30);
+    assert.equal(updatedIndividual.lastSessionDate, "2026-09-10");
     assert.equal(updatedCoTreat.sessionsCompleted, 0);
     assert.equal(updatedCoTreat.sessionsRemaining, 1);
+    assert.equal(updatedCoTreat.lastSessionDate, null);
 
     const overview = await request("/clinician-overview");
     assert.equal(overview.status, 200);
@@ -491,13 +556,14 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     assert.equal(overviewIndividual.sessionsRemaining, 1);
     assert.equal(overviewIndividual.minutesCompleted, 30);
     assert.equal(overviewIndividual.minutesRemaining, 30);
+    assert.equal(overviewIndividual.lastSessionDate, "2026-09-10");
     assert.equal(overviewCoTreat.sessionsCompleted, 0);
+    assert.equal(overviewCoTreat.lastSessionDate, null);
     assert.equal(overviewChild.primaryServiceDeliveryType, "group");
     assert.equal(overviewChild.lastSessionDate, "2026-09-10");
     assert.deepEqual(overviewChild.teacherNames, []);
     assert.equal(overviewChild.nextSessionDate, null);
 
-    const expectedRecordedSessionDate = new Date().toISOString().slice(0, 10);
     const recordedBody = {
       serviceRequirementId: requirement.body.id,
       durationSeconds: 1_800,
@@ -593,6 +659,13 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     );
     assert.equal(recordedSession.status, 201);
     ids.sessions.push(recordedSession.body.id);
+    const [persistedRecordedSession] = await db
+      .select({ sessionDate: therapySessionsTable.sessionDate })
+      .from(therapySessionsTable)
+      .where(eq(therapySessionsTable.id, recordedSession.body.id))
+      .limit(1);
+    assert.ok(persistedRecordedSession);
+    const expectedRecordedSessionDate = persistedRecordedSession.sessionDate;
     assert.equal(recordedSession.body.goalProgress.length, 2);
     assert.equal(
       recordedSession.body.goalProgress[0].progressStatus,
@@ -693,6 +766,10 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
       );
     assert.equal(overviewCombinedIndividual.sessionsCompleted, 2);
     assert.equal(overviewCombinedIndividual.sessionsRemaining, 0);
+    assert.equal(
+      overviewCombinedIndividual.lastSessionDate,
+      expectedRecordedSessionDate,
+    );
     assert.equal(
       overviewChildWithRecordedSession.lastSessionDate,
       expectedRecordedSessionDate,
@@ -808,6 +885,7 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     assert.equal(individualAfterMakeup.sessionsRemaining, 0);
     assert.equal(individualAfterMakeup.outstandingMakeups, 0);
     assert.equal(individualAfterMakeup.minutesCompleted, 60);
+    assert.equal(individualAfterMakeup.lastSessionDate, "2026-09-12");
 
     const missedHistory = await request(
       `/missed-sessions?childId=${child.id}&serviceRequirementId=${requirement.body.id}`,

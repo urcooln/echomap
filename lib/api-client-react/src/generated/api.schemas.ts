@@ -729,6 +729,17 @@ export interface Child {
   school: string;
   grade: string;
   communicationStyle: string;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 80
+     */
+  languagesSpokenAtHome: string[];
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  primaryHomeLanguage: string | null;
   aacSnapshot?: AacSnapshot;
   glpNotes?: string;
   strengths?: string[];
@@ -757,6 +768,17 @@ export interface ChildInput {
   school: string;
   grade: string;
   communicationStyle: string;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 80
+     */
+  languagesSpokenAtHome?: string[];
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  primaryHomeLanguage?: string | null;
   glpNotes?: string;
   strengths?: string[];
   sensoryPreferences?: string[];
@@ -789,6 +811,17 @@ export interface UpdateChildProfileInput {
      * @nullable
      */
   pronouns?: string | null;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 80
+     */
+  languagesSpokenAtHome?: string[];
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  primaryHomeLanguage?: string | null;
 }
 
 export type SharedChildProfileSection = typeof SharedChildProfileSection[keyof typeof SharedChildProfileSection];
@@ -2031,6 +2064,10 @@ export type CaseloadServiceDeliveryType = typeof CaseloadServiceDeliveryType[key
 export const CaseloadServiceDeliveryType = {
   individual: 'individual',
   group: 'group',
+  group_not_to_exceed_2: 'group_not_to_exceed_2',
+  group_not_to_exceed_3: 'group_not_to_exceed_3',
+  group_not_to_exceed_4: 'group_not_to_exceed_4',
+  group_not_to_exceed_5: 'group_not_to_exceed_5',
   co_treat: 'co_treat',
   co_treat_ot: 'co_treat_ot',
   co_treat_pt: 'co_treat_pt',
@@ -2152,6 +2189,8 @@ export interface IepServiceRequirement {
   sessionsRemaining: number;
   /** @minimum 0 */
   outstandingMakeups: number;
+  /** @nullable */
+  lastSessionDate: string | null;
   /** @minimum 0 */
   minutesCompleted: number;
   /** @minimum 0 */
@@ -4047,6 +4086,17 @@ export interface CommunicationPassport {
   updatedAt: string | null;
   /** @nullable */
   updatedBy: string | null;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 80
+     */
+  languagesSpokenAtHome: string[];
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  primaryHomeLanguage: string | null;
 }
 
 export interface CommunicationPassportDraft {
@@ -4054,6 +4104,17 @@ export interface CommunicationPassportDraft {
   templateKey: string;
   language: string;
   content: CommunicationPassportContent;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 80
+     */
+  languagesSpokenAtHome: string[];
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  primaryHomeLanguage: string | null;
 }
 
 export interface CommunicationPassportGenerateInput {

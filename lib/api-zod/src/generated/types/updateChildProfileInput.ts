@@ -27,4 +27,15 @@ export interface UpdateChildProfileInput {
      * @nullable
      */
   pronouns?: string | null;
+  /**
+     * @maxItems 20
+     * @items.minLength 1
+     * @items.maxLength 80
+     */
+  languagesSpokenAtHome?: string[];
+  /**
+     * @maxLength 80
+     * @nullable
+     */
+  primaryHomeLanguage?: string | null;
 }

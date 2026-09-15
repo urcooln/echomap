@@ -12,6 +12,10 @@ export type CaseloadServiceDeliveryType = typeof CaseloadServiceDeliveryType[key
 export const CaseloadServiceDeliveryType = {
   individual: 'individual',
   group: 'group',
+  group_not_to_exceed_2: 'group_not_to_exceed_2',
+  group_not_to_exceed_3: 'group_not_to_exceed_3',
+  group_not_to_exceed_4: 'group_not_to_exceed_4',
+  group_not_to_exceed_5: 'group_not_to_exceed_5',
   co_treat: 'co_treat',
   co_treat_ot: 'co_treat_ot',
   co_treat_pt: 'co_treat_pt',
