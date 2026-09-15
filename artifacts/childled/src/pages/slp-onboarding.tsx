@@ -1,11 +1,28 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   useCompleteSlpOnboarding,
   useGetSlpOnboarding,
   type SlpOnboardingProfileInput,
 } from "@workspace/api-client-react";
-import { Check, ExternalLink, Leaf, ShieldCheck } from "lucide-react";
+import { BookOpen, Check, Leaf, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  LEGAL_REVIEW_NOTICE,
+  privacyPolicySections,
+  termsOfUseSections,
+} from "@/content/legal";
+import {
+  clearSlpOnboardingDraft,
+  loadSlpOnboardingDraft,
+  saveSlpOnboardingDraft,
+} from "@/lib/slp-onboarding-draft";
 
 const emptyProfile: SlpOnboardingProfileInput = {
   firstName: "",
@@ -24,21 +41,32 @@ const fieldClass =
 
 export function SlpOnboardingPage({
   onCompleted,
+  userId,
 }: {
   onCompleted: () => void;
+  userId: string;
 }) {
   const setup = useGetSlpOnboarding();
   const completion = useCompleteSlpOnboarding({
-    mutation: { onSuccess: onCompleted },
+    mutation: {
+      onSuccess: () => {
+        clearSlpOnboardingDraft(userId);
+        onCompleted();
+      },
+    },
   });
   const [profile, setProfile] =
     useState<SlpOnboardingProfileInput>(emptyProfile);
   const [accepted, setAccepted] = useState<Set<string>>(() => new Set());
   const [initialized, setInitialized] = useState(false);
+  const [activeDocument, setActiveDocument] = useState<{
+    title: string;
+    documentPath: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!setup.data || initialized) return;
-    setProfile({
+    const serverProfile = {
       firstName: setup.data.profile.firstName,
       lastName: setup.data.profile.lastName,
       professionalTitle: setup.data.profile.professionalTitle,
@@ -48,16 +76,36 @@ export function SlpOnboardingPage({
       licenseNumber: setup.data.profile.licenseNumber,
       licenseExpirationDate: setup.data.profile.licenseExpirationDate,
       ashaCccSlpNumber: setup.data.profile.ashaCccSlpNumber,
-    });
-    setAccepted(
-      new Set(
-        setup.data.agreements
-          .filter((agreement) => agreement.accepted)
-          .map((agreement) => `${agreement.type}:${agreement.version}`),
+    };
+    const currentAgreementKeys = new Set(
+      setup.data.agreements.map(
+        (agreement) => `${agreement.type}:${agreement.version}`,
       ),
     );
+    const acceptedByServer = setup.data.agreements
+      .filter((agreement) => agreement.accepted)
+      .map((agreement) => `${agreement.type}:${agreement.version}`);
+    const draft = loadSlpOnboardingDraft(userId);
+    setProfile(draft?.profile ?? serverProfile);
+    setAccepted(
+      new Set([
+        ...acceptedByServer,
+        ...(draft?.acceptedAgreementKeys.filter((key) =>
+          currentAgreementKeys.has(key),
+        ) ?? []),
+      ]),
+    );
     setInitialized(true);
-  }, [initialized, setup.data]);
+  }, [initialized, setup.data, userId]);
+
+  useEffect(() => {
+    if (!initialized) return;
+    saveSlpOnboardingDraft({
+      userId,
+      profile,
+      acceptedAgreementKeys: [...accepted],
+    });
+  }, [accepted, initialized, profile, userId]);
 
   const allAgreementsAccepted = useMemo(
     () =>
@@ -221,11 +269,12 @@ export function SlpOnboardingPage({
               const key = `${agreement.type}:${agreement.version}`;
               const checked = accepted.has(key);
               return (
-                <label
+                <div
                   key={key}
-                  className="flex cursor-pointer items-start gap-3 rounded-md border border-border bg-background p-4"
+                  className="flex items-start gap-3 rounded-md border border-border bg-background p-4"
                 >
                   <input
+                    id={`agreement-${agreement.type}`}
                     type="checkbox"
                     checked={checked}
                     onChange={(event) => {
@@ -240,16 +289,24 @@ export function SlpOnboardingPage({
                   />
                   <span className="min-w-0 flex-1">
                     <span className="flex flex-wrap items-center gap-x-2 gap-y-1 font-semibold text-primary">
-                      {agreement.title}
-                      <a
-                        href={agreement.documentPath}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1 text-xs underline underline-offset-4"
-                        onClick={(event) => event.stopPropagation()}
+                      <label
+                        htmlFor={`agreement-${agreement.type}`}
+                        className="cursor-pointer"
                       >
-                        Read document <ExternalLink size={12} />
-                      </a>
+                        {agreement.title}
+                      </label>
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-1 text-xs underline underline-offset-4"
+                        onClick={() =>
+                          setActiveDocument({
+                            title: agreement.title,
+                            documentPath: agreement.documentPath,
+                          })
+                        }
+                      >
+                        Read document <BookOpen size={12} />
+                      </button>
                     </span>
                     <span className="mt-1 block text-sm leading-6 text-muted-foreground">
                       {agreement.statement}
@@ -258,7 +315,7 @@ export function SlpOnboardingPage({
                       Version {agreement.version}
                     </span>
                   </span>
-                </label>
+                </div>
               );
             })}
           </div>
@@ -284,7 +341,86 @@ export function SlpOnboardingPage({
           </p>
         ) : null}
       </form>
+      <AgreementDocumentDialog
+        document={activeDocument}
+        onClose={() => setActiveDocument(null)}
+      />
     </main>
+  );
+}
+
+function AgreementDocumentDialog({
+  document,
+  onClose,
+}: {
+  document: { title: string; documentPath: string } | null;
+  onClose: () => void;
+}) {
+  const privacyDocument = document?.documentPath.startsWith("/privacy");
+  const sections = privacyDocument ? privacyPolicySections : termsOfUseSections;
+  const documentTitle = privacyDocument ? "Privacy Policy" : "Terms of Use";
+  const targetSection = document?.documentPath.split("#")[1];
+  const targetSectionRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!document || !targetSection) return;
+    const frame = window.requestAnimationFrame(() =>
+      targetSectionRef.current?.scrollIntoView({ block: "start" }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [document, targetSection]);
+
+  return (
+    <Dialog
+      open={Boolean(document)}
+      onOpenChange={(open) => !open && onClose()}
+    >
+      <DialogContent className="grid max-h-[calc(100dvh-1rem)] max-w-3xl grid-rows-[auto_minmax(0,1fr)_auto] gap-0 overflow-hidden p-0 sm:max-h-[85dvh] sm:p-0">
+        <DialogHeader className="border-b border-border px-5 py-5 pr-14 sm:px-7 sm:py-6 sm:pr-16">
+          <p className="text-xs font-bold uppercase text-muted-foreground">
+            {document?.title}
+          </p>
+          <DialogTitle className="serif text-2xl text-primary sm:text-3xl">
+            {documentTitle}
+          </DialogTitle>
+          <DialogDescription className="sr-only">
+            ChildLed onboarding agreement document
+          </DialogDescription>
+        </DialogHeader>
+        <div className="min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-7">
+          <aside className="rounded-md border border-accent/40 bg-secondary/55 p-4 text-sm leading-6 text-foreground">
+            {LEGAL_REVIEW_NOTICE}
+          </aside>
+          <div className="mt-5 space-y-3">
+            {sections.map((section) => (
+              <section
+                key={section.title}
+                ref={
+                  targetSection === section.id ? targetSectionRef : undefined
+                }
+                className={`rounded-md border p-4 sm:p-5 ${
+                  targetSection === section.id
+                    ? "border-accent bg-accent/10"
+                    : "border-border bg-card"
+                }`}
+              >
+                <h3 className="serif text-xl font-semibold text-primary">
+                  {section.title}
+                </h3>
+                <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                  {section.body}
+                </p>
+              </section>
+            ))}
+          </div>
+        </div>
+        <div className="border-t border-border bg-card px-4 py-3 sm:px-7">
+          <Button type="button" className="w-full sm:w-auto" onClick={onClose}>
+            Return to account setup
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

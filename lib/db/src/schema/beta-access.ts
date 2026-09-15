@@ -32,6 +32,7 @@ export const betaAccessRequestsTable = pgTable(
     reviewNotes: text("review_notes"),
     approvedOrganizationId: integer("approved_organization_id").references(() => organizationsTable.id, { onDelete: "restrict" }),
     invitationId: integer("invitation_id"),
+    invitationSentAt: timestamp("invitation_sent_at", { withTimezone: true }),
     archivedAt: timestamp("archived_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow().$onUpdate(() => new Date()),
@@ -105,7 +106,7 @@ export const betaNoticeAcknowledgementsTable = pgTable(
 );
 
 export const insertBetaAccessRequestSchema = createInsertSchema(betaAccessRequestsTable)
-  .omit({ id: true, status: true, reviewedAt: true, reviewedByUserId: true, reviewNotes: true, approvedOrganizationId: true, archivedAt: true, createdAt: true, updatedAt: true });
+  .omit({ id: true, status: true, reviewedAt: true, reviewedByUserId: true, reviewNotes: true, approvedOrganizationId: true, invitationId: true, invitationSentAt: true, archivedAt: true, createdAt: true, updatedAt: true });
 export const insertBetaControlsSchema = createInsertSchema(betaControlsTable).omit({ createdAt: true, updatedAt: true });
 export const insertBetaNoticeSchema = createInsertSchema(betaNoticesTable).omit({ id: true, publishedAt: true, retiredAt: true });
 export const insertBetaNoticeAcknowledgementSchema = createInsertSchema(betaNoticeAcknowledgementsTable).omit({ id: true, acknowledgedAt: true });

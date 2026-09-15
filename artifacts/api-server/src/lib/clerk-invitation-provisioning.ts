@@ -211,6 +211,20 @@ export const provisionClerkInvitation = async ({
       .limit(1);
     if (existingUser?.disabledAt) return null;
     const userId = existingUser?.id ?? `clerk_${clerkUser.id}`;
+    const existingMemberships = existingUser
+      ? await tx
+          .select()
+          .from(organizationMembershipsTable)
+          .where(eq(organizationMembershipsTable.userId, userId))
+      : [];
+    if (
+      existingMemberships.some(
+        (membership) =>
+          membership.role.trim().toLowerCase() !== role.membershipRole,
+      )
+    ) {
+      return null;
+    }
     const displayName =
       clerkUser.fullName || clerkUser.username || verified.emailAddress;
     if (!existingUser) {
@@ -235,16 +249,9 @@ export const provisionClerkInvitation = async ({
         .where(eq(usersTable.id, userId));
     }
 
-    const [existingMembership] = await tx
-      .select()
-      .from(organizationMembershipsTable)
-      .where(
-        and(
-          eq(organizationMembershipsTable.organizationId, organization.id),
-          eq(organizationMembershipsTable.userId, userId),
-        ),
-      )
-      .limit(1);
+    const existingMembership = existingMemberships.find(
+      (membership) => membership.organizationId === organization.id,
+    );
     const [activeCount] = await tx
       .select({ count: sql<number>`count(*)::int` })
       .from(organizationMembershipsTable)

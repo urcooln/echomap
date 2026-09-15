@@ -46,6 +46,7 @@ import type {
   BetaNoticeAcknowledgementInput,
   CareTeamInvitation,
   CareTeamInvitationInput,
+  CareTeamInvitationResult,
   CareTeamOnboarding,
   CareTeamOnboardingCompletion,
   CareTeamOnboardingInput,
@@ -5155,9 +5156,9 @@ export const getCreateCareTeamInvitationUrl = () => {
 /**
  * @summary Invite a parent or teacher to an assigned child
  */
-export const createCareTeamInvitation = async (careTeamInvitationInput: CareTeamInvitationInput, options?: Parameters<typeof customFetch>[1]): Promise<CareTeamInvitation> => {
+export const createCareTeamInvitation = async (careTeamInvitationInput: CareTeamInvitationInput, options?: Parameters<typeof customFetch>[1]): Promise<CareTeamInvitationResult> => {
 
-  return customFetch<CareTeamInvitation>(getCreateCareTeamInvitationUrl(),
+  return customFetch<CareTeamInvitationResult>(getCreateCareTeamInvitationUrl(),
   {
     ...options,
     method: 'POST',
@@ -5224,7 +5225,7 @@ export const getReplaceCareTeamInvitationUrl = (invitationId: number,) => {
 }
 
 /**
- * @summary Replace a pending invitation with a fresh Clerk invitation link
+ * @summary Resend a pending invitation through Clerk
  */
 export const replaceCareTeamInvitation = async (invitationId: number, options?: Parameters<typeof customFetch>[1]): Promise<CareTeamInvitation> => {
 
@@ -5273,7 +5274,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type ReplaceCareTeamInvitationMutationError = ErrorType<void>
 
     /**
- * @summary Replace a pending invitation with a fresh Clerk invitation link
+ * @summary Resend a pending invitation through Clerk
  */
 export const useReplaceCareTeamInvitation = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof replaceCareTeamInvitation>>, TError,{invitationId: number}, TContext>, request?: SecondParameter<typeof customFetch>}

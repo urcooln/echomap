@@ -227,11 +227,10 @@ export function ServiceRequirementForm({
       minutes < 1 ||
       !effectiveFrom ||
       !effectiveTo ||
-      effectiveTo < effectiveFrom ||
-      (period === "custom" && !customFrequencyDescription.trim())
+      effectiveTo < effectiveFrom
     ) {
       setError(
-        "Enter whole-number session requirements, valid service dates, and custom scheduling details when needed.",
+        "Enter whole-number session requirements and valid service dates.",
       );
       return;
     }
@@ -247,7 +246,9 @@ export function ServiceRequirementForm({
           sessionDurationMinutes: minutes,
           requiredMinutes: sessions * minutes,
           customFrequencyDescription:
-            period === "custom" ? customFrequencyDescription.trim() : null,
+            period === "custom"
+              ? customFrequencyDescription.trim() || null
+              : null,
           effectiveFrom,
           effectiveTo,
         },
@@ -386,7 +387,7 @@ export function ServiceRequirementForm({
       {period === "custom" ? (
         <label className="block">
           <span className="mb-1.5 block text-sm font-semibold">
-            Custom frequency details
+            Custom frequency details (Optional)
           </span>
           <Input
             value={customFrequencyDescription}

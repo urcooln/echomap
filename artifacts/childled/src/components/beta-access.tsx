@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'wouter';
-import { AlertCircle, Check, CheckCircle, Copy, Leaf, Loader2, Shield } from 'lucide-react';
+import { AlertCircle, Ban, Check, CheckCircle, Copy, Leaf, Loader2, RefreshCw, Shield } from 'lucide-react';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import type { Viewer } from '@workspace/api-client-react';
@@ -309,7 +309,7 @@ export function SuperAdminBetaControls() {
     }
   };
 
-  const handleRequestAction = async (id: number, action: 'approve' | 'reject' | 'archive') => {
+  const handleRequestAction = async (id: number, action: 'approve' | 'reject' | 'archive' | 'resend' | 'revoke-invitation') => {
     setProcessingRequest(id);
     setActionMessage('');
     try {
@@ -324,20 +324,30 @@ export function SuperAdminBetaControls() {
       }
       setRequests(current => current.map(request =>
         request.id === id
-          ? { ...request, status: result?.status || request.status, invitationPath: result?.invitationPath || request.invitationPath }
+          ? {
+              ...request,
+              status: result?.status || request.status,
+              accessState: result?.accessState || request.accessState,
+              deliveryStatus: result?.deliveryStatus || request.deliveryStatus,
+              invitationPath: action === 'revoke-invitation' ? undefined : result?.invitationPath || request.invitationPath,
+              invitationSentAt: result?.invitationSentAt || request.invitationSentAt,
+              signInPath: result?.signInPath || request.signInPath,
+              invitationId: result?.invitationId || request.invitationId,
+              reviewNotes: result?.status === 'review_required' ? result.message : request.reviewNotes,
+            }
           : request
       ));
-      if (result?.invitationPath) {
-        const copied = await copyInvitation(result.invitationPath);
-        if (copied) setActionMessage('SLP approved. The invitation link was copied.');
-      } else {
-        setActionMessage(
-          action === 'approve'
-            ? 'This SLP request is approved. Clerk has sent the invitation email.'
-            : `Request ${action === 'reject' ? 'rejected' : 'archived'}.`
-        );
-      }
-      await loadData();
+      setActionMessage(
+        result?.message ||
+          (action === 'approve'
+            ? 'This SLP request is approved.'
+            : action === 'resend'
+              ? 'A new invitation was sent.'
+              : action === 'revoke-invitation'
+                ? 'The pending invitation was revoked.'
+                : `Request ${action === 'reject' ? 'rejected' : 'archived'}.`)
+      );
+      if (action === 'archive') await loadData();
     } catch (e) {
       console.error(e);
       setActionMessage(`Network error while trying to ${action} this request.`);
@@ -413,13 +423,35 @@ export function SuperAdminBetaControls() {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="font-semibold text-foreground">{req.fullName} <span className="text-muted-foreground font-normal">({req.email})</span></p>
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${req.status === 'approved' ? 'bg-primary/10 text-primary' : req.status === 'rejected' ? 'bg-destructive/10 text-destructive' : 'bg-accent text-accent-foreground'}`}>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${req.status === 'approved' ? 'bg-primary/10 text-primary' : req.status === 'rejected' ? 'bg-destructive/10 text-destructive' : req.status === 'review_required' ? 'bg-amber-100 text-amber-900' : 'bg-accent text-accent-foreground'}`}>
                         {req.status === 'approved' && <Check size={13} aria-hidden="true" />}
-                        {req.status === 'approved' ? 'Approved' : req.status === 'rejected' ? 'Rejected' : 'Pending'}
+                        {req.status === 'approved'
+                          ? req.accessState === 'active'
+                            ? 'Active'
+                            : req.accessState === 'onboarding'
+                              ? 'Onboarding'
+                              : req.accessState === 'invitation_revoked'
+                                ? 'Invite revoked'
+                                : req.accessState === 'invitation_expired'
+                                  ? 'Invite expired'
+                                  : 'Invite sent'
+                          : req.status === 'rejected'
+                            ? 'Rejected'
+                            : req.status === 'review_required'
+                              ? 'Review required'
+                              : 'Pending'}
                       </span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">{req.role} at {req.organization || 'No organization'}</p>
                     {req.message && <p className="text-xs text-muted-foreground mt-2 italic">"{req.message}"</p>}
+                    {req.status === 'review_required' && req.reviewNotes && (
+                      <p className="mt-2 text-xs font-medium text-amber-900">{req.reviewNotes}</p>
+                    )}
+                    {req.status === 'approved' && req.invitationSentAt && (
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        {req.deliveryStatus === 'local_link' ? 'Invitation created' : 'Invitation sent'} {new Date(req.invitationSentAt).toLocaleString()}
+                      </p>
+                    )}
                     {req.status === 'approved' && req.invitationPath && (
                       <div className="mt-3 flex min-w-0 items-center gap-2">
                         <a href={req.invitationPath} className="min-w-0 truncate text-xs text-primary underline" target="_blank" rel="noreferrer">
@@ -431,14 +463,26 @@ export function SuperAdminBetaControls() {
                       </div>
                     )}
                   </div>
-                  <div className={`grid w-full gap-2 sm:flex sm:w-auto sm:shrink-0 sm:items-center ${req.status === 'pending' ? 'grid-cols-3' : 'grid-cols-1'}`}>
-                    {req.status === 'pending' && (
+                  <div className="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:flex-wrap sm:items-center sm:justify-end">
+                    {(req.status === 'pending' || req.status === 'review_required') && (
                       <>
                         <Button size="sm" disabled={processingRequest === req.id} onClick={() => handleRequestAction(req.id, 'approve')}>
-                          {processingRequest === req.id ? <Loader2 className="animate-spin" size={16} aria-label="Approving" /> : 'Approve'}
+                          {processingRequest === req.id ? <Loader2 className="animate-spin" size={16} aria-label="Checking" /> : req.status === 'review_required' ? 'Check again' : 'Approve'}
                         </Button>
                         <Button size="sm" variant="outline" disabled={processingRequest === req.id} onClick={() => handleRequestAction(req.id, 'reject')}>Reject</Button>
                       </>
+                    )}
+                    {req.status === 'approved' && req.invitationId && req.accessState !== 'onboarding' && req.accessState !== 'active' && (
+                      <Button size="sm" variant="outline" disabled={processingRequest === req.id} onClick={() => handleRequestAction(req.id, 'resend')}>
+                        <RefreshCw size={15} aria-hidden="true" />
+                        {req.accessState === 'invite_sent' ? 'Resend' : 'Send new invite'}
+                      </Button>
+                    )}
+                    {req.status === 'approved' && req.accessState === 'invite_sent' && (
+                      <Button size="sm" variant="ghost" disabled={processingRequest === req.id} onClick={() => handleRequestAction(req.id, 'revoke-invitation')}>
+                        <Ban size={15} aria-hidden="true" />
+                        Revoke
+                      </Button>
                     )}
                     <Button size="sm" variant="ghost" disabled={processingRequest === req.id} onClick={() => handleRequestAction(req.id, 'archive')}>Archive</Button>
                   </div>

@@ -244,7 +244,6 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
         requiredMinutes: 60,
         sessionDurationMinutes: 30,
         period: "custom",
-        customFrequencyDescription: "September reporting period",
         effectiveFrom: "2026-09-01",
         effectiveTo: "2026-09-30",
       },
@@ -252,6 +251,46 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     assert.equal(requirement.status, 200);
     assert.equal(requirement.body.sessionsCompleted, 0);
     assert.equal(requirement.body.minutesCompleted, 0);
+    assert.equal(requirement.body.customFrequencyDescription, null);
+
+    const customFrequencyWithDetails = await json(
+      "PUT",
+      `/iep-service-requirements?childId=${child.id}`,
+      {
+        requirementId: requirement.body.id,
+        serviceType: "individual",
+        requiredSessions: 2,
+        requiredMinutes: 60,
+        sessionDurationMinutes: 30,
+        period: "custom",
+        customFrequencyDescription: "Every other week",
+        effectiveFrom: "2026-09-01",
+        effectiveTo: "2026-09-30",
+      },
+    );
+    assert.equal(customFrequencyWithDetails.status, 200);
+    assert.equal(
+      customFrequencyWithDetails.body.customFrequencyDescription,
+      "Every other week",
+    );
+
+    const clearedCustomFrequency = await json(
+      "PUT",
+      `/iep-service-requirements?childId=${child.id}`,
+      {
+        requirementId: requirement.body.id,
+        serviceType: "individual",
+        requiredSessions: 2,
+        requiredMinutes: 60,
+        sessionDurationMinutes: 30,
+        period: "custom",
+        customFrequencyDescription: "",
+        effectiveFrom: "2026-09-01",
+        effectiveTo: "2026-09-30",
+      },
+    );
+    assert.equal(clearedCustomFrequency.status, 200);
+    assert.equal(clearedCustomFrequency.body.customFrequencyDescription, null);
 
     const coTreatRequirement = await json(
       "PUT",

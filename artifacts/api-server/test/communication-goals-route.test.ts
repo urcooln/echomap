@@ -109,8 +109,14 @@ test("communication goals are caseload-scoped, versioned, and safely finalized a
     );
     assert.equal((await request(`/communication-goals?childId=${child.id}`)).body.length, 1);
 
-    const otherGoal = await json("POST", "/communication-goals", { ...goalInput, childId: otherChild.id, title: "Other rocket goal" });
+    const { description: _description, ...goalWithoutDescription } = goalInput;
+    const otherGoal = await json("POST", "/communication-goals", {
+      ...goalWithoutDescription,
+      childId: otherChild.id,
+      title: "Other rocket goal",
+    });
     assert.equal(otherGoal.status, 201);
+    assert.equal(otherGoal.body.description, "");
     ids.goals.push(otherGoal.body.id);
     assert.equal((await json("PATCH", `/communication-goals/${goal.id}`, { childId: otherChild.id, version: goal.version, title: "cross child" })).status, 404);
     actor = { ...actor, organizationId: otherOrganization.id };
@@ -174,6 +180,11 @@ test("communication goals are caseload-scoped, versioned, and safely finalized a
       childId: child.id, version: 6, title: "Later goal title", goalArea: "Later area",
     });
     assert.equal(editedAfterFinalize.status, 200);
+    const clearedDescription = await json("PATCH", `/communication-goals/${goal.id}`, {
+      childId: child.id, version: 7, description: "",
+    });
+    assert.equal(clearedDescription.status, 200);
+    assert.equal(clearedDescription.body.description, "");
     const finalizedList = await request("/clinical-documentation?status=all");
     const unchangedFinalized = finalizedList.body.documents.find((item: any) => item.id === draft.body.id);
     assert.deepEqual(unchangedFinalized.content.goalConnections, [expectConnection(selection, "Rocket requesting edit", "Functional requesting", 6)]);
@@ -181,7 +192,7 @@ test("communication goals are caseload-scoped, versioned, and safely finalized a
     assert.deepEqual((persisted!.content as any).goalConnections.map((item: any) => item.sourceId), [activeSource.id]);
     const audits = await db.select().from(securityAuditLogsTable).where(and(eq(securityAuditLogsTable.userId, userId), inArray(securityAuditLogsTable.action, ["COMMUNICATION_GOAL_CREATED", "COMMUNICATION_GOAL_UPDATED"])));
     assert.equal(audits.filter((audit) => audit.action === "COMMUNICATION_GOAL_CREATED").length, 2);
-    assert.equal(audits.filter((audit) => audit.action === "COMMUNICATION_GOAL_UPDATED").length, 6);
+    assert.equal(audits.filter((audit) => audit.action === "COMMUNICATION_GOAL_UPDATED").length, 7);
   } finally {
     await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
     if (ids.documents.length) await db.delete(clinicalDocumentationTable).where(inArray(clinicalDocumentationTable.id, ids.documents));

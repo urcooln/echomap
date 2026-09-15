@@ -4,6 +4,7 @@ import express from "express";
 import test from "node:test";
 import { and, eq, inArray } from "drizzle-orm";
 import {
+  careTeamInvitationsTable,
   childCareTeamMembershipsTable,
   childProfilesTable,
   db,
@@ -17,16 +18,19 @@ import {
 } from "@workspace/db";
 import router from "../src/routes/childled";
 import type { ResolvedCareTeamActor } from "../src/lib/auth-context";
+import { provisionClerkInvitation } from "../src/lib/clerk-invitation-provisioning";
+import { hashInvitationToken } from "../src/lib/invitation-security";
 
 test.after(async () => {
   await pool.end();
 });
 
-test("an existing Teacher can be assigned to another authorized student exactly once", async () => {
+test("existing Teacher and Parent accounts connect to authorized students without changing roles", async () => {
   const suffix = randomUUID();
   const slpUserId = "teacher-assignment-slp-" + suffix;
   const teacherUserId = "teacher-assignment-teacher-" + suffix;
   const parentUserId = "teacher-assignment-parent-" + suffix;
+  const parentClerkUserId = "clerk-parent-" + suffix;
   const teacherEmail = "teacher-" + suffix + "@example.test";
   const parentEmail = "parent-" + suffix + "@example.test";
   const [organization] = await db
@@ -38,6 +42,15 @@ test("an existing Teacher can be assigned to another authorized student exactly 
     })
     .returning();
   assert.ok(organization);
+  const [parentOrganization] = await db
+    .insert(organizationsTable)
+    .values({
+      slug: "parent-assignment-" + suffix,
+      name: "Parent Assignment Source",
+      betaApprovedAt: new Date(),
+    })
+    .returning();
+  assert.ok(parentOrganization);
   await db.insert(usersTable).values([
     {
       id: slpUserId,
@@ -55,8 +68,8 @@ test("an existing Teacher can be assigned to another authorized student exactly 
     },
     {
       id: parentUserId,
-      identityProvider: "teacher-assignment-test",
-      providerSubject: parentUserId,
+      identityProvider: "clerk",
+      providerSubject: parentClerkUserId,
       displayName: "Test Parent",
       email: parentEmail,
     },
@@ -73,7 +86,7 @@ test("an existing Teacher can be assigned to another authorized student exactly 
       role: "teacher",
     },
     {
-      organizationId: organization.id,
+      organizationId: parentOrganization.id,
       userId: parentUserId,
       role: "parent",
     },
@@ -163,21 +176,92 @@ test("an existing Teacher can be assigned to another authorized student exactly 
     });
     assert.equal(unauthorized.status, 403);
 
-    const assigned = await post("/care-team-teachers/assign", {
+    const parentConnected = await post("/care-team-invitations", {
+      childId: oliver.id,
+      email: parentEmail,
+      role: "Parent",
+    });
+    assert.equal(parentConnected.status, 201);
+    assert.deepEqual(await parentConnected.json(), {
+      outcome: "connected",
+      childId: oliver.id,
+      email: parentEmail,
+      role: "Parent",
+      message:
+        "Test Parent was added to this student using their existing ChildLed account.",
+      memberName: "Test Parent",
+    });
+    const [parentTargetMembership] = await db
+      .select()
+      .from(organizationMembershipsTable)
+      .where(
+        and(
+          eq(organizationMembershipsTable.organizationId, organization.id),
+          eq(organizationMembershipsTable.userId, parentUserId),
+        ),
+      )
+      .limit(1);
+    assert.equal(parentTargetMembership?.role, "parent");
+    assert.equal(parentTargetMembership?.active, true);
+
+    const conflictingToken = "wrong-role-invitation-" + suffix;
+    const [conflictingInvitation] = await db
+      .insert(careTeamInvitationsTable)
+      .values({
+        organizationId: organization.id,
+        childId: ava.id,
+        invitedEmail: parentEmail,
+        invitedRole: "Teacher",
+        invitedByUserId: slpUserId,
+        tokenHash: hashInvitationToken(conflictingToken),
+        expiresAt: new Date(Date.now() + 60_000),
+        accessScope: "child",
+        childScope: [ava.id],
+      })
+      .returning();
+    assert.ok(conflictingInvitation);
+    const wrongRoleProvisioning = await provisionClerkInvitation({
+      clerkUser: {
+        id: parentClerkUserId,
+        fullName: "Test Parent",
+        username: null,
+        publicMetadata: {},
+        emailAddresses: [
+          {
+            emailAddress: parentEmail,
+            verification: { status: "verified" },
+          },
+        ],
+      },
+      token: conflictingToken,
+    });
+    assert.equal(wrongRoleProvisioning, null);
+    const [unchangedInvitation] = await db
+      .select({ status: careTeamInvitationsTable.status })
+      .from(careTeamInvitationsTable)
+      .where(eq(careTeamInvitationsTable.id, conflictingInvitation.id));
+    assert.equal(unchangedInvitation?.status, "pending");
+
+    const assigned = await post("/care-team-invitations", {
       childId: ava.id,
       email: teacherEmail,
+      role: "Teacher",
     });
     assert.equal(assigned.status, 201);
     assert.deepEqual(await assigned.json(), {
-      childId: ava.id,
-      assigned: true,
-      notificationCreated: true,
-      teacher: { name: "Sarah Jones", role: "Teacher" },
-    });
-
-    const assignedAgain = await post("/care-team-teachers/assign", {
+      outcome: "connected",
       childId: ava.id,
       email: teacherEmail,
+      role: "Teacher",
+      message:
+        "Sarah Jones was added to this student using their existing ChildLed account.",
+      memberName: "Sarah Jones",
+    });
+
+    const assignedAgain = await post("/care-team-invitations", {
+      childId: ava.id,
+      email: teacherEmail,
+      role: "Teacher",
     });
     assert.equal(assignedAgain.status, 409);
     const assignments = await db
@@ -253,6 +337,9 @@ test("an existing Teacher can be assigned to another authorized student exactly 
     await db
       .delete(teamConversationsTable)
       .where(eq(teamConversationsTable.organizationId, organization.id));
+    await db
+      .delete(careTeamInvitationsTable)
+      .where(eq(careTeamInvitationsTable.organizationId, organization.id));
     await db.delete(childCareTeamMembershipsTable).where(
       inArray(
         childCareTeamMembershipsTable.childId,
@@ -279,6 +366,11 @@ test("an existing Teacher can be assigned to another authorized student exactly 
       .where(inArray(usersTable.id, [slpUserId, teacherUserId, parentUserId]));
     await db
       .delete(organizationsTable)
-      .where(eq(organizationsTable.id, organization.id));
+      .where(
+        inArray(organizationsTable.id, [
+          organization.id,
+          parentOrganization.id,
+        ]),
+      );
   }
 });

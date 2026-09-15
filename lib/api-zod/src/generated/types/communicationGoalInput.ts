@@ -18,11 +18,8 @@ export interface CommunicationGoalInput {
      * @maxLength 160
      */
   goalArea: string;
-  /**
-     * @minLength 1
-     * @maxLength 5000
-     */
-  description: string;
+  /** @maxLength 5000 */
+  description?: string;
   startDate: Date;
   targetDate?: Date;
 }

@@ -49,7 +49,7 @@ export const CreateCommunicationGoalBody = zod.object({
   "childId": zod.number(),
   "title": zod.string().min(1).max(createCommunicationGoalBodyTitleMax),
   "goalArea": zod.string().min(1).max(createCommunicationGoalBodyGoalAreaMax),
-  "description": zod.string().min(1).max(createCommunicationGoalBodyDescriptionMax),
+  "description": zod.string().max(createCommunicationGoalBodyDescriptionMax).optional(),
   "startDate": zod.coerce.date(),
   "targetDate": zod.coerce.date().optional()
 })
@@ -90,7 +90,7 @@ export const UpdateCommunicationGoalBody = zod.object({
   "version": zod.number().min(1),
   "title": zod.string().min(1).max(updateCommunicationGoalBodyTitleMax).optional(),
   "goalArea": zod.string().min(1).max(updateCommunicationGoalBodyGoalAreaMax).optional(),
-  "description": zod.string().min(1).max(updateCommunicationGoalBodyDescriptionMax).optional(),
+  "description": zod.string().max(updateCommunicationGoalBodyDescriptionMax).optional(),
   "startDate": zod.coerce.date().optional(),
   "targetDate": zod.coerce.date().nullish(),
   "status": zod.enum(['active', 'archived']).optional()
@@ -2659,21 +2659,32 @@ export const CreateCareTeamInvitationBody = zod.object({
 export const createCareTeamInvitationResponseEmailMin = 3;
 export const createCareTeamInvitationResponseEmailMax = 320;
 
+export const createCareTeamInvitationResponseInvitationEmailMin = 3;
+export const createCareTeamInvitationResponseInvitationEmailMax = 320;
+
 
 
 export const CreateCareTeamInvitationResponse = zod.object({
-  "id": zod.string(),
+  "outcome": zod.enum(['connected', 'invited']),
   "childId": zod.number(),
   "email": zod.string().min(createCareTeamInvitationResponseEmailMin).max(createCareTeamInvitationResponseEmailMax),
+  "role": zod.enum(['Parent', 'Teacher']),
+  "message": zod.string(),
+  "memberName": zod.string().optional(),
+  "invitation": zod.object({
+  "id": zod.string(),
+  "childId": zod.number(),
+  "email": zod.string().min(createCareTeamInvitationResponseInvitationEmailMin).max(createCareTeamInvitationResponseInvitationEmailMax),
   "role": zod.string(),
   "status": zod.enum(['pending', 'accepted', 'expired', 'revoked']),
   "createdAt": zod.coerce.date(),
   "invitationPath": zod.string().optional()
+}).optional()
 })
 
 
 /**
- * @summary Replace a pending invitation with a fresh Clerk invitation link
+ * @summary Resend a pending invitation through Clerk
  */
 export const ReplaceCareTeamInvitationParams = zod.object({
   "invitationId": zod.coerce.number()

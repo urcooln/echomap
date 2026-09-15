@@ -21,10 +21,7 @@ export interface CommunicationGoalUpdate {
      * @maxLength 160
      */
   goalArea?: string;
-  /**
-     * @minLength 1
-     * @maxLength 5000
-     */
+  /** @maxLength 5000 */
   description?: string;
   startDate?: Date;
   /** @nullable */

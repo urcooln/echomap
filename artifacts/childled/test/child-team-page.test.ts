@@ -38,18 +38,20 @@ test("the child Team tab shows memberships and child-scoped invitations", async 
   assert.match(pageSource, /invitation\.childId === child\.id/);
   assert.match(pageSource, /student\?\.careTeam \?\? \[\]/);
   assert.match(pageSource, /onClick=\{onInvite\}/);
-  assert.match(pageSource, /invitation\.invitationPath/);
-  assert.match(pageSource, /navigator\.clipboard\.writeText/);
-  assert.match(pageSource, /Copy invite link/);
+  assert.doesNotMatch(pageSource, /navigator\.clipboard\.writeText/);
+  assert.doesNotMatch(pageSource, /Copy invite link/);
+  assert.match(pageSource, /Clerk emailed this invitation automatically/);
   assert.match(pageSource, /useReplaceCareTeamInvitation/);
-  assert.match(pageSource, /Get a new link/);
+  assert.match(pageSource, /Resend invitation/);
   assert.match(pageSource, /button-confirm-replace-team-invitation/);
   assert.match(pageSource, /getListCareTeamInvitationsQueryKey/);
-  assert.match(pageSource, /The previous link no longer/);
-  assert.match(invitationFormSource, /useLookupExistingTeacher/);
-  assert.match(invitationFormSource, /useAssignExistingTeacher/);
-  assert.match(invitationFormSource, /Existing ChildLed Teacher found/);
-  assert.match(invitationFormSource, /Add to Student/);
-  assert.match(invitationFormSource, /already has access/);
-  assert.match(invitationFormSource, /Different ChildLed account type/);
+  assert.match(pageSource, /previous\s+link no longer/);
+  assert.doesNotMatch(invitationFormSource, /useLookupExistingTeacher/);
+  assert.doesNotMatch(invitationFormSource, /useAssignExistingTeacher/);
+  assert.match(invitationFormSource, /result\.outcome === "connected"/);
+  assert.match(
+    invitationFormSource,
+    /receive the Clerk invitation automatically/,
+  );
+  assert.match(invitationFormSource, /Add to care team/);
 });

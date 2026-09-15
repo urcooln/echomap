@@ -72,7 +72,13 @@ test("keeps student rows concise and reveals compliance by service", async () =>
   assert.match(pageSource, /Sessions delivered/);
   assert.match(pageSource, /Outstanding makeups/);
   assert.match(pageSource, /service\.customFrequencyDescription/);
-  assert.match(pageSource, /onOpenCareTeam\(student\.childId\)/);
+  assert.match(pageSource, /onOpenProfile\(student\.childId\)/);
+  assert.match(pageSource, /title="View student profile"/);
+  assert.match(pageSource, /aria-label="View student profile"/);
+  assert.match(pageSource, /<UserRound/);
+  assert.doesNotMatch(pageSource, /onOpenCareTeam/);
+  assert.match(appSource, /onOpenProfile=\{openChildWorkspace\}/);
+  assert.match(appSource, /if \(section === "team"\)/);
   assert.match(pageSource, /Choose a service to log/);
   assert.match(pageSource, /table-fixed/);
   assert.doesNotMatch(pageSource, /overflow-x-auto/);

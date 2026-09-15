@@ -989,6 +989,36 @@ export interface CareTeamInvitationInput {
   role: CareTeamInvitationInputRole;
 }
 
+export type CareTeamInvitationResultOutcome = typeof CareTeamInvitationResultOutcome[keyof typeof CareTeamInvitationResultOutcome];
+
+
+export const CareTeamInvitationResultOutcome = {
+  connected: 'connected',
+  invited: 'invited',
+} as const;
+
+export type CareTeamInvitationResultRole = typeof CareTeamInvitationResultRole[keyof typeof CareTeamInvitationResultRole];
+
+
+export const CareTeamInvitationResultRole = {
+  Parent: 'Parent',
+  Teacher: 'Teacher',
+} as const;
+
+export interface CareTeamInvitationResult {
+  outcome: CareTeamInvitationResultOutcome;
+  childId: number;
+  /**
+     * @minLength 3
+     * @maxLength 320
+     */
+  email: string;
+  role: CareTeamInvitationResultRole;
+  message: string;
+  memberName?: string;
+  invitation?: CareTeamInvitation;
+}
+
 export interface ExistingTeacherLookupInput {
   childId: number;
   /**
@@ -1810,11 +1840,8 @@ export interface CommunicationGoalInput {
      * @maxLength 160
      */
   goalArea: string;
-  /**
-     * @minLength 1
-     * @maxLength 5000
-     */
-  description: string;
+  /** @maxLength 5000 */
+  description?: string;
   startDate: string;
   targetDate?: string;
 }
@@ -1841,10 +1868,7 @@ export interface CommunicationGoalUpdate {
      * @maxLength 160
      */
   goalArea?: string;
-  /**
-     * @minLength 1
-     * @maxLength 5000
-     */
+  /** @maxLength 5000 */
   description?: string;
   startDate?: string;
   /** @nullable */

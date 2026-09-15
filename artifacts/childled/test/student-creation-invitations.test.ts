@@ -18,12 +18,12 @@ test("student creation can issue child-scoped Parent and Teacher invitations", a
   assert.match(formSource, /addInvite\("Parent"\)/);
   assert.match(formSource, /addInvite\("Teacher"\)/);
   assert.match(formSource, /retryInvitation/);
-  assert.match(formSource, /teacherLookupMutation\.mutateAsync/);
-  assert.match(formSource, /teacherAssignmentMutation\.mutateAsync/);
-  assert.match(formSource, /Existing ChildLed Teacher found/);
-  assert.match(formSource, /Add to Student/);
-  assert.match(formSource, /Different ChildLed account type/);
-  assert.match(formSource, /no invitation created/);
+  assert.doesNotMatch(formSource, /teacherLookupMutation\.mutateAsync/);
+  assert.doesNotMatch(formSource, /teacherAssignmentMutation\.mutateAsync/);
+  assert.match(formSource, /result\.result\?\.outcome === "connected"/);
+  assert.match(formSource, /Existing accounts were connected automatically/);
+  assert.match(formSource, /Clerk emailed invitations/);
+  assert.doesNotMatch(formSource, /Copy link/);
   assert.ok(
     formSource.indexOf("await mutation.mutateAsync") <
       formSource.indexOf("results.push(await sendInvitation"),

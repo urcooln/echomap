@@ -1402,16 +1402,16 @@ paths:
             schema: { $ref: "#/components/schemas/CareTeamInvitationInput" }
       responses:
         "201":
-          description: Pending invitation
+          description: Existing account connected or invitation emailed
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/CareTeamInvitation" }
+              schema: { $ref: "#/components/schemas/CareTeamInvitationResult" }
         "403": { description: Clinician access and assigned child required }
   /care-team-invitations/{invitationId}/replace:
     post:
       operationId: replaceCareTeamInvitation
       tags: [collaboration]
-      summary: Replace a pending invitation with a fresh Clerk invitation link
+      summary: Resend a pending invitation through Clerk
       parameters:
         - in: path
           name: invitationId
@@ -1419,7 +1419,7 @@ paths:
           schema: { type: number }
       responses:
         "200":
-          description: Refreshed pending invitation
+          description: Invitation resent by email
           content:
             application/json:
               schema: { $ref: "#/components/schemas/CareTeamInvitation" }
@@ -4467,6 +4467,17 @@ components:
         childId: { type: number }
         email: { type: string, minLength: 3, maxLength: 320 }
         role: { type: string, enum: [Parent, Teacher] }
+    CareTeamInvitationResult:
+      type: object
+      required: [outcome, childId, email, role, message]
+      properties:
+        outcome: { type: string, enum: [connected, invited] }
+        childId: { type: number }
+        email: { type: string, minLength: 3, maxLength: 320 }
+        role: { type: string, enum: [Parent, Teacher] }
+        message: { type: string }
+        memberName: { type: string }
+        invitation: { $ref: "#/components/schemas/CareTeamInvitation" }
     ExistingTeacherLookupInput:
       type: object
       required: [childId, email]
@@ -5296,12 +5307,12 @@ components:
         updatedAt: { type: string, format: date-time }
     CommunicationGoalInput:
       type: object
-      required: [childId, title, goalArea, description, startDate]
+      required: [childId, title, goalArea, startDate]
       properties:
         childId: { type: number }
         title: { type: string, minLength: 1, maxLength: 240 }
         goalArea: { type: string, minLength: 1, maxLength: 160 }
-        description: { type: string, minLength: 1, maxLength: 5000 }
+        description: { type: string, maxLength: 5000 }
         startDate: { type: string, format: date }
         targetDate: { type: string, format: date }
     CommunicationGoalUpdate:
@@ -5312,7 +5323,7 @@ components:
         version: { type: number, minimum: 1 }
         title: { type: string, minLength: 1, maxLength: 240 }
         goalArea: { type: string, minLength: 1, maxLength: 160 }
-        description: { type: string, minLength: 1, maxLength: 5000 }
+        description: { type: string, maxLength: 5000 }
         startDate: { type: string, format: date }
         targetDate: { type: [string, "null"], format: date }
         status: { type: string, enum: [active, archived] }

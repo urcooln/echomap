@@ -274,11 +274,13 @@ import {
   CareTeamOnboardingMembershipError,
 } from "../lib/care-team-onboarding-account";
 import {
+  assignExistingCareTeamAccount,
   assignExistingTeacherAccount,
   ExistingTeacherAssignmentError,
   isValidTeacherEmail,
   lookupExistingTeacherAccount,
   normalizeTeacherEmail,
+  resolveExistingCareTeamAccount,
 } from "../lib/existing-teacher-assignment";
 import {
   attachClerkInvitationToTransfer,
@@ -294,9 +296,11 @@ import {
 } from "../lib/student-transfer";
 import {
   issueApplicationInvitation,
+  pendingApplicationInvitationIdsForEmail,
   pendingApplicationInvitationUrls,
   revokeApplicationInvitation,
 } from "../lib/clerk-invitations";
+import { resolveBetaApplicantIdentity } from "../lib/beta-access-approval";
 import {
   DEVELOPMENT_DEMO_COOKIE,
   DEVELOPMENT_DEMO_EMAIL,
@@ -9797,7 +9801,7 @@ router.post("/communication-goals", async (req, res) => {
   if (!body.success)
     return fail(
       res,
-      "A title, goal area, description, and valid start date are required.",
+      "A title, goal area, and valid start date are required.",
     );
   if (!requireChildAccess(req, res, body.data.childId)) return;
   const actor = requireClinician(req, res);
@@ -9813,7 +9817,7 @@ router.post("/communication-goals", async (req, res) => {
         childId: body.data.childId,
         title: body.data.title.trim(),
         goalArea: body.data.goalArea.trim(),
-        description: body.data.description.trim(),
+        description: body.data.description?.trim() ?? "",
         startDate: dateValue(body.data.startDate),
         targetDate: body.data.targetDate
           ? dateValue(body.data.targetDate)
@@ -13242,21 +13246,6 @@ router.get("/care-team-invitations", async (req, res) => {
         sql`lower(${careTeamInvitationsTable.invitedRole}) in ('parent', 'teacher')`,
       ),
     );
-  let invitationUrls = new Map<string, string>();
-  try {
-    invitationUrls = await pendingApplicationInvitationUrls(
-      invitations.flatMap((invitation) =>
-        invitation.status === "pending" && invitation.clerkInvitationId
-          ? [invitation.clerkInvitationId]
-          : [],
-      ),
-    );
-  } catch (error) {
-    req.log.warn(
-      { err: error },
-      "Could not retrieve pending Clerk invitation links",
-    );
-  }
   return res.json(
     ListCareTeamInvitationsResponse.parse(
       invitations.map((invitation) => ({
@@ -13266,13 +13255,6 @@ router.get("/care-team-invitations", async (req, res) => {
         role: invitation.invitedRole,
         status: invitation.status,
         createdAt: invitation.createdAt.toISOString(),
-        ...(invitation.status === "pending" &&
-        invitation.clerkInvitationId &&
-        invitationUrls.has(invitation.clerkInvitationId)
-          ? {
-              invitationPath: invitationUrls.get(invitation.clerkInvitationId),
-            }
-          : {}),
       })),
     ),
   );
@@ -13740,27 +13722,90 @@ router.post("/care-team-invitations", async (req, res) => {
   const email = normalizeTeacherEmail(body.data.email);
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
     return fail(res, "Use a valid email address for the invitation.");
-  if (body.data.role === "Teacher") {
-    const existingTeacher = await lookupExistingTeacherAccount({
-      organizationId: actor.organizationId,
+  let existingAccount: Awaited<
+    ReturnType<typeof resolveExistingCareTeamAccount>
+  >;
+  try {
+    existingAccount = await resolveExistingCareTeamAccount({
       childId: body.data.childId,
       email,
+      role: body.data.role,
     });
-    if (existingTeacher.status === "available") {
+  } catch (error) {
+    req.log.error(
+      { err: error, childId: body.data.childId, role: body.data.role },
+      "Could not resolve existing care-team account",
+    );
+    return res.status(502).json({
+      error:
+        "ChildLed could not securely check this account. No invitation or student access was created; please try again.",
+    });
+  }
+  if (existingAccount.kind === "review_required") {
+    return res.status(409).json({ error: existingAccount.reason });
+  }
+  if (existingAccount.kind === "existing") {
+    if (existingAccount.status === "already_assigned") {
       return res.status(409).json({
-        error:
-          "An existing ChildLed Teacher was found. Confirm Add to Student instead of creating another invitation.",
+        error: `This ${body.data.role} already has access to the selected student.`,
       });
     }
-    if (existingTeacher.status === "already_assigned") {
-      return res.status(409).json({
-        error: "This Teacher already has access to the selected student.",
+    try {
+      const assignment = await assignExistingCareTeamAccount({
+        organizationId: actor.organizationId,
+        childId: body.data.childId,
+        email,
+        role: body.data.role,
+        userId: existingAccount.userId,
+        assignedByUserId: actor.userId,
       });
-    }
-    if (existingTeacher.status === "different_role") {
-      return res.status(409).json({
-        error:
-          "This email is already associated with a different ChildLed account type.",
+      await writeSecurityAudit({
+        actor,
+        action: "EXISTING_CARE_TEAM_MEMBER_ASSIGNED_TO_CHILD",
+        targetType: "child_care_team_membership",
+        targetId: assignment.membershipId,
+        childId: assignment.childId,
+        metadata: {
+          role: body.data.role,
+          notificationId: assignment.notificationId,
+        },
+      });
+      return res.status(201).json(
+        CreateCareTeamInvitationResponse.parse({
+          outcome: "connected",
+          childId: assignment.childId,
+          email,
+          role: body.data.role,
+          memberName: assignment.member.name,
+          message: `${assignment.member.name} was added to this student using their existing ChildLed account.`,
+        }),
+      );
+    } catch (error) {
+      if (error instanceof ExistingTeacherAssignmentError) {
+        if (error.code === "already_assigned") {
+          return res.status(409).json({
+            error: `This ${body.data.role} already has access to the selected student.`,
+          });
+        }
+        if (error.code === "membership_limit") {
+          return res.status(409).json({
+            error:
+              "This workspace has reached its active member limit. No student access was changed.",
+          });
+        }
+        if (error.code === "different_role") {
+          return res.status(409).json({
+            error:
+              "This email is associated with a different ChildLed account type. No role or student access was changed.",
+          });
+        }
+      }
+      req.log.error(
+        { err: error, childId: body.data.childId, role: body.data.role },
+        "Could not attach existing care-team account",
+      );
+      return res.status(500).json({
+        error: `The existing ${body.data.role} account could not be added to this student.`,
       });
     }
   }
@@ -13827,7 +13872,6 @@ router.post("/care-team-invitations", async (req, res) => {
       .status(500)
       .json({ error: "The invitation could not be created." });
   const invitation = issuance.invitation;
-  let invitationPath: string;
   let clerkInvitationId: string | null = null;
   try {
     const issued = await issueApplicationInvitation({
@@ -13835,9 +13879,9 @@ router.post("/care-team-invitations", async (req, res) => {
       token,
       childledInvitationId: invitation.id,
       invitedRole: invitation.invitedRole,
+      ignoreExisting: false,
     });
     clerkInvitationId = issued.clerkInvitationId;
-    invitationPath = issued.invitationPath;
     if (clerkInvitationId) {
       await db
         .update(careTeamInvitationsTable)
@@ -13878,13 +13922,19 @@ router.post("/care-team-invitations", async (req, res) => {
   });
   return res.status(201).json(
     CreateCareTeamInvitationResponse.parse({
-      id: String(invitation.id),
+      outcome: "invited",
       childId: invitation.childId,
       email: invitation.invitedEmail,
       role: invitation.invitedRole,
-      status: invitation.status,
-      createdAt: invitation.createdAt.toISOString(),
-      invitationPath,
+      message: `Invitation sent to ${invitation.invitedEmail}.`,
+      invitation: {
+        id: String(invitation.id),
+        childId: invitation.childId,
+        email: invitation.invitedEmail,
+        role: invitation.invitedRole,
+        status: invitation.status,
+        createdAt: invitation.createdAt.toISOString(),
+      },
     }),
   );
 });
@@ -13919,6 +13969,14 @@ router.post(
     if (!invitation?.childId) {
       return res.status(404).json({ error: "Pending invitation not found." });
     }
+    if (
+      invitation.invitedRole !== "Parent" &&
+      invitation.invitedRole !== "Teacher"
+    ) {
+      return res.status(409).json({
+        error: "This invitation is not a Parent or Teacher invitation.",
+      });
+    }
     if (!requireChildAccess(req, res, invitation.childId)) return;
 
     const [organization] = await db
@@ -13943,14 +14001,44 @@ router.post(
       });
     }
 
+    let accountResolution: Awaited<
+      ReturnType<typeof resolveExistingCareTeamAccount>
+    >;
+    try {
+      accountResolution = await resolveExistingCareTeamAccount({
+        childId: invitation.childId,
+        email: invitation.invitedEmail,
+        role: invitation.invitedRole,
+      });
+    } catch (error) {
+      req.log.error(
+        { err: error, invitationId: invitation.id },
+        "Could not verify account before resending care-team invitation",
+      );
+      return res.status(502).json({
+        error:
+          "ChildLed could not securely check this account. The invitation was not changed.",
+      });
+    }
+    if (accountResolution.kind !== "new") {
+      return res.status(409).json({
+        error:
+          accountResolution.kind === "review_required"
+            ? accountResolution.reason
+            : `This ${invitation.invitedRole} now has a ChildLed account. Close this dialog and add the account again instead of resending an invitation.`,
+      });
+    }
+
     const token = invitationToken();
     let replacement: Awaited<ReturnType<typeof issueApplicationInvitation>>;
     try {
+      await revokeApplicationInvitation(invitation.clerkInvitationId);
       replacement = await issueApplicationInvitation({
         emailAddress: invitation.invitedEmail,
         token,
         childledInvitationId: invitation.id,
         invitedRole: invitation.invitedRole,
+        ignoreExisting: false,
       });
     } catch (error) {
       logger.error(
@@ -13959,7 +14047,7 @@ router.post(
       );
       return res.status(502).json({
         error:
-          "A new invitation could not be issued. The existing invitation was not changed.",
+          "A replacement invitation could not be emailed. Retry to issue a new invitation.",
       });
     }
 
@@ -14009,13 +14097,6 @@ router.post(
       });
     }
 
-    await revokeApplicationInvitation(invitation.clerkInvitationId).catch(
-      (error) =>
-        logger.warn(
-          { err: error, clerkInvitationId: invitation.clerkInvitationId },
-          "Could not revoke superseded Clerk invitation",
-        ),
-    );
     await writeSecurityAudit({
       actor,
       action: "CARE_TEAM_INVITATION_REPLACED",
@@ -14032,7 +14113,6 @@ router.post(
         role: updated.invitedRole,
         status: updated.status,
         createdAt: updated.createdAt.toISOString(),
-        invitationPath: replacement.invitationPath,
       }),
     );
   },
@@ -18476,11 +18556,6 @@ router.put("/iep-service-requirements", async (req, res) => {
     return fail(res, "The service end date cannot be before its start date.");
   if (body.data.period === "custom" && !effectiveTo)
     return fail(res, "A custom frequency requires an end date.");
-  if (
-    body.data.period === "custom" &&
-    !body.data.customFrequencyDescription?.trim()
-  )
-    return fail(res, "Describe how the custom service frequency is scheduled.");
   const serviceName = serviceTypeLabels[body.data.serviceType];
   if (
     !Number.isInteger(body.data.requiredSessions) ||
@@ -23968,6 +24043,10 @@ const slpWorkspaceSlug = (organizationName: string) => {
 const rawParam = (value: string | string[] | undefined) =>
   Array.isArray(value) ? value[0] : value;
 const betaActor = (req: Request) => req.childledActor;
+const betaSignInPath = () =>
+  runtimeConfig.publicAppOrigin
+    ? new URL("/sign-in", runtimeConfig.publicAppOrigin).toString()
+    : "/sign-in";
 
 router.post("/beta-access-requests", async (req, res): Promise<void> => {
   const input = req.body as Record<string, unknown>;
@@ -24017,9 +24096,7 @@ router.get("/admin/beta-access-requests", async (req, res): Promise<void> => {
     .where(isNull(betaAccessRequestsTable.archivedAt))
     .orderBy(desc(betaAccessRequestsTable.createdAt));
   const invitationIds = requests.flatMap((request) =>
-    request.status === "approved" && request.invitationId
-      ? [request.invitationId]
-      : [],
+    request.invitationId ? [request.invitationId] : [],
   );
   const invitations = invitationIds.length
     ? await db
@@ -24045,11 +24122,80 @@ router.get("/admin/beta-access-requests", async (req, res): Promise<void> => {
   const invitationsById = new Map(
     invitations.map((invitation) => [invitation.id, invitation]),
   );
+  const approvedOrganizationIds = requests.flatMap((request) =>
+    request.approvedOrganizationId ? [request.approvedOrganizationId] : [],
+  );
+  const requestEmails = [...new Set(requests.map((request) => request.email))];
+  const membershipRows =
+    approvedOrganizationIds.length && requestEmails.length
+      ? await db
+          .select({
+            email: usersTable.email,
+            organizationId: organizationMembershipsTable.organizationId,
+            accountStatus: organizationMembershipsTable.accountStatus,
+            onboardingCompletedAt:
+              organizationMembershipsTable.onboardingCompletedAt,
+            active: organizationMembershipsTable.active,
+          })
+          .from(usersTable)
+          .innerJoin(
+            organizationMembershipsTable,
+            eq(organizationMembershipsTable.userId, usersTable.id),
+          )
+          .where(
+            and(
+              inArray(
+                organizationMembershipsTable.organizationId,
+                approvedOrganizationIds,
+              ),
+              inArray(sql<string>`lower(${usersTable.email})`, requestEmails),
+              isNull(usersTable.archivedAt),
+            ),
+          )
+      : [];
+  const membershipsByApplicant = new Map(
+    membershipRows.map((membership) => [
+      `${membership.email?.toLowerCase()}:${membership.organizationId}`,
+      membership,
+    ]),
+  );
   res.json(
     requests.map((item) => {
       const invitation = item.invitationId
         ? invitationsById.get(item.invitationId)
         : undefined;
+      const membership = item.approvedOrganizationId
+        ? membershipsByApplicant.get(
+            `${item.email}:${item.approvedOrganizationId}`,
+          )
+        : undefined;
+      const onboardingComplete = Boolean(
+        membership?.active &&
+        membership.accountStatus === "active" &&
+        membership.onboardingCompletedAt,
+      );
+      const accessState =
+        item.status === "review_required"
+          ? "review_required"
+          : item.status === "rejected"
+            ? "rejected"
+            : item.status !== "approved"
+              ? "pending"
+              : invitation?.status === "revoked"
+                ? "invitation_revoked"
+                : invitation?.status === "accepted"
+                  ? onboardingComplete
+                    ? "active"
+                    : "onboarding"
+                  : invitation?.status === "pending"
+                    ? invitation.expiresAt && invitation.expiresAt <= new Date()
+                      ? "invitation_expired"
+                      : "invite_sent"
+                    : membership
+                      ? onboardingComplete
+                        ? "active"
+                        : "onboarding"
+                      : "approved";
       return {
         id: item.id,
         fullName: item.displayName,
@@ -24058,7 +24204,22 @@ router.get("/admin/beta-access-requests", async (req, res): Promise<void> => {
         organization: item.organizationName,
         message: item.message,
         status: item.status,
+        accessState,
+        deliveryStatus:
+          item.status === "approved" && invitation
+            ? invitation.clerkInvitationId
+              ? "invitation_sent"
+              : "local_link"
+            : item.status === "approved" && !item.invitationId
+              ? "existing_account"
+              : null,
+        reviewNotes: item.reviewNotes,
         invitationId: item.invitationId,
+        invitationSentAt: item.invitationSentAt?.toISOString() ?? null,
+        approvedAt: item.reviewedAt?.toISOString() ?? null,
+        ...(item.status === "approved" && !item.invitationId
+          ? { signInPath: betaSignInPath() }
+          : {}),
         ...(invitation?.clerkInvitationId &&
         invitationUrls.has(invitation.clerkInvitationId)
           ? {
@@ -24083,6 +24244,367 @@ for (const action of ["approve", "reject", "archive"] as const) {
         return;
       }
       if (action === "approve") {
+        const [candidate] = await db
+          .select()
+          .from(betaAccessRequestsTable)
+          .where(eq(betaAccessRequestsTable.id, id))
+          .limit(1);
+        if (!candidate || candidate.archivedAt) {
+          res.status(404).json({ error: "Request not found." });
+          return;
+        }
+        if (candidate.status === "approved") {
+          let invitationPath: string | undefined;
+          let accessState = candidate.invitationId ? "invite_sent" : "active";
+          if (candidate.invitationId) {
+            const [invitation] = await db
+              .select()
+              .from(careTeamInvitationsTable)
+              .where(eq(careTeamInvitationsTable.id, candidate.invitationId))
+              .limit(1);
+            accessState =
+              invitation?.status === "accepted"
+                ? "onboarding"
+                : invitation?.status === "revoked"
+                  ? "invitation_revoked"
+                  : invitation?.expiresAt && invitation.expiresAt <= new Date()
+                    ? "invitation_expired"
+                    : "invite_sent";
+            if (
+              invitation?.status === "pending" &&
+              invitation.clerkInvitationId
+            ) {
+              try {
+                const invitationUrls = await pendingApplicationInvitationUrls([
+                  invitation.clerkInvitationId,
+                ]);
+                invitationPath = invitationUrls.get(
+                  invitation.clerkInvitationId,
+                );
+              } catch (error) {
+                req.log.warn(
+                  { err: error, invitationId: invitation.id },
+                  "Could not retrieve existing SLP invitation link",
+                );
+              }
+            }
+          }
+          res.json({
+            id: candidate.id,
+            status: candidate.status,
+            accessState,
+            message: candidate.invitationId
+              ? "This SLP request is already approved. No duplicate invitation was sent."
+              : "This existing SLP account is already approved and active.",
+            ...(invitationPath ? { invitationPath } : {}),
+            ...(!candidate.invitationId
+              ? { signInPath: betaSignInPath() }
+              : {}),
+          });
+          return;
+        }
+        if (candidate.status === "rejected") {
+          res.status(409).json({
+            error:
+              "A rejected request cannot be approved unless it is reviewed again.",
+          });
+          return;
+        }
+        if (candidate.requestedRole !== "Clinician") {
+          res
+            .status(409)
+            .json({ error: "Only SLP beta requests can be approved." });
+          return;
+        }
+        const [approvalControls] = await db
+          .select()
+          .from(betaControlsTable)
+          .where(eq(betaControlsTable.id, 1))
+          .limit(1);
+        if (!approvalControls?.enabled) {
+          res.status(403).json({
+            error:
+              "Private beta access is currently disabled. No access change was made.",
+          });
+          return;
+        }
+
+        let identity: Awaited<ReturnType<typeof resolveBetaApplicantIdentity>>;
+        try {
+          identity = await resolveBetaApplicantIdentity(candidate.email);
+        } catch (error) {
+          req.log.warn(
+            { err: error, betaAccessRequestId: id },
+            "Could not verify beta applicant identity",
+          );
+          res.status(502).json({
+            error:
+              "ChildLed could not verify this applicant against Clerk. No access change was made; please try again.",
+          });
+          return;
+        }
+
+        const requireReview = async (reason: string) => {
+          const reviewedAt = new Date();
+          const [updated] = await db
+            .update(betaAccessRequestsTable)
+            .set({
+              status: "review_required",
+              reviewedAt,
+              reviewedByUserId: actor.userId,
+              reviewNotes: reason,
+            })
+            .where(
+              and(
+                eq(betaAccessRequestsTable.id, id),
+                or(
+                  eq(betaAccessRequestsTable.status, "pending"),
+                  eq(betaAccessRequestsTable.status, "review_required"),
+                ),
+              ),
+            )
+            .returning();
+          if (!updated) {
+            res.status(409).json({
+              error:
+                "This request changed while it was being reviewed. Refresh the queue and try again.",
+            });
+            return false;
+          }
+          await writeSecurityAudit({
+            actor,
+            action: "BETA_REQUEST_REVIEW_REQUIRED",
+            targetType: "beta_access_request",
+            targetId: id,
+            outcome: "failure",
+            metadata: { reason },
+          });
+          res.json({
+            id,
+            status: "review_required",
+            accessState: "review_required",
+            message: reason,
+          });
+          return true;
+        };
+
+        if (identity.kind === "review_required") {
+          await requireReview(identity.reason);
+          return;
+        }
+
+        if (identity.kind === "existing_slp") {
+          const activatedAt = new Date();
+          const activated = await db.transaction(async (tx) => {
+            await tx.execute(
+              sql`select id from beta_access_requests where id = ${id} for update`,
+            );
+            await tx.execute(
+              sql`select id from organization_memberships where id = ${identity.slp.membershipId} for update`,
+            );
+            const [request] = await tx
+              .select()
+              .from(betaAccessRequestsTable)
+              .where(eq(betaAccessRequestsTable.id, id))
+              .limit(1);
+            const [membership] = await tx
+              .select()
+              .from(organizationMembershipsTable)
+              .where(
+                and(
+                  eq(
+                    organizationMembershipsTable.id,
+                    identity.slp.membershipId,
+                  ),
+                  eq(organizationMembershipsTable.userId, identity.slp.userId),
+                  eq(
+                    organizationMembershipsTable.organizationId,
+                    identity.slp.organizationId,
+                  ),
+                  sql`lower(${organizationMembershipsTable.role}) = 'clinician'`,
+                ),
+              )
+              .limit(1);
+            const [user] = await tx
+              .select()
+              .from(usersTable)
+              .where(eq(usersTable.id, identity.slp.userId))
+              .limit(1);
+            const [organization] = await tx
+              .select()
+              .from(organizationsTable)
+              .where(eq(organizationsTable.id, identity.slp.organizationId))
+              .limit(1);
+            const [controls] = await tx
+              .select()
+              .from(betaControlsTable)
+              .where(eq(betaControlsTable.id, 1))
+              .limit(1);
+            if (
+              !request ||
+              !["pending", "review_required"].includes(request.status) ||
+              !membership ||
+              !user ||
+              user.disabledAt ||
+              !organization ||
+              organization.archivedAt ||
+              organization.disabledAt ||
+              !controls?.enabled
+            ) {
+              return null;
+            }
+            if (!membership.active) {
+              const [activeCount] = await tx
+                .select({ count: sql<number>`count(*)::int` })
+                .from(organizationMembershipsTable)
+                .where(
+                  and(
+                    eq(
+                      organizationMembershipsTable.organizationId,
+                      organization.id,
+                    ),
+                    eq(organizationMembershipsTable.active, true),
+                  ),
+                );
+              const limit =
+                organization.betaUserLimit ??
+                controls.defaultOrganizationUserLimit;
+              if (
+                limit !== null &&
+                limit !== undefined &&
+                (activeCount?.count ?? 0) >= limit
+              ) {
+                return null;
+              }
+            }
+            const onboardingComplete = Boolean(
+              membership.accountStatus === "active" &&
+              membership.onboardingCompletedAt,
+            );
+            await tx
+              .update(usersTable)
+              .set({
+                betaApprovedAt: user.betaApprovedAt ?? activatedAt,
+                betaCohort: user.betaCohort ?? controls.defaultCohort,
+              })
+              .where(eq(usersTable.id, user.id));
+            await tx
+              .update(organizationsTable)
+              .set({
+                betaApprovedAt: organization.betaApprovedAt ?? activatedAt,
+                betaCohort: organization.betaCohort ?? controls.defaultCohort,
+                betaUserLimit:
+                  organization.betaUserLimit ??
+                  controls.defaultOrganizationUserLimit,
+              })
+              .where(eq(organizationsTable.id, organization.id));
+            await tx
+              .update(organizationMembershipsTable)
+              .set({
+                active: true,
+                accountStatus: onboardingComplete ? "active" : "onboarding",
+              })
+              .where(eq(organizationMembershipsTable.id, membership.id));
+            const [updated] = await tx
+              .update(betaAccessRequestsTable)
+              .set({
+                status: "approved",
+                reviewedAt: activatedAt,
+                reviewedByUserId: actor.userId,
+                reviewNotes: null,
+                approvedOrganizationId: organization.id,
+                invitationId: null,
+                invitationSentAt: null,
+              })
+              .where(eq(betaAccessRequestsTable.id, request.id))
+              .returning();
+            return updated
+              ? { request: updated, organization, onboardingComplete }
+              : null;
+          });
+          if (!activated) {
+            await requireReview(
+              "This existing SLP account could not be activated automatically. Review its workspace access and beta capacity.",
+            );
+            return;
+          }
+          await writeSecurityAudit({
+            actor,
+            action: "BETA_EXISTING_SLP_ACTIVATED",
+            targetType: "beta_access_request",
+            targetId: id,
+            metadata: {
+              organizationId: activated.organization.id,
+              userId: identity.slp.userId,
+            },
+          });
+          res.json({
+            id,
+            status: "approved",
+            accessState: activated.onboardingComplete ? "active" : "onboarding",
+            deliveryStatus: "existing_account",
+            signInPath: betaSignInPath(),
+            message: activated.onboardingComplete
+              ? "Approved. Existing SLP account activated."
+              : "Approved. Existing SLP account activated and ready to finish onboarding.",
+          });
+          return;
+        }
+
+        const [pendingChildledInvitation] = await db
+          .select({ id: careTeamInvitationsTable.id })
+          .from(careTeamInvitationsTable)
+          .where(
+            and(
+              sql`lower(${careTeamInvitationsTable.invitedEmail}) = ${candidate.email}`,
+              eq(careTeamInvitationsTable.status, "pending"),
+              isNull(careTeamInvitationsTable.revokedAt),
+            ),
+          )
+          .limit(1);
+        if (pendingChildledInvitation) {
+          await requireReview(
+            "This email already has a pending ChildLed invitation. Review required before approval can continue.",
+          );
+          return;
+        }
+        const dayAgo = new Date(Date.now() - 86_400_000);
+        const [recentInvitations] = await db
+          .select({ count: sql<number>`count(*)::int` })
+          .from(careTeamInvitationsTable)
+          .where(gte(careTeamInvitationsTable.createdAt, dayAgo));
+        if (
+          approvalControls.invitationLimitPerDay <=
+          (recentInvitations?.count ?? 0)
+        ) {
+          res.status(429).json({
+            error:
+              "The daily invitation limit has been reached. No invitation was created.",
+          });
+          return;
+        }
+
+        try {
+          const pendingClerkInvitations =
+            await pendingApplicationInvitationIdsForEmail(candidate.email);
+          if (pendingClerkInvitations.length) {
+            await requireReview(
+              "This email already has a pending Clerk invitation. Review required before approval can continue.",
+            );
+            return;
+          }
+        } catch (error) {
+          req.log.warn(
+            { err: error, betaAccessRequestId: id },
+            "Could not inspect pending Clerk invitations",
+          );
+          res.status(502).json({
+            error:
+              "ChildLed could not verify pending Clerk invitations. No invitation was created; please try again.",
+          });
+          return;
+        }
+
         const token = invitationToken();
         const expiresAt = new Date(Date.now() + 7 * 86_400_000);
         const approved = await db.transaction(async (tx) => {
@@ -24092,7 +24614,11 @@ for (const action of ["approve", "reject", "archive"] as const) {
             .where(eq(betaAccessRequestsTable.id, id))
             .limit(1)
             .for("update");
-          if (!request || request.status !== "pending" || request.archivedAt)
+          if (
+            !request ||
+            !["pending", "review_required"].includes(request.status) ||
+            request.archivedAt
+          )
             return null;
           const roleMap: Record<string, "clinician"> = {
             Clinician: "clinician",
@@ -24119,7 +24645,7 @@ for (const action of ["approve", "reject", "archive"] as const) {
             .from(careTeamInvitationsTable)
             .where(
               and(
-                eq(careTeamInvitationsTable.invitedEmail, request.email),
+                sql`lower(${careTeamInvitationsTable.invitedEmail}) = ${request.email}`,
                 eq(careTeamInvitationsTable.status, "pending"),
                 isNull(careTeamInvitationsTable.revokedAt),
               ),
@@ -24158,79 +24684,48 @@ for (const action of ["approve", "reject", "archive"] as const) {
               status: "approved",
               reviewedAt: new Date(),
               reviewedByUserId: actor.userId,
+              reviewNotes: null,
               approvedOrganizationId: organization.id,
               invitationId: invite.id,
+              invitationSentAt: null,
             })
             .where(eq(betaAccessRequestsTable.id, id))
             .returning();
           return updated ? { request: updated, invite, organization } : null;
         });
         if (!approved) {
-          const [current] = await db
-            .select()
-            .from(betaAccessRequestsTable)
-            .where(eq(betaAccessRequestsTable.id, id))
-            .limit(1);
-          if (current?.status === "approved") {
-            let invitationPath: string | undefined;
-            let expiresAt: string | undefined;
-            if (current.invitationId) {
-              const [invitation] = await db
-                .select()
-                .from(careTeamInvitationsTable)
-                .where(eq(careTeamInvitationsTable.id, current.invitationId))
-                .limit(1);
-              expiresAt = invitation?.expiresAt?.toISOString();
-              if (
-                invitation?.status === "pending" &&
-                invitation.clerkInvitationId
-              ) {
-                try {
-                  const invitationUrls = await pendingApplicationInvitationUrls(
-                    [invitation.clerkInvitationId],
-                  );
-                  invitationPath = invitationUrls.get(
-                    invitation.clerkInvitationId,
-                  );
-                } catch (error) {
-                  req.log.warn(
-                    { err: error, invitationId: invitation.id },
-                    "Could not retrieve existing SLP invitation link",
-                  );
-                }
-              }
-            }
-            res.json({
-              id: current.id,
-              status: current.status,
-              ...(invitationPath ? { invitationPath } : {}),
-              ...(expiresAt ? { expiresAt } : {}),
-            });
-            return;
-          }
           res.status(409).json({
             error:
-              "This SLP request cannot be approved or already has a pending invitation.",
+              "This request changed while it was being approved. Refresh the queue and try again.",
           });
           return;
         }
         let invitationPath: string;
         let clerkInvitationId: string | null = null;
+        let invitationSentAt: Date | null = null;
         try {
           const issued = await issueApplicationInvitation({
             emailAddress: approved.invite.invitedEmail,
             token,
             childledInvitationId: approved.invite.id,
             invitedRole: approved.invite.invitedRole,
+            ignoreExisting: false,
           });
           clerkInvitationId = issued.clerkInvitationId;
           invitationPath = issued.invitationPath;
-          if (clerkInvitationId) {
-            await db
-              .update(careTeamInvitationsTable)
-              .set({ clerkInvitationId })
-              .where(eq(careTeamInvitationsTable.id, approved.invite.id));
-          }
+          invitationSentAt = new Date();
+          await db.transaction(async (tx) => {
+            if (clerkInvitationId) {
+              await tx
+                .update(careTeamInvitationsTable)
+                .set({ clerkInvitationId })
+                .where(eq(careTeamInvitationsTable.id, approved.invite.id));
+            }
+            await tx
+              .update(betaAccessRequestsTable)
+              .set({ invitationSentAt })
+              .where(eq(betaAccessRequestsTable.id, approved.request.id));
+          });
         } catch (error) {
           await revokeApplicationInvitation(clerkInvitationId).catch(
             (revokeError) =>
@@ -24256,6 +24751,7 @@ for (const action of ["approve", "reject", "archive"] as const) {
                 reviewedByUserId: null,
                 approvedOrganizationId: null,
                 invitationId: null,
+                invitationSentAt: null,
               })
               .where(eq(betaAccessRequestsTable.id, approved.request.id));
             await tx
@@ -24278,12 +24774,22 @@ for (const action of ["approve", "reject", "archive"] as const) {
           action: "BETA_REQUEST_APPROVED",
           targetType: "beta_access_request",
           targetId: id,
-          metadata: { organizationId: approved.organization.id },
+          metadata: {
+            organizationId: approved.organization.id,
+            delivery: clerkInvitationId ? "clerk_email" : "local_link",
+          },
         });
         res.json({
           id: approved.request.id,
           status: approved.request.status,
+          invitationId: approved.invite.id,
+          accessState: "invite_sent",
+          deliveryStatus: clerkInvitationId ? "invitation_sent" : "local_link",
+          message: clerkInvitationId
+            ? `Approved. Invitation sent to ${approved.invite.invitedEmail}.`
+            : "Approved. A local development invitation is ready.",
           invitationPath,
+          invitationSentAt: invitationSentAt?.toISOString(),
           expiresAt: approved.invite.expiresAt?.toISOString(),
         });
         return;
@@ -24299,7 +24805,17 @@ for (const action of ["approve", "reject", "archive"] as const) {
       const [request] = await db
         .update(betaAccessRequestsTable)
         .set(update)
-        .where(eq(betaAccessRequestsTable.id, id))
+        .where(
+          action === "reject"
+            ? and(
+                eq(betaAccessRequestsTable.id, id),
+                or(
+                  eq(betaAccessRequestsTable.status, "pending"),
+                  eq(betaAccessRequestsTable.status, "review_required"),
+                ),
+              )
+            : eq(betaAccessRequestsTable.id, id),
+        )
         .returning();
       if (!request) {
         res.status(404).json({ error: "Request not found." });
@@ -24315,6 +24831,301 @@ for (const action of ["approve", "reject", "archive"] as const) {
     },
   );
 }
+
+router.post(
+  "/admin/beta-access-requests/:id/resend",
+  async (req, res): Promise<void> => {
+    const actor = requireSuperAdmin(req, res);
+    if (!actor) return;
+    const id = Number(rawParam(req.params.id));
+    if (!Number.isSafeInteger(id) || id < 1) {
+      res.status(400).json({ error: "Invalid request." });
+      return;
+    }
+    const [request] = await db
+      .select()
+      .from(betaAccessRequestsTable)
+      .where(eq(betaAccessRequestsTable.id, id))
+      .limit(1);
+    if (
+      !request ||
+      request.status !== "approved" ||
+      !request.invitationId ||
+      request.archivedAt
+    ) {
+      res.status(409).json({
+        error: "Only an approved SLP invitation can be resent.",
+      });
+      return;
+    }
+    const [invitation] = await db
+      .select()
+      .from(careTeamInvitationsTable)
+      .where(eq(careTeamInvitationsTable.id, request.invitationId))
+      .limit(1);
+    if (!invitation || invitation.status === "accepted") {
+      res.status(409).json({
+        error:
+          "This invitation has already been accepted and cannot be resent.",
+      });
+      return;
+    }
+
+    let pendingClerkIds: string[] = [];
+    try {
+      const identity = await resolveBetaApplicantIdentity(request.email);
+      if (identity.kind !== "new") {
+        res.status(409).json({
+          error:
+            identity.kind === "review_required"
+              ? identity.reason
+              : "This SLP now has an active ChildLed account. Ask them to sign in instead.",
+          ...(identity.kind === "existing_slp"
+            ? { signInPath: betaSignInPath() }
+            : {}),
+        });
+        return;
+      }
+      pendingClerkIds = await pendingApplicationInvitationIdsForEmail(
+        request.email,
+      );
+    } catch (error) {
+      req.log.warn(
+        { err: error, betaAccessRequestId: id },
+        "Could not inspect applicant before resending invitation",
+      );
+      res.status(502).json({
+        error:
+          "ChildLed could not verify the applicant's current Clerk status. No new invitation was sent.",
+      });
+      return;
+    }
+    const otherPendingIds = pendingClerkIds.filter(
+      (clerkId) => clerkId !== invitation.clerkInvitationId,
+    );
+    if (otherPendingIds.length) {
+      res.status(409).json({
+        error:
+          "Another active Clerk invitation already exists for this email. No duplicate was created.",
+      });
+      return;
+    }
+    if (
+      invitation.clerkInvitationId &&
+      pendingClerkIds.includes(invitation.clerkInvitationId)
+    ) {
+      try {
+        await revokeApplicationInvitation(invitation.clerkInvitationId);
+      } catch (error) {
+        req.log.warn(
+          { err: error, clerkInvitationId: invitation.clerkInvitationId },
+          "Could not revoke SLP invitation before replacement",
+        );
+        res.status(502).json({
+          error:
+            "The current Clerk invitation could not be replaced. No duplicate invitation was created.",
+        });
+        return;
+      }
+    }
+
+    const token = invitationToken();
+    let replacement: Awaited<ReturnType<typeof issueApplicationInvitation>>;
+    try {
+      replacement = await issueApplicationInvitation({
+        emailAddress: invitation.invitedEmail,
+        token,
+        childledInvitationId: invitation.id,
+        invitedRole: invitation.invitedRole,
+        ignoreExisting: false,
+      });
+    } catch (error) {
+      req.log.warn(
+        { err: error, invitationId: invitation.id },
+        "Could not resend Clerk SLP invitation",
+      );
+      res.status(502).json({
+        error:
+          "A replacement invitation could not be delivered. You can retry without creating a duplicate account.",
+      });
+      return;
+    }
+
+    const sentAt = new Date();
+    const expiresAt = new Date(Date.now() + 7 * 86_400_000);
+    let updated: typeof invitation | null = null;
+    try {
+      updated = await db.transaction(async (tx) => {
+        const [updatedInvitation] = await tx
+          .update(careTeamInvitationsTable)
+          .set({
+            status: "pending",
+            tokenHash: invitationTokenHash(token),
+            clerkInvitationId: replacement.clerkInvitationId,
+            expiresAt,
+            revokedAt: null,
+            revokedByUserId: null,
+          })
+          .where(
+            and(
+              eq(careTeamInvitationsTable.id, invitation.id),
+              invitation.clerkInvitationId
+                ? eq(
+                    careTeamInvitationsTable.clerkInvitationId,
+                    invitation.clerkInvitationId,
+                  )
+                : isNull(careTeamInvitationsTable.clerkInvitationId),
+            ),
+          )
+          .returning();
+        if (!updatedInvitation) return null;
+        await tx
+          .update(betaAccessRequestsTable)
+          .set({ invitationSentAt: sentAt })
+          .where(eq(betaAccessRequestsTable.id, request.id));
+        return updatedInvitation;
+      });
+    } catch (error) {
+      await revokeApplicationInvitation(replacement.clerkInvitationId).catch(
+        () => undefined,
+      );
+      req.log.error(
+        { err: error, invitationId: invitation.id },
+        "Could not save replacement SLP invitation",
+      );
+      res.status(500).json({
+        error:
+          "The replacement invitation could not be saved and was revoked. Please try again.",
+      });
+      return;
+    }
+    if (!updated) {
+      await revokeApplicationInvitation(replacement.clerkInvitationId).catch(
+        () => undefined,
+      );
+      res.status(409).json({
+        error:
+          "The invitation changed while it was being resent. Refresh the queue and try again.",
+      });
+      return;
+    }
+    await writeSecurityAudit({
+      actor,
+      action: "BETA_INVITATION_RESENT",
+      targetType: "beta_access_request",
+      targetId: id,
+      metadata: { invitationId: invitation.id },
+    });
+    res.json({
+      id,
+      status: "approved",
+      accessState: "invite_sent",
+      deliveryStatus: replacement.clerkInvitationId
+        ? "invitation_sent"
+        : "local_link",
+      message: replacement.clerkInvitationId
+        ? `A new invitation was sent to ${invitation.invitedEmail}.`
+        : "A new local development invitation is ready.",
+      invitationPath: replacement.invitationPath,
+      invitationSentAt: sentAt.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    });
+  },
+);
+
+router.post(
+  "/admin/beta-access-requests/:id/revoke-invitation",
+  async (req, res): Promise<void> => {
+    const actor = requireSuperAdmin(req, res);
+    if (!actor) return;
+    const id = Number(rawParam(req.params.id));
+    if (!Number.isSafeInteger(id) || id < 1) {
+      res.status(400).json({ error: "Invalid request." });
+      return;
+    }
+    const [request] = await db
+      .select()
+      .from(betaAccessRequestsTable)
+      .where(eq(betaAccessRequestsTable.id, id))
+      .limit(1);
+    if (!request?.invitationId || request.status !== "approved") {
+      res
+        .status(409)
+        .json({ error: "No approved invitation is available to revoke." });
+      return;
+    }
+    const [invitation] = await db
+      .select()
+      .from(careTeamInvitationsTable)
+      .where(eq(careTeamInvitationsTable.id, request.invitationId))
+      .limit(1);
+    if (!invitation) {
+      res.status(404).json({ error: "Invitation not found." });
+      return;
+    }
+    if (invitation.status === "revoked") {
+      res.json({
+        id,
+        status: "approved",
+        accessState: "invitation_revoked",
+        message: "This invitation is already revoked.",
+      });
+      return;
+    }
+    if (invitation.status !== "pending") {
+      res.status(409).json({
+        error: "Only a pending invitation can be revoked.",
+      });
+      return;
+    }
+    try {
+      await revokeApplicationInvitation(invitation.clerkInvitationId);
+    } catch (error) {
+      req.log.warn(
+        { err: error, clerkInvitationId: invitation.clerkInvitationId },
+        "Could not revoke Clerk SLP invitation",
+      );
+      res.status(502).json({
+        error:
+          "The Clerk invitation could not be revoked. No local state was changed.",
+      });
+      return;
+    }
+    const [updated] = await db
+      .update(careTeamInvitationsTable)
+      .set({
+        status: "revoked",
+        revokedAt: new Date(),
+        revokedByUserId: actor.userId,
+      })
+      .where(
+        and(
+          eq(careTeamInvitationsTable.id, invitation.id),
+          eq(careTeamInvitationsTable.status, "pending"),
+        ),
+      )
+      .returning();
+    if (!updated) {
+      res.status(409).json({
+        error: "The invitation is no longer pending. Refresh the queue.",
+      });
+      return;
+    }
+    await writeSecurityAudit({
+      actor,
+      action: "BETA_INVITATION_REVOKED",
+      targetType: "beta_access_request",
+      targetId: id,
+      metadata: { invitationId: invitation.id },
+    });
+    res.json({
+      id,
+      status: "approved",
+      accessState: "invitation_revoked",
+      message: "The pending SLP invitation was revoked.",
+    });
+  },
+);
 
 router.get("/admin/beta-controls", async (req, res): Promise<void> => {
   if (!requireSuperAdmin(req, res)) return;

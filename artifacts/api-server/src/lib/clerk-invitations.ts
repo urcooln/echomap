@@ -7,6 +7,7 @@ type ApplicationInvitationInput = {
   token: string;
   childledInvitationId: number;
   invitedRole: string;
+  ignoreExisting?: boolean;
 };
 
 export type IssuedApplicationInvitation = {
@@ -31,6 +32,7 @@ export const issueApplicationInvitation = async ({
   token,
   childledInvitationId,
   invitedRole,
+  ignoreExisting = true,
 }: ApplicationInvitationInput): Promise<IssuedApplicationInvitation> => {
   const fallbackPath = localInvitationPath(token);
   if (!runtimeConfig.clerkInvitations.enabled) {
@@ -40,7 +42,7 @@ export const issueApplicationInvitation = async ({
   const invitation = await clerkClient.invitations.createInvitation({
     emailAddress,
     expiresInDays: 7,
-    ignoreExisting: true,
+    ignoreExisting,
     notify: true,
     publicMetadata: {
       childledInvitationId: String(childledInvitationId),
@@ -64,6 +66,25 @@ export const issueApplicationInvitation = async ({
     clerkInvitationId: invitation.id,
     invitationPath: invitation.url,
   };
+};
+
+export const pendingApplicationInvitationIdsForEmail = async (
+  emailAddress: string,
+) => {
+  const ids: string[] = [];
+  if (!runtimeConfig.clerkInvitations.enabled) return ids;
+  const normalizedEmail = emailAddress.trim().toLowerCase();
+  const page = await clerkClient.invitations.getInvitationList({
+    status: "pending",
+    query: normalizedEmail,
+    limit: 100,
+  });
+  for (const invitation of page.data) {
+    if (invitation.emailAddress.trim().toLowerCase() === normalizedEmail) {
+      ids.push(invitation.id);
+    }
+  }
+  return ids;
 };
 
 export const revokeApplicationInvitation = async (

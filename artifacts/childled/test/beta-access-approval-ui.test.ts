@@ -17,9 +17,14 @@ test("beta approval remains visible when mobile clipboard access is unavailable"
   assert.match(betaAccessSource, /role="status"/);
 });
 
-test("approved beta requests cannot be approved or rejected again from the queue", () => {
-  assert.match(betaAccessSource, /req\.status === 'approved' \? 'Approved'/);
-  assert.match(betaAccessSource, /req\.status === 'pending' && \(/);
+test("beta requests show delivery, review, resend, and revoke states", () => {
+  assert.match(betaAccessSource, /Review required/);
+  assert.match(betaAccessSource, /Invite sent/);
+  assert.match(betaAccessSource, /handleRequestAction\(req\.id, 'resend'\)/);
+  assert.match(
+    betaAccessSource,
+    /handleRequestAction\(req\.id, 'revoke-invitation'\)/,
+  );
   assert.match(betaAccessSource, /processingRequest === req\.id/);
   assert.match(betaAccessSource, /Copy invitation link for/);
 });
