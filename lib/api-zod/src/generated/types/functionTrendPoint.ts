@@ -8,6 +8,11 @@
 
 export interface FunctionTrendPoint {
   date: Date;
+  /**
+     * A supported communication function, optionally stored as "Other: description".
+     * @minLength 1
+     * @maxLength 160
+     */
   function: string;
   occurrences: number;
 }

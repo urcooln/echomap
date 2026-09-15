@@ -2009,6 +2009,32 @@ paths:
               schema:
                 $ref: "#/components/schemas/Gestalt"
   /gestalts/{gestaltId}:
+    patch:
+      operationId: updateGestalt
+      tags: [gestalts]
+      summary: Update a reviewed dictionary phrase
+      parameters:
+        - in: path
+          name: gestaltId
+          required: true
+          schema: { type: number, minimum: 1 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GestaltUpdateInput"
+      responses:
+        "200":
+          description: Updated dictionary phrase
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Gestalt"
+        "403": { description: SLP access and assigned child access required }
+        "404": { description: Active dictionary phrase not found }
+        "409":
+          { description: Another active phrase has the same normalized text }
     delete:
       operationId: deleteGestalt
       tags: [gestalts]
@@ -2752,6 +2778,36 @@ paths:
           }
         "404": { description: Unfinished recording draft not found }
         "503": { description: Private recording storage could not be deleted }
+  /sessions/transcription/review-draft:
+    patch:
+      operationId: updateRecordedSessionReviewDraft
+      tags: [sessions]
+      summary: Persist the current recorded-session review and editable note draft
+      parameters:
+        - in: query
+          name: childId
+          required: true
+          schema: { type: number }
+        - in: query
+          name: transcriptId
+          required: true
+          schema: { type: number }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecordedSessionReviewDraftInput"
+      responses:
+        "200":
+          description: Persisted recorded-session review draft
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionTranscript"
+        "400": { description: Invalid review draft }
+        "403": { description: Clinician access and child access required }
+        "404": { description: Unfinished transcript review not found }
   /sessions/transcription/{transcriptId}/audio:
     get:
       operationId: getSessionTranscriptionAudio
@@ -2890,7 +2946,7 @@ paths:
     patch:
       operationId: updateChildPhraseInbox
       tags: [sessions]
-      summary: Defer or add working meaning to a Child phrase inbox item
+      summary: Review, defer, or update a Child phrase inbox item
       parameters:
         - in: path
           name: itemId
@@ -4473,8 +4529,7 @@ components:
         fromSlpName: { type: string }
         destinationEmail: { type: string }
         destinationSlpName: { type: string }
-        transferMode:
-          { type: string, enum: [existing_account, invitation] }
+        transferMode: { type: string, enum: [existing_account, invitation] }
         status: { type: string, enum: [pending, completed, cancelled] }
         invitationId: { type: number }
         invitationPath: { type: string }
@@ -4559,6 +4614,22 @@ components:
         function: { type: string }
         contexts: { type: array, items: { type: string } }
         emotionalState: { type: string }
+    GestaltUpdateInput:
+      type: object
+      required: [phrase, meaning, function, contexts, emotionalState]
+      properties:
+        phrase: { type: string, minLength: 1, maxLength: 600 }
+        meaning: { type: string, minLength: 1, maxLength: 4000 }
+        function:
+          type: string
+          minLength: 1
+          maxLength: 160
+          description: 'A supported communication function, optionally stored as "Other: description".'
+        contexts:
+          type: array
+          maxItems: 30
+          items: { type: string, minLength: 1, maxLength: 160 }
+        emotionalState: { type: string, minLength: 1, maxLength: 160 }
     GestaltMergeInput:
       type: object
       required: [sourceGestaltId, targetGestaltId]
@@ -4636,15 +4707,8 @@ components:
         possibleMeaning: { type: string, maxLength: 1200 }
         communicationFunction:
           type: string
-          enum:
-            [
-              Requesting,
-              Commenting,
-              Social Interaction,
-              Self-Regulation,
-              Shared Joy,
-              Other,
-            ]
+          maxLength: 160
+          description: 'A supported communication function, optionally stored as "Other: description".'
         observedAt: { type: string, format: date-time }
     PhraseObservation:
       type: object
@@ -5085,7 +5149,11 @@ components:
       required: [date, function, occurrences]
       properties:
         date: { type: string, format: date }
-        function: { type: string }
+        function:
+          type: string
+          minLength: 1
+          maxLength: 160
+          description: 'A supported communication function, optionally stored as "Other: description".'
         occurrences: { type: number }
     PhraseTrendReport:
       type: object
@@ -5260,6 +5328,62 @@ components:
         promptingLevel:
           { $ref: "#/components/schemas/SessionGoalReviewPromptingLevel" }
         comments: { type: string, maxLength: 4000 }
+    RecordedSessionReviewDraftInput:
+      type: object
+      required:
+        [
+          selectedPhrases,
+          clinicalObservations,
+          nextSteps,
+          goalReviews,
+          note,
+          noteEdited,
+        ]
+      properties:
+        selectedPhrases:
+          type: array
+          maxItems: 200
+          items:
+            $ref: "#/components/schemas/RecordedSessionSelectedPhrase"
+        clinicalObservations: { type: string, maxLength: 12000 }
+        nextSteps: { type: string, maxLength: 12000 }
+        goalReviews:
+          type: array
+          maxItems: 50
+          items: { $ref: "#/components/schemas/SessionGoalReviewInput" }
+        note: { type: string, maxLength: 50000 }
+        noteEdited: { type: boolean }
+    RecordedSessionSelectedPhrase:
+      type: object
+      required:
+        [
+          phrase,
+          meaning,
+          communicationFunction,
+          context,
+          emotionalState,
+          note,
+          addToDictionary,
+          preserveDictionary,
+        ]
+      properties:
+        phrase: { type: string, minLength: 1, maxLength: 4000 }
+        meaning: { type: string, maxLength: 4000 }
+        communicationFunction: { type: string, maxLength: 160 }
+        context: { type: string, maxLength: 4000 }
+        emotionalState: { type: string, maxLength: 160 }
+        note: { type: string, maxLength: 12000 }
+        transcriptPhraseId: { type: number }
+        phraseInboxItemId: { type: number }
+        addToDictionary: { type: boolean }
+        preserveDictionary: { type: boolean }
+    RecordedSessionReviewDraft:
+      allOf:
+        - $ref: "#/components/schemas/RecordedSessionReviewDraftInput"
+        - type: object
+          required: [savedAt]
+          properties:
+            savedAt: { type: string, format: date-time }
     ManualSessionInput:
       type: object
       required:
@@ -5846,7 +5970,7 @@ components:
       required: [phrase, meaning, function, context, emotionalState, note]
       properties:
         phrase: { type: string, minLength: 1 }
-        meaning: { type: string, minLength: 1 }
+        meaning: { type: string }
         function: { type: string }
         context: { type: string }
         emotionalState: { type: string }
@@ -5856,6 +5980,9 @@ components:
         preserveDictionary:
           type: boolean
           description: Reuse an exact existing child dictionary entry without changing its clinician-owned fields.
+        addToDictionary:
+          type: boolean
+          description: Add this reviewed utterance to the child dictionary. A kept session utterance does not require dictionary promotion.
         clinicianReviewed:
           type: boolean
           description: Explicitly attests that this new or changed Child phrase was reviewed by the clinician before saving.
@@ -6391,10 +6518,10 @@ components:
       enum: [pending, confirmed, unlabeled]
     ChildPhraseInboxStatus:
       type: string
-      enum: [pending, deferred, dictionary_added, excluded]
+      enum: [pending, reviewed, deferred, dictionary_added, excluded]
     ChildPhraseInboxReviewStatus:
       type: string
-      enum: [pending, deferred]
+      enum: [pending, reviewed, deferred]
     TranscriptPhraseInboxItem:
       type: object
       required:
@@ -6691,6 +6818,7 @@ components:
           childLanguagePrompts,
           provisionalPhrases,
           phrases,
+          reviewDraft,
           error,
           createdAt,
           updatedAt,
@@ -6701,6 +6829,10 @@ components:
         audioId: { type: string }
         serviceRequirementId: { type: [number, "null"] }
         makeupForSessionId: { type: [number, "null"] }
+        reviewDraft:
+          oneOf:
+            - $ref: "#/components/schemas/RecordedSessionReviewDraft"
+            - type: "null"
         recordingConsentConfirmedAt:
           { type: ["string", "null"], format: date-time }
         status: { type: string, enum: [processing, complete, failed] }

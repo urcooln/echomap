@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  canKeepReviewedChildUtteranceFrom,
   canCreatePhraseEvidenceFrom,
   hasMeaningBackedConfirmedUtterance,
   hasUnresolvedChildUtteranceReviews,
@@ -8,18 +9,20 @@ import {
 
 test("session closeout remains blocked when a confirmed Child turn has no review", () => {
   assert.equal(
-    hasUnresolvedChildUtteranceReviews([11, 12], [
-      { segmentId: 11, disposition: "not_gestalt", meaning: null },
-    ]),
+    hasUnresolvedChildUtteranceReviews(
+      [11, 12],
+      [{ segmentId: 11, disposition: "not_gestalt", meaning: null }],
+    ),
     true,
   );
 });
 
 test("session closeout remains blocked when a Child review is pending", () => {
   assert.equal(
-    hasUnresolvedChildUtteranceReviews([11], [
-      { segmentId: 11, disposition: "pending", meaning: null },
-    ]),
+    hasUnresolvedChildUtteranceReviews(
+      [11],
+      [{ segmentId: 11, disposition: "pending", meaning: null }],
+    ),
     true,
   );
 });
@@ -34,27 +37,37 @@ test("context and exclusion resolve review without creating evidence", () => {
 });
 
 test("only a meaning-backed confirmed utterance can support transcript evidence", () => {
-  assert.equal(hasMeaningBackedConfirmedUtterance([
-    { segmentId: 11, disposition: "confirmed_gestalt", meaning: "Requests another turn." },
-  ]), true);
-  assert.equal(hasMeaningBackedConfirmedUtterance([
-    { segmentId: 11, disposition: "confirmed_gestalt", meaning: "  " },
-  ]), false);
+  assert.equal(
+    hasMeaningBackedConfirmedUtterance([
+      {
+        segmentId: 11,
+        disposition: "confirmed_gestalt",
+        meaning: "Requests another turn.",
+      },
+    ]),
+    true,
+  );
+  assert.equal(
+    hasMeaningBackedConfirmedUtterance([
+      { segmentId: 11, disposition: "confirmed_gestalt", meaning: "  " },
+    ]),
+    false,
+  );
 });
 
 test("unintelligible speech requires an explicit classification", () => {
   assert.equal(
-    hasUnresolvedChildUtteranceReviews([
-      { id: 11, intelligibility: "unintelligible" },
-    ], []),
+    hasUnresolvedChildUtteranceReviews(
+      [{ id: 11, intelligibility: "unintelligible" }],
+      [],
+    ),
     true,
   );
   assert.equal(
-    hasUnresolvedChildUtteranceReviews([
-      { id: 11, intelligibility: "unintelligible" },
-    ], [
-      { segmentId: 11, disposition: "unintelligible", meaning: null },
-    ]),
+    hasUnresolvedChildUtteranceReviews(
+      [{ id: 11, intelligibility: "unintelligible" }],
+      [{ segmentId: 11, disposition: "unintelligible", meaning: null }],
+    ),
     false,
   );
 });
@@ -66,27 +79,59 @@ test("all four explicit classifications resolve utterance review", () => {
     { segmentId: 13, disposition: "unsure", meaning: null },
     { segmentId: 14, disposition: "unintelligible", meaning: null },
   ];
-  assert.equal(hasUnresolvedChildUtteranceReviews([11, 12, 13, 14], reviews), false);
+  assert.equal(
+    hasUnresolvedChildUtteranceReviews([11, 12, 13, 14], reviews),
+    false,
+  );
   assert.equal(hasMeaningBackedConfirmedUtterance(reviews), true);
 });
 
 test("only meaning-backed Child classifications create phrase evidence", () => {
   const segment = { intelligibility: "intelligible" };
-  assert.equal(canCreatePhraseEvidenceFrom(segment, {
-    segmentId: 11,
-    disposition: "child",
-    meaning: "Requests help.",
-  }), true);
-  assert.equal(canCreatePhraseEvidenceFrom(segment, {
-    segmentId: 11,
-    disposition: "child",
-    meaning: null,
-  }), false);
-  assert.equal(canCreatePhraseEvidenceFrom(segment, {
-    segmentId: 11,
-    disposition: "not_child",
-    meaning: "Requests help.",
-  }), false);
+  assert.equal(
+    canCreatePhraseEvidenceFrom(segment, {
+      segmentId: 11,
+      disposition: "child",
+      meaning: "Requests help.",
+    }),
+    true,
+  );
+  assert.equal(
+    canCreatePhraseEvidenceFrom(segment, {
+      segmentId: 11,
+      disposition: "child",
+      meaning: null,
+    }),
+    false,
+  );
+  assert.equal(
+    canCreatePhraseEvidenceFrom(segment, {
+      segmentId: 11,
+      disposition: "not_child",
+      meaning: "Requests help.",
+    }),
+    false,
+  );
+});
+
+test("kept Child utterances do not require a working meaning", () => {
+  const segment = { intelligibility: "intelligible" };
+  assert.equal(
+    canKeepReviewedChildUtteranceFrom(segment, {
+      segmentId: 11,
+      disposition: "child",
+      meaning: null,
+    }),
+    true,
+  );
+  assert.equal(
+    canKeepReviewedChildUtteranceFrom(segment, {
+      segmentId: 11,
+      disposition: "not_child",
+      meaning: "Not relevant",
+    }),
+    false,
+  );
 });
 
 test("partial transcription needs clinician confirmation before phrase evidence", () => {

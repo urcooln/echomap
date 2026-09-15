@@ -131,8 +131,8 @@ import {
 } from "../lib/child-profile-consent";
 import { deleteTranscriptDataForChild } from "../lib/transcript-deletion";
 import {
+  canKeepReviewedChildUtteranceFrom,
   canCreatePhraseEvidenceFrom,
-  hasMeaningBackedConfirmedUtterance,
   hasUnresolvedChildUtteranceReviews,
 } from "../lib/child-utterance-review";
 import {
@@ -327,6 +327,8 @@ import {
 } from "../lib/aac-profile-catalog";
 import { goalSourceIsRelevant } from "../lib/goal-connection-matcher";
 import {
+  communicationFunctionMatches,
+  isSupportedCommunicationFunction,
   AddGestaltCommentBody,
   AddGestaltCommentQueryParams,
   CreateChildBody,
@@ -353,6 +355,9 @@ import {
   DeleteChildInterestParams,
   CreateGestaltBody,
   CreateGestaltQueryParams,
+  UpdateGestaltBody,
+  UpdateGestaltParams,
+  UpdateGestaltResponse,
   DeleteGestaltParams,
   MergeGestaltsBody,
   MergeGestaltsQueryParams,
@@ -488,6 +493,8 @@ import {
   GetSessionAudioParams,
   GetSessionTranscriptionDraftQueryParams,
   DeleteSessionTranscriptionDraftQueryParams,
+  UpdateRecordedSessionReviewDraftBody,
+  UpdateRecordedSessionReviewDraftQueryParams,
   GetSessionTranscriptionAudioParams,
   DeleteSessionTranscriptPhraseParams,
   GetUnclearVocalizationAudioParams,
@@ -730,8 +737,13 @@ type SessionGestalt = {
   emotionalState: string;
   note: string;
   transcriptPhraseId?: number;
+  phraseInboxItemId?: number;
   preserveDictionary?: boolean;
+  addToDictionary?: boolean;
+  clinicianReviewed?: boolean;
 };
+const sessionPhraseAddsToDictionary = (phrase: SessionGestalt) =>
+  Boolean(phrase.preserveDictionary) || phrase.addToDictionary !== false;
 type RecordingConsent = {
   confirmed: boolean;
   confirmedAt: string;
@@ -6191,7 +6203,9 @@ const rebuildConfirmedChildTranscriptPhrases = async (
         const segment = segments.find(
           (candidate) => candidate.id === review.segmentId,
         );
-        return Boolean(segment && canCreatePhraseEvidenceFrom(segment, review));
+        return Boolean(
+          segment && canKeepReviewedChildUtteranceFrom(segment, review),
+        );
       })
       .map((review) => review.segmentId),
   );
@@ -6228,7 +6242,11 @@ const refreshChildPhraseInboxPointers = async (
       .where(
         and(
           eq(childPhraseInboxItemsTable.transcriptId, transcriptId),
-          inArray(childPhraseInboxItemsTable.status, ["pending", "deferred"]),
+          inArray(childPhraseInboxItemsTable.status, [
+            "pending",
+            "reviewed",
+            "deferred",
+          ]),
         ),
       ),
   ]);
@@ -6237,7 +6255,8 @@ const refreshChildPhraseInboxPointers = async (
   );
   for (const item of inboxItems) {
     const transcriptPhraseId =
-      item.status === "pending" && item.workingMeaning
+      item.status === "reviewed" ||
+      (item.status === "pending" && Boolean(item.workingMeaning))
         ? (phraseByNormalized.get(item.normalizedPhrase)?.id ?? null)
         : null;
     await transaction
@@ -6312,7 +6331,9 @@ const syncChildPhraseInboxForReviews = async (
     const phrase = evidenceSafeTranscriptText(segment.text).trim();
     if (!phrase) continue;
     const nextStatus =
-      existing?.status === "dictionary_added" || existing?.status === "deferred"
+      existing?.status === "dictionary_added" ||
+      existing?.status === "reviewed" ||
+      existing?.status === "deferred"
         ? existing.status
         : "pending";
     const transcriptPhraseId =
@@ -6518,6 +6539,7 @@ const transcriptResponse = async (
           eq(childPhraseInboxItemsTable.transcriptId, transcript.id),
           inArray(childPhraseInboxItemsTable.status, [
             "pending",
+            "reviewed",
             "deferred",
             "dictionary_added",
           ]),
@@ -6696,6 +6718,7 @@ const transcriptResponse = async (
     audioId: transcript.audioId,
     serviceRequirementId: transcript.serviceRequirementId,
     makeupForSessionId: transcript.makeupForSessionId,
+    reviewDraft: transcript.reviewDraft ?? null,
     recordingConsentConfirmedAt:
       audioRecord?.consentConfirmedAt?.toISOString() ?? null,
     status: transcript.status,
@@ -7438,7 +7461,7 @@ const applyTranscriptOccurrences = async (
   childId: number,
   sessionId: number,
   reviewedGestalts: SessionGestalt[],
-  gestaltIds: number[],
+  gestaltIds: Array<number | null>,
 ) => {
   const transcript = (
     await db
@@ -16076,7 +16099,8 @@ router.get("/gestalts", async (req, res) => {
             [item.phrase, item.meaning, item.source, item.function].some(
               (field) => field.toLowerCase().includes(query),
             )) &&
-          (!communicationFunction || item.function === communicationFunction),
+          (!communicationFunction ||
+            communicationFunctionMatches(item.function, communicationFunction)),
       ),
     );
   }
@@ -16088,7 +16112,8 @@ router.get("/gestalts", async (req, res) => {
           [item.phrase, item.meaning, item.source, item.function].some(
             (field) => field.toLowerCase().includes(query),
           )) &&
-        (!communicationFunction || item.function === communicationFunction),
+        (!communicationFunction ||
+          communicationFunctionMatches(item.function, communicationFunction)),
     ),
   );
 });
@@ -16100,6 +16125,10 @@ router.post("/gestalts", async (req, res) => {
       res,
       "Please complete the gestalt phrase, function, contexts, and emotional state.",
     );
+  const communicationFunction = body.data.function.trim();
+  if (!isSupportedCommunicationFunction(communicationFunction)) {
+    return fail(res, "Choose a supported communication function.");
+  }
   if (!requireChildAccess(req, res, query.data.childId)) return;
   const actor = viewerFrom(req);
   if (!actor) return res.status(401).json({ error: authenticationError(req) });
@@ -16169,7 +16198,7 @@ router.post("/gestalts", async (req, res) => {
         .set({
           phrase: body.data.phrase,
           meaning,
-          communicationFunction: body.data.function,
+          communicationFunction,
           contexts: body.data.contexts,
           emotionalState: body.data.emotionalState,
           source: "Clinician-reviewed classroom dictionary",
@@ -16188,7 +16217,7 @@ router.post("/gestalts", async (req, res) => {
         phrase: body.data.phrase,
         normalizedPhrase,
         meaning,
-        communicationFunction: body.data.function,
+        communicationFunction,
         contexts: body.data.contexts,
         emotionalState: body.data.emotionalState,
         source: "Clinician-reviewed classroom dictionary",
@@ -16237,6 +16266,89 @@ router.post("/gestalts", async (req, res) => {
     childId: record.childId,
   });
   return res.status(201).json(gestaltFromRecord(record));
+});
+
+router.patch("/gestalts/:gestaltId", async (req, res) => {
+  const params = UpdateGestaltParams.safeParse(req.params);
+  const body = UpdateGestaltBody.safeParse(req.body);
+  if (!params.success || !body.success) {
+    return fail(res, "Complete the phrase details before saving.");
+  }
+  const actor = viewerFrom(req);
+  if (!canUseClinicalTools(actor) || !actor?.organizationId) {
+    return res
+      .status(403)
+      .json({ error: "Only an SLP can edit a dictionary phrase." });
+  }
+  const communicationFunction = body.data.function.trim();
+  if (!isSupportedCommunicationFunction(communicationFunction)) {
+    return fail(res, "Choose a supported communication function.");
+  }
+  const [existing] = await db
+    .select()
+    .from(clinicalGestaltsTable)
+    .where(
+      and(
+        eq(clinicalGestaltsTable.id, params.data.gestaltId),
+        eq(clinicalGestaltsTable.organizationId, actor.organizationId),
+        isNull(clinicalGestaltsTable.archivedAt),
+      ),
+    )
+    .limit(1);
+  if (!existing || !requireChildAccess(req, res, existing.childId)) {
+    return res.status(404).json({ error: "Dictionary phrase not found." });
+  }
+  const normalizedPhrase = normalizePhrase(body.data.phrase);
+  const result = await db.transaction(async (transaction) => {
+    await transaction.execute(
+      sql`SELECT pg_advisory_xact_lock(${actor.organizationId!}, ${existing.childId})`,
+    );
+    const matching = await transaction
+      .select({ id: clinicalGestaltsTable.id })
+      .from(clinicalGestaltsTable)
+      .where(
+        and(
+          eq(clinicalGestaltsTable.organizationId, actor.organizationId!),
+          eq(clinicalGestaltsTable.childId, existing.childId),
+          eq(clinicalGestaltsTable.normalizedPhrase, normalizedPhrase),
+          isNull(clinicalGestaltsTable.archivedAt),
+        ),
+      );
+    if (matching.some((item) => item.id !== existing.id)) {
+      return { duplicate: true as const };
+    }
+    const [updated] = await transaction
+      .update(clinicalGestaltsTable)
+      .set({
+        phrase: body.data.phrase.trim(),
+        normalizedPhrase,
+        meaning: body.data.meaning.trim(),
+        communicationFunction,
+        contexts: body.data.contexts.map((item) => item.trim()),
+        emotionalState: body.data.emotionalState.trim(),
+        updatedAt: new Date(),
+      })
+      .where(eq(clinicalGestaltsTable.id, existing.id))
+      .returning();
+    return { updated };
+  });
+  if (result.duplicate) {
+    return res.status(409).json({
+      error: "That phrase already exists in this child’s dictionary.",
+    });
+  }
+  if (!result.updated) {
+    return res.status(404).json({ error: "Dictionary phrase not found." });
+  }
+  await writeSecurityAudit({
+    actor,
+    action: "GESTALT_UPDATED",
+    targetType: "gestalt",
+    targetId: result.updated.id,
+    childId: result.updated.childId,
+  });
+  const [gestalt] = await gestaltsWithCollaboration([result.updated]);
+  return res.json(UpdateGestaltResponse.parse(gestalt));
 });
 
 router.delete("/gestalts/:gestaltId", async (req, res) => {
@@ -16751,6 +16863,12 @@ router.post("/phrase-observations", async (req, res) => {
       res,
       "Add the phrase, classroom context, and observation time.",
     );
+  if (
+    body.data.communicationFunction &&
+    !isSupportedCommunicationFunction(body.data.communicationFunction)
+  ) {
+    return fail(res, "Choose a supported communication function.");
+  }
   if (!requireChildAccess(req, res, query.data.childId)) return;
   const actor = viewerFrom(req);
   if (!actor?.organizationId)
@@ -20652,6 +20770,95 @@ router.get("/sessions/transcription/draft", async (req, res) => {
   return res.json(await transcriptResponse(transcript, actor.organizationId));
 });
 
+router.patch("/sessions/transcription/review-draft", async (req, res) => {
+  const query = UpdateRecordedSessionReviewDraftQueryParams.safeParse(
+    req.query,
+  );
+  const body = UpdateRecordedSessionReviewDraftBody.safeParse(req.body);
+  if (!query.success || !body.success)
+    return fail(res, "The recorded-session review draft is invalid.");
+  if (!requireChildAccess(req, res, query.data.childId)) return;
+  const actor = viewerFrom(req);
+  if (!actor || !canUseClinicalTools(actor) || !actor.organizationId) {
+    return res
+      .status(403)
+      .json({ error: "Only an SLP can save a recorded-session review." });
+  }
+  const goalReviewIds = body.data.goalReviews.map((review) => review.goalId);
+  if (new Set(goalReviewIds).size !== goalReviewIds.length)
+    return fail(res, "Each communication goal can be reviewed only once.");
+  if (
+    body.data.goalReviews.some(
+      (review) =>
+        review.progressStatus === "not_addressed" &&
+        review.promptingLevel !== "na",
+    )
+  ) {
+    return fail(res, "Goals marked Not Addressed must use N/A for prompting.");
+  }
+  if (goalReviewIds.length) {
+    const activeGoals = await db
+      .select({ id: communicationGoalsTable.id })
+      .from(communicationGoalsTable)
+      .where(
+        and(
+          eq(communicationGoalsTable.organizationId, actor.organizationId),
+          eq(communicationGoalsTable.childId, query.data.childId),
+          eq(communicationGoalsTable.status, "active"),
+          inArray(communicationGoalsTable.id, goalReviewIds),
+        ),
+      );
+    if (activeGoals.length !== goalReviewIds.length)
+      return fail(
+        res,
+        "One reviewed communication goal is not active for this child.",
+      );
+  }
+  const [transcript] = await db
+    .select()
+    .from(sessionTranscriptsTable)
+    .where(
+      and(
+        eq(sessionTranscriptsTable.id, query.data.transcriptId),
+        eq(sessionTranscriptsTable.childId, query.data.childId),
+        eq(sessionTranscriptsTable.createdByUserId, actor.userId),
+        eq(sessionTranscriptsTable.status, "complete"),
+        isNull(sessionTranscriptsTable.sessionId),
+      ),
+    )
+    .limit(1);
+  if (!transcript)
+    return res
+      .status(404)
+      .json({ error: "No unfinished recorded-session review was found." });
+  const reviewDraft = {
+    ...body.data,
+    savedAt: new Date().toISOString(),
+  };
+  const [updatedTranscript] = await db
+    .update(sessionTranscriptsTable)
+    .set({
+      reviewDraft,
+      // Phrase review concurrency uses this timestamp. Draft autosaves must not
+      // make an otherwise current transcript classification appear stale.
+      updatedAt: transcript.updatedAt,
+    })
+    .where(
+      and(
+        eq(sessionTranscriptsTable.id, transcript.id),
+        isNull(sessionTranscriptsTable.sessionId),
+      ),
+    )
+    .returning();
+  if (!updatedTranscript)
+    return res.status(409).json({
+      error: "This session was finalized while its draft was saving.",
+    });
+  return res.json(
+    await transcriptResponse(updatedTranscript, actor.organizationId),
+  );
+});
+
 router.delete("/sessions/transcription/draft", async (req, res) => {
   const query = DeleteSessionTranscriptionDraftQueryParams.safeParse(req.query);
   if (!query.success || (!query.data.transcriptId && !query.data.audioId)) {
@@ -20911,7 +21118,11 @@ router.delete("/sessions/transcription/phrases/:phraseId", async (req, res) => {
       .where(
         and(
           eq(childPhraseInboxItemsTable.transcriptPhraseId, phrase.id),
-          inArray(childPhraseInboxItemsTable.status, ["pending", "deferred"]),
+          inArray(childPhraseInboxItemsTable.status, [
+            "pending",
+            "reviewed",
+            "deferred",
+          ]),
         ),
       );
   });
@@ -21873,7 +22084,7 @@ router.patch(
     if (!params.success || !body.success) {
       return fail(
         res,
-        "Choose Pending or Deferred and keep the working meaning concise.",
+        "Choose Pending, Reviewed, or Deferred and keep the working meaning concise.",
       );
     }
     const actor = viewerFrom(req);
@@ -21930,7 +22141,11 @@ router.patch(
               actor.organizationId!,
             ),
             eq(childPhraseInboxItemsTable.childId, item.childId),
-            inArray(childPhraseInboxItemsTable.status, ["pending", "deferred"]),
+            inArray(childPhraseInboxItemsTable.status, [
+              "pending",
+              "reviewed",
+              "deferred",
+            ]),
           ),
         )
         .limit(1)
@@ -22659,13 +22874,14 @@ router.post("/sessions", async (req, res) => {
           "Every new or changed phrase must be explicitly clinician-reviewed before saving.",
         );
       } else if (
-        !phrase.meaning.trim() ||
-        phrase.meaning === "Meaning to explore with the team" ||
-        phrase.function === "Unknown"
+        sessionPhraseAddsToDictionary(phrase) &&
+        (!phrase.meaning.trim() ||
+          phrase.meaning === "Meaning to explore with the team" ||
+          phrase.function === "Unknown")
       ) {
         return fail(
           res,
-          "A reviewed exception needs a working meaning and communication function before saving.",
+          "A phrase needs a working meaning and communication function before it can be added to the dictionary.",
         );
       }
     }
@@ -22793,13 +23009,6 @@ router.post("/sessions", async (req, res) => {
               "Classify every transcript utterance before saving this session. Only explicit Child decisions can become evidence.",
             );
           }
-          if (transcriptPhraseIds.length) {
-            if (!hasMeaningBackedConfirmedUtterance(utteranceReviews)) {
-              throw new Error(
-                "Transcript evidence must come from a meaning-backed confirmed Child utterance review.",
-              );
-            }
-          }
           const inboxRows = await transaction
             .select()
             .from(childPhraseInboxItemsTable)
@@ -22813,6 +23022,7 @@ router.post("/sessions", async (req, res) => {
                 eq(childPhraseInboxItemsTable.transcriptId, transcript.id),
                 inArray(childPhraseInboxItemsTable.status, [
                   "pending",
+                  "reviewed",
                   "deferred",
                 ]),
               ),
@@ -22850,16 +23060,20 @@ router.post("/sessions", async (req, res) => {
                 : undefined;
               if (
                 !inboxItem ||
-                inboxItem.status !== "pending" ||
+                !["pending", "reviewed"].includes(inboxItem.status) ||
                 inboxItem.transcriptPhraseId !== phrase.transcriptPhraseId ||
                 normalizePhrase(inboxItem.phrase) !==
                   normalizePhrase(phrase.phrase) ||
                 !sourceSegment ||
                 !sourceReview ||
-                !canCreatePhraseEvidenceFrom(sourceSegment, sourceReview)
+                !canKeepReviewedChildUtteranceFrom(
+                  sourceSegment,
+                  sourceReview,
+                ) ||
+                inboxItem.status !== "reviewed"
               ) {
                 throw new Error(
-                  "The selected Child Phrase Inbox item is no longer eligible for dictionary review.",
+                  "The selected Child Phrase Inbox item is no longer included in this session review.",
                 );
               }
             }
@@ -22987,7 +23201,30 @@ router.post("/sessions", async (req, res) => {
         if (transcript) {
           const [claimedTranscript] = await transaction
             .update(sessionTranscriptsTable)
-            .set({ sessionId: session.id, updatedAt: new Date() })
+            .set({
+              sessionId: session.id,
+              reviewDraft: {
+                selectedPhrases: body.data.gestalts.map((phrase) => ({
+                  phrase: phrase.phrase,
+                  meaning: phrase.meaning,
+                  communicationFunction: phrase.function,
+                  context: phrase.context,
+                  emotionalState: phrase.emotionalState,
+                  note: phrase.note,
+                  transcriptPhraseId: phrase.transcriptPhraseId,
+                  phraseInboxItemId: phrase.phraseInboxItemId,
+                  addToDictionary: sessionPhraseAddsToDictionary(phrase),
+                  preserveDictionary: Boolean(phrase.preserveDictionary),
+                })),
+                clinicalObservations: body.data.clinicalObservations,
+                nextSteps: body.data.nextSteps,
+                goalReviews,
+                note: body.data.note,
+                noteEdited: true,
+                savedAt: new Date().toISOString(),
+              },
+              updatedAt: new Date(),
+            })
             .where(
               and(
                 eq(sessionTranscriptsTable.id, transcript.id),
@@ -23027,14 +23264,17 @@ router.post("/sessions", async (req, res) => {
             }
           }
         }
-        // The reviewed session is the dictionary workflow: each reviewed phrase
-        // becomes (or updates) the child-scoped canonical entry before it is
-        // attached to this session's evidence.
+        // Session-note selection and dictionary promotion are independent.
+        // Keep this array index-aligned with the reviewed session phrases.
         const dictionaryGestalts: Array<
-          typeof clinicalGestaltsTable.$inferSelect
+          typeof clinicalGestaltsTable.$inferSelect | null
         > = [];
         let phraseInboxDictionaryAddedCount = 0;
         for (const phrase of body.data.gestalts) {
+          if (!sessionPhraseAddsToDictionary(phrase)) {
+            dictionaryGestalts.push(null);
+            continue;
+          }
           const normalizedPhrase = normalizePhrase(phrase.phrase);
           const [existingDictionaryGestalt] = phrase.preserveDictionary
             ? await transaction
@@ -23102,7 +23342,14 @@ router.post("/sessions", async (req, res) => {
             throw new Error("Dictionary phrase insert did not return a row.");
           dictionaryGestalts.push(dictionaryGestalt);
         }
-        if (transcript && phraseInboxItemIds.length) {
+        const dictionaryInboxItemIds = body.data.gestalts
+          .filter(
+            (phrase) =>
+              sessionPhraseAddsToDictionary(phrase) &&
+              typeof phrase.phraseInboxItemId === "number",
+          )
+          .map((phrase) => phrase.phraseInboxItemId as number);
+        if (transcript && dictionaryInboxItemIds.length) {
           const transitionedInboxRows = await transaction
             .update(childPhraseInboxItemsTable)
             .set({
@@ -23118,12 +23365,15 @@ router.post("/sessions", async (req, res) => {
                 ),
                 eq(childPhraseInboxItemsTable.childId, query.data.childId),
                 eq(childPhraseInboxItemsTable.transcriptId, transcript.id),
-                eq(childPhraseInboxItemsTable.status, "pending"),
-                inArray(childPhraseInboxItemsTable.id, phraseInboxItemIds),
+                inArray(childPhraseInboxItemsTable.status, [
+                  "pending",
+                  "reviewed",
+                ]),
+                inArray(childPhraseInboxItemsTable.id, dictionaryInboxItemIds),
               ),
             )
             .returning({ id: childPhraseInboxItemsTable.id });
-          if (transitionedInboxRows.length !== phraseInboxItemIds.length) {
+          if (transitionedInboxRows.length !== dictionaryInboxItemIds.length) {
             throw new Error(
               "A Child Phrase Inbox item changed while the session was being saved.",
             );
@@ -23136,8 +23386,9 @@ router.post("/sessions", async (req, res) => {
               .values(
                 body.data.gestalts.map((phrase, index) => {
                   const dictionaryGestalt = dictionaryGestalts[index];
-                  const preserved =
-                    phrase.preserveDictionary && dictionaryGestalt;
+                  const preserved = Boolean(
+                    phrase.preserveDictionary && dictionaryGestalt,
+                  );
                   return {
                     sessionId: session.id,
                     gestaltId: dictionaryGestalt?.id ?? null,
@@ -23151,19 +23402,19 @@ router.post("/sessions", async (req, res) => {
                         )
                       : true,
                     phrase: preserved
-                      ? dictionaryGestalt.phrase
+                      ? dictionaryGestalt!.phrase
                       : phrase.phrase,
                     meaning: preserved
-                      ? dictionaryGestalt.meaning
+                      ? dictionaryGestalt!.meaning
                       : phrase.meaning,
                     communicationFunction: preserved
-                      ? dictionaryGestalt.communicationFunction
+                      ? dictionaryGestalt!.communicationFunction
                       : phrase.function,
                     context: preserved
-                      ? (dictionaryGestalt.contexts[0] ?? "")
+                      ? (dictionaryGestalt!.contexts[0] ?? "")
                       : phrase.context,
                     emotionalState: preserved
-                      ? dictionaryGestalt.emotionalState
+                      ? dictionaryGestalt!.emotionalState
                       : phrase.emotionalState,
                     note: phrase.note,
                   };
@@ -23280,7 +23531,9 @@ router.post("/sessions", async (req, res) => {
       makeupForSessionDate: makeupTarget?.sessionDate ?? null,
       durationSeconds: saved.session.durationSeconds,
       gestalts: body.data.gestalts,
-      gestaltIds: saved.dictionaryGestalts.map((phrase) => phrase.id),
+      gestaltIds: saved.dictionaryGestalts.flatMap((phrase) =>
+        phrase ? [phrase.id] : [],
+      ),
       clinicalObservations: saved.session.clinicalObservations,
       nextSteps: saved.session.nextSteps,
       note: saved.session.note,
@@ -23317,7 +23570,7 @@ router.post("/sessions", async (req, res) => {
         query.data.childId,
         response.id,
         response.gestalts,
-        response.gestaltIds,
+        saved.dictionaryGestalts.map((phrase) => phrase?.id ?? null),
       );
     // Persist the deterministic draft as soon as reviewed session evidence is
     // saved. Clinician edits later replace only this content, not its evidence.

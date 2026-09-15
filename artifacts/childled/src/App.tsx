@@ -68,6 +68,7 @@ import {
   Plus,
   Printer,
   Pause,
+  Pencil,
   Play,
   RotateCcw,
   RefreshCw,
@@ -138,6 +139,7 @@ import {
   useCreateDeletionRequest,
   useCreateGestalt,
   useDeleteGestalt,
+  useUpdateGestalt,
   useMergeGestalts,
   useCreateObservation,
   useCreateSession,
@@ -176,6 +178,7 @@ import {
   useUpdateTranscriptProvisionalPhrases,
   useUpdateTranscriptSpeakers,
   useUpdateTranscriptChildUtterances,
+  useUpdateRecordedSessionReviewDraft,
   useListChildPhraseInbox,
   useUpdateChildPhraseInbox,
   useRequestSessionAudioUpload,
@@ -251,6 +254,14 @@ import {
   citationsForTimelineEvidence,
   normalizeJourneyPhrase,
 } from "@workspace/api-zod/language-journey";
+import {
+  COMMUNICATION_FUNCTION_OPTIONS,
+  communicationFunctionMatches,
+  communicationFunctionOptionsWithStoredValues,
+  communicationFunctionOtherDescription,
+  communicationFunctionSelection,
+  formatCommunicationFunction,
+} from "@workspace/api-zod";
 import { ErrorBoundary } from "@/components/error-boundary";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -311,6 +322,7 @@ import {
   sessionStatusLabel,
   sortSessionsByDate,
 } from "@/lib/session-history";
+import { buildRecordedSessionSummary } from "@/lib/recorded-session-review";
 import { refreshSessionTrackingQueries } from "@/lib/session-query-refresh";
 import {
   emptySessionGoalReview,
@@ -6967,6 +6979,7 @@ function DictionaryPage({
   const [showDuplicateQueue, setShowDuplicateQueue] = useState(false);
   const [showRecoveryQueue, setShowRecoveryQueue] = useState(false);
   const [phraseToDelete, setPhraseToDelete] = useState<Gestalt | null>(null);
+  const [phraseToEdit, setPhraseToEdit] = useState<Gestalt | null>(null);
   const [recoveryItem, setRecoveryItem] =
     useState<LegacyPhraseObservation | null>(null);
   const [recoveryDraft, setRecoveryDraft] = useState({
@@ -7164,13 +7177,14 @@ function DictionaryPage({
           `${item.gestalt.phrase} ${item.gestalt.meaning} ${item.recentContexts.join(" ")}`
             .toLowerCase()
             .includes(search.toLowerCase()) &&
-          (filter === "All functions" || item.gestalt.function === filter),
+          (filter === "All functions" ||
+            communicationFunctionMatches(item.gestalt.function, filter)),
       ),
     [entries, search, filter],
   );
 
-  const functions = Array.from(
-    new Set(entries.map((item) => item.gestalt.function).filter(Boolean)),
+  const functions = communicationFunctionOptionsWithStoredValues(
+    entries.map((item) => item.gestalt.function),
   );
   const duplicateSuggestions =
     duplicateSuggestionsQuery.data?.suggestions ?? [];
@@ -7945,14 +7959,24 @@ function DictionaryPage({
                         {item.gestalt.comments?.length ?? 0} notes
                       </button>
                       {canReviewSession && (
-                        <button
-                          type="button"
-                          data-testid={`button-delete-phrase-${item.gestalt.id}`}
-                          onClick={() => setPhraseToDelete(item.gestalt)}
-                          className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 font-semibold text-destructive transition-colors hover:bg-destructive/10 focus-ring"
-                        >
-                          <Trash2 size={14} /> Delete
-                        </button>
+                        <>
+                          <button
+                            type="button"
+                            data-testid={`button-edit-phrase-${item.gestalt.id}`}
+                            onClick={() => setPhraseToEdit(item.gestalt)}
+                            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 font-semibold text-primary transition-colors hover:bg-secondary focus-ring"
+                          >
+                            <Pencil size={14} /> Edit
+                          </button>
+                          <button
+                            type="button"
+                            data-testid={`button-delete-phrase-${item.gestalt.id}`}
+                            onClick={() => setPhraseToDelete(item.gestalt)}
+                            className="inline-flex min-h-11 items-center gap-1.5 rounded-lg px-2.5 font-semibold text-destructive transition-colors hover:bg-destructive/10 focus-ring"
+                          >
+                            <Trash2 size={14} /> Delete
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -7998,6 +8022,26 @@ function DictionaryPage({
           />
         )}
       </div>
+      {phraseToEdit && (
+        <GestaltEditForm
+          gestalt={phraseToEdit}
+          onClose={() => setPhraseToEdit(null)}
+          onSaved={() => {
+            setPhraseToEdit(null);
+            queryClient.invalidateQueries({
+              queryKey: getListGestaltsQueryKey({ childId: childId ?? 0 }),
+            });
+            queryClient.invalidateQueries({
+              queryKey: getGetDictionaryInsightsQueryKey({
+                childId: childId ?? 0,
+              }),
+            });
+            queryClient.invalidateQueries({
+              queryKey: getGetPhraseTrendsQueryKey({ childId: childId ?? 0 }),
+            });
+          }}
+        />
+      )}
       {phraseToDelete && (
         <Modal
           title="Delete this phrase?"
@@ -8044,6 +8088,136 @@ function DictionaryPage({
         </Modal>
       )}
     </>
+  );
+}
+
+function GestaltEditForm({
+  gestalt,
+  onClose,
+  onSaved,
+}: {
+  gestalt: Gestalt;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const update = useUpdateGestalt();
+  const initialFunction = communicationFunctionSelection(gestalt.function);
+  const [phrase, setPhrase] = useState(gestalt.phrase);
+  const [meaning, setMeaning] = useState(gestalt.meaning);
+  const [communicationFunction, setCommunicationFunction] =
+    useState(initialFunction);
+  const [otherFunction, setOtherFunction] = useState(
+    communicationFunctionOtherDescription(gestalt.function),
+  );
+  const [contexts, setContexts] = useState(gestalt.contexts.join(", "));
+  const [emotionalState, setEmotionalState] = useState(gestalt.emotionalState);
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    update.mutate(
+      {
+        gestaltId: gestalt.id,
+        data: {
+          phrase: phrase.trim(),
+          meaning: meaning.trim(),
+          function: formatCommunicationFunction(
+            communicationFunction,
+            otherFunction,
+          ),
+          contexts: contexts
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
+          emotionalState: emotionalState.trim(),
+        },
+      },
+      { onSuccess: onSaved },
+    );
+  };
+  return (
+    <Modal title="Edit phrase" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-5">
+        <Field
+          label="Exact phrase"
+          value={phrase}
+          onChange={setPhrase}
+          placeholder="What did they say?"
+          required
+          maxLength={600}
+          testId="input-edit-gestalt-phrase"
+        />
+        <Field
+          label="Working meaning"
+          value={meaning}
+          onChange={setMeaning}
+          placeholder="Their likely message, need, or invitation"
+          required
+          maxLength={4000}
+          testId="input-edit-gestalt-meaning"
+        />
+        <div className="grid gap-4 sm:grid-cols-2">
+          <SelectField
+            label="Communication function"
+            value={communicationFunction}
+            onChange={setCommunicationFunction}
+            options={communicationFunctionOptionsWithStoredValues([
+              gestalt.function,
+            ])}
+            testId="select-edit-gestalt-function"
+          />
+          {communicationFunction === "Other" && (
+            <Field
+              label="Describe communication function (optional)"
+              value={otherFunction}
+              onChange={setOtherFunction}
+              placeholder="Add a short description"
+              maxLength={140}
+              testId="input-edit-gestalt-other-function"
+            />
+          )}
+          <Field
+            label="Contexts"
+            value={contexts}
+            onChange={setContexts}
+            placeholder="bedtime, outside (comma separated)"
+            testId="input-edit-gestalt-contexts"
+          />
+          <Field
+            label="Emotional state"
+            value={emotionalState}
+            onChange={setEmotionalState}
+            placeholder="How were they feeling?"
+            required
+            maxLength={160}
+            testId="input-edit-gestalt-emotional-state"
+          />
+        </div>
+        {update.isError && (
+          <p role="alert" className="text-sm text-destructive">
+            The phrase could not be updated. Check for a duplicate phrase and
+            try again.
+          </p>
+        )}
+        <div className="flex justify-end gap-3">
+          <Button type="button" variant="quiet" onClick={onClose}>
+            Cancel
+          </Button>
+          <Button
+            type="submit"
+            variant="warm"
+            disabled={
+              update.isPending ||
+              !phrase.trim() ||
+              !meaning.trim() ||
+              !communicationFunction ||
+              !emotionalState.trim()
+            }
+            data-testid="button-submit-edit-gestalt"
+          >
+            {update.isPending ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </form>
+    </Modal>
   );
 }
 
@@ -10656,16 +10830,7 @@ function LegacySessionRecorderPage({
                       onChange={(value) =>
                         updateCaptured(item.id, "function", value)
                       }
-                      options={[
-                        "Request",
-                        "Protest",
-                        "Shared Joy",
-                        "Comment",
-                        "Transition",
-                        "Regulation",
-                        "Self-Advocacy",
-                        "Unknown",
-                      ]}
+                      options={COMMUNICATION_FUNCTION_OPTIONS}
                       placeholder={
                         item.source === "speech" ? "Choose…" : undefined
                       }
@@ -11115,16 +11280,7 @@ function LegacySessionRecorderPage({
                 label="Function"
                 value={func}
                 onChange={setFunc}
-                options={[
-                  "Request",
-                  "Protest",
-                  "Shared Joy",
-                  "Comment",
-                  "Transition",
-                  "Regulation",
-                  "Self-Advocacy",
-                  "Unknown",
-                ]}
+                options={COMMUNICATION_FUNCTION_OPTIONS}
                 testId="select-session-function"
               />
               <SelectField
@@ -11225,6 +11381,7 @@ type ReviewGestalt = {
   origin?: "manual" | "transcript";
   reviewState?: "routine" | "exception" | "reviewed";
   preserveDictionary?: boolean;
+  addToDictionary?: boolean;
   clinicianEdited?: boolean;
 };
 
@@ -11332,6 +11489,8 @@ function SessionRecorderPage({
   const updateTranscriptProvisionalPhrases =
     useUpdateTranscriptProvisionalPhrases();
   const updateTranscriptChildUtterances = useUpdateTranscriptChildUtterances();
+  const updateRecordedSessionReviewDraft =
+    useUpdateRecordedSessionReviewDraft();
   const updateChildPhraseInbox = useUpdateChildPhraseInbox();
   const draftTranscriptionQuery = useGetSessionTranscriptionDraft(
     { childId, transcriptId: resumeTranscriptId ?? 0 },
@@ -11399,6 +11558,10 @@ function SessionRecorderPage({
   const transcriptionRun = useRef(0);
   const sessionSaveInFlight = useRef(false);
   const automaticallyResumedDraftId = useRef<number | undefined>(undefined);
+  const hydratedReviewDraftId = useRef<number | undefined>(undefined);
+  const reviewDraftSaveTimer = useRef<number | undefined>(undefined);
+  const reviewDraftSaveChain = useRef<Promise<void>>(Promise.resolve());
+  const activeReviewDraftTranscriptId = useRef<number | undefined>(undefined);
   const handledStartRequestToken = useRef(0);
   const consentConfirmedAtRef = useRef<string | undefined>(undefined);
   const [stage, setStage] = useState<
@@ -11579,6 +11742,45 @@ function SessionRecorderPage({
     day: "numeric",
     year: "numeric",
   }).format(new Date());
+  const hydrateRecordedSessionReviewDraft = (draft: SessionTranscript) => {
+    const reviewDraft = draft.reviewDraft;
+    if (!reviewDraft) return;
+    setCaptured(
+      reviewDraft.selectedPhrases.map((item, index) => ({
+        id: item.phraseInboxItemId ?? -(item.transcriptPhraseId ?? index + 1),
+        phrase: item.phrase,
+        meaning: item.meaning,
+        function: item.communicationFunction,
+        context: item.context,
+        emotionalState: item.emotionalState,
+        note: item.note,
+        transcriptPhraseId: item.transcriptPhraseId,
+        phraseInboxItemId: item.phraseInboxItemId,
+        origin: item.transcriptPhraseId ? "transcript" : "manual",
+        reviewState: item.preserveDictionary ? "routine" : "reviewed",
+        preserveDictionary: item.preserveDictionary,
+        addToDictionary: item.addToDictionary,
+        clinicianEdited: !item.preserveDictionary,
+      })),
+    );
+    setObservations(reviewDraft.clinicalObservations);
+    setNextSteps(reviewDraft.nextSteps);
+    setGoalReviews(
+      Object.fromEntries(
+        reviewDraft.goalReviews.map((review) => [
+          review.goalId,
+          {
+            progressStatus: review.progressStatus,
+            promptingLevel: review.promptingLevel,
+            comments: review.comments,
+          },
+        ]),
+      ),
+    );
+    setSessionNote(reviewDraft.note);
+    setSessionNoteEdited(reviewDraft.noteEdited);
+    hydratedReviewDraftId.current = draft.id;
+  };
   const matchingGestalt = (capturedPhrase: string) => {
     const phraseKey = gestaltMatchKey(capturedPhrase);
     if (!phraseKey) return undefined;
@@ -11612,8 +11814,9 @@ function SessionRecorderPage({
         ),
       ),
     );
+    hydrateRecordedSessionReviewDraft(draft);
     setStage("review");
-    addTranscriptDrafts(draft);
+    if (!draft.reviewDraft) addTranscriptDrafts(draft);
   };
   useEffect(() => {
     const draft = draftTranscriptionQuery.data;
@@ -11747,39 +11950,103 @@ function SessionRecorderPage({
         review.comments.trim() ? ` ${review.comments.trim()}` : ""
       }`;
     });
-    return [
-      `${formattedTime} therapy session for ${child?.name ?? "the child"}.`,
-      "",
-      "Reviewed child communication:",
-      items.length
-        ? items
-            .map((item, index) =>
-              [
-                `${index + 1}. “${item.phrase}”${item.frequency && item.frequency > 1 ? ` (heard ${item.frequency} times)` : ""}`,
-                `   Working meaning: ${item.meaning || "To be explored with the team."}`,
-                `   Function: ${item.function || "Unknown"} · Setting: ${item.context || "Not recorded"} · Emotional state: ${item.emotionalState || "Unknown"}`,
-                item.note ? `   Clinical context: ${item.note}` : "",
-              ]
-                .filter(Boolean)
-                .join("\n"),
-            )
-            .join("\n\n")
-        : "No reviewed child utterances were selected.",
-      "",
-      "Clinical observations:",
-      observations || "To be added.",
-      "",
-      "Goal progress:",
-      goalProgress.length
-        ? goalProgress.join("\n")
-        : "No communication goals were marked as addressed.",
-      "",
-      "Next steps:",
-      nextSteps || "To be added.",
-    ].join("\n");
+    return buildRecordedSessionSummary({
+      sessionLabel: `${formattedTime} therapy session for ${child?.name ?? "the child"}.`,
+      selectedPhrases: items.map((item) => ({
+        phrase: item.phrase,
+        meaning: item.meaning,
+        communicationFunction: item.function,
+        context: item.context,
+        emotionalState: item.emotionalState,
+        note: item.note,
+        frequency: item.frequency,
+      })),
+      clinicalObservations: observations,
+      goalProgress,
+      nextSteps,
+    });
   };
+  useEffect(() => {
+    if (
+      !transcription ||
+      transcription.status !== "complete" ||
+      (stage !== "review" && stage !== "finalize") ||
+      (transcription.reviewDraft &&
+        hydratedReviewDraftId.current !== transcription.id)
+    ) {
+      return;
+    }
+    if (reviewDraftSaveTimer.current !== undefined) {
+      window.clearTimeout(reviewDraftSaveTimer.current);
+    }
+    const transcriptId = transcription.id;
+    activeReviewDraftTranscriptId.current = transcriptId;
+    const draft = {
+      selectedPhrases: captured.map((item) => ({
+        phrase: item.phrase,
+        meaning: item.meaning,
+        communicationFunction: item.function,
+        context: item.context,
+        emotionalState: item.emotionalState,
+        note: item.note,
+        transcriptPhraseId: item.transcriptPhraseId,
+        phraseInboxItemId: item.phraseInboxItemId,
+        addToDictionary:
+          Boolean(item.preserveDictionary) || Boolean(item.addToDictionary),
+        preserveDictionary: Boolean(item.preserveDictionary),
+      })),
+      clinicalObservations: observations,
+      nextSteps,
+      goalReviews: Object.entries(goalReviews).map(([goalId, review]) => ({
+        goalId: Number(goalId),
+        progressStatus: review.progressStatus,
+        promptingLevel: review.promptingLevel,
+        comments: review.comments,
+      })),
+      note: sessionNote,
+      noteEdited: sessionNoteEdited,
+    };
+    reviewDraftSaveTimer.current = window.setTimeout(() => {
+      reviewDraftSaveChain.current = reviewDraftSaveChain.current
+        .then(async () => {
+          const result = await updateRecordedSessionReviewDraft.mutateAsync({
+            params: { childId, transcriptId },
+            data: draft,
+          });
+          if (activeReviewDraftTranscriptId.current === transcriptId) {
+            hydratedReviewDraftId.current = transcriptId;
+            setTranscription(result);
+          }
+        })
+        .catch((error: any) => {
+          setSaveError(
+            error?.data?.error ??
+              error?.message ??
+              "The current session review could not be saved. Your edits remain on this screen.",
+          );
+        });
+    }, 600);
+    return () => {
+      if (reviewDraftSaveTimer.current !== undefined) {
+        window.clearTimeout(reviewDraftSaveTimer.current);
+        reviewDraftSaveTimer.current = undefined;
+      }
+    };
+  }, [
+    captured,
+    childId,
+    goalReviews,
+    nextSteps,
+    observations,
+    sessionNote,
+    sessionNoteEdited,
+    stage,
+    transcription?.id,
+    transcription?.status,
+  ]);
   const clearTranscription = () => {
     transcriptionRun.current += 1;
+    activeReviewDraftTranscriptId.current = undefined;
     setUploadedAudioId(undefined);
     setTranscription(undefined);
     setTranscriptionStatus("idle");
@@ -12475,9 +12742,14 @@ function SessionRecorderPage({
   };
   const updatePhraseInboxItem = async (
     itemId: number,
-    status: "pending" | "deferred",
+    status: "pending" | "reviewed" | "deferred",
     phraseValue: string,
   ) => {
+    const hasAnotherPendingItem = Boolean(
+      phraseInboxQuery.data?.some(
+        (item) => item.id !== itemId && item.status === "pending",
+      ),
+    );
     try {
       const hasMeaningDraft = Object.prototype.hasOwnProperty.call(
         inboxMeaningDrafts,
@@ -12508,7 +12780,7 @@ function SessionRecorderPage({
         setCaptured((items) =>
           items.filter((item) => item.phraseInboxItemId !== updatedItem.id),
         );
-      } else if (updatedItem.workingMeaning) {
+      } else if (status === "reviewed") {
         setUtteranceNotes((current) => ({
           ...current,
           [updatedItem.segmentId]: {
@@ -12540,8 +12812,9 @@ function SessionRecorderPage({
             phraseInboxItemId: updatedItem.id,
             frequency: detected?.frequency,
             origin: "transcript",
-            reviewState: "exception",
+            reviewState: "reviewed",
             preserveDictionary: false,
+            addToDictionary: false,
             clinicianEdited: true,
           };
           return existing
@@ -12554,6 +12827,13 @@ function SessionRecorderPage({
         });
       }
       setTranscriptionError("");
+      if (status === "reviewed" && !hasAnotherPendingItem) {
+        window.setTimeout(() => {
+          document
+            .getElementById("session-evidence-closeout")
+            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        }, 0);
+      }
     } catch (error: any) {
       setTranscriptionError(
         error?.data?.error ??
@@ -13109,12 +13389,13 @@ function SessionRecorderPage({
     const item = captured.find((entry) => entry.id === id);
     if (!item) return;
     if (
-      !item.meaning.trim() ||
-      item.meaning === "Meaning to explore with the team" ||
-      item.function === "Unknown"
+      item.addToDictionary &&
+      (!item.meaning.trim() ||
+        item.meaning === "Meaning to explore with the team" ||
+        item.function === "Unknown")
     ) {
       setSaveError(
-        "Add a working meaning and communication function before marking this phrase ready to save.",
+        "Add a working meaning and communication function before adding this phrase to the dictionary.",
       );
       return;
     }
@@ -13126,6 +13407,7 @@ function SessionRecorderPage({
               reviewState: "reviewed",
               clinicianEdited: true,
               preserveDictionary: false,
+              addToDictionary: Boolean(entry.addToDictionary),
             }
           : entry,
       ),
@@ -13190,6 +13472,11 @@ function SessionRecorderPage({
       if (audioBlob && !audioId) {
         audioId = await uploadAudioBlob(audioBlob, consentConfirmedAt);
       }
+      if (reviewDraftSaveTimer.current !== undefined) {
+        window.clearTimeout(reviewDraftSaveTimer.current);
+        reviewDraftSaveTimer.current = undefined;
+      }
+      await reviewDraftSaveChain.current;
       const session = await createSession.mutateAsync({
         params: { childId },
         data: {
@@ -13207,6 +13494,7 @@ function SessionRecorderPage({
               transcriptPhraseId,
               phraseInboxItemId,
               preserveDictionary,
+              addToDictionary,
               reviewState,
             }) => ({
               phrase,
@@ -13218,6 +13506,8 @@ function SessionRecorderPage({
               transcriptPhraseId,
               phraseInboxItemId,
               preserveDictionary,
+              addToDictionary:
+                Boolean(preserveDictionary) || Boolean(addToDictionary),
               clinicianReviewed: reviewState === "reviewed",
             }),
           ),
@@ -13263,6 +13553,14 @@ function SessionRecorderPage({
     }
   };
   const regenerateSessionNote = () => {
+    if (
+      sessionNoteEdited &&
+      !window.confirm(
+        "Regenerating will replace your edits with the latest saved review data. Continue?",
+      )
+    ) {
+      return;
+    }
     setSessionNote(summaryFor());
     setSessionNoteEdited(false);
   };
@@ -13295,6 +13593,11 @@ function SessionRecorderPage({
     setSaveError("");
     setDeleteError("");
     setFinalizePreparing(false);
+    hydratedReviewDraftId.current = undefined;
+    if (reviewDraftSaveTimer.current !== undefined) {
+      window.clearTimeout(reviewDraftSaveTimer.current);
+      reviewDraftSaveTimer.current = undefined;
+    }
     setDiscardModalOpen(false);
     setConsentModalOpen(false);
     setConsentChecked(false);
@@ -13404,7 +13707,7 @@ function SessionRecorderPage({
     .sort((left, right) => left.reviewRank - right.reviewRank)
     .find((utterance) => utterance.disposition === "pending");
   const activeInboxItem = phraseInboxQuery.data?.find(
-    (item) => item.status === "pending" && !item.workingMeaning?.trim(),
+    (item) => item.status === "pending",
   );
   useEffect(() => {
     const inboxItems = phraseInboxQuery.data ?? [];
@@ -13431,8 +13734,8 @@ function SessionRecorderPage({
   useEffect(() => {
     const resumableItems = (phraseInboxQuery.data ?? []).filter(
       (item) =>
-        item.status === "pending" &&
-        Boolean(item.workingMeaning) &&
+        (item.status === "reviewed" ||
+          (item.status === "pending" && Boolean(item.workingMeaning))) &&
         typeof item.transcriptPhraseId === "number",
     );
     if (!resumableItems.length || !transcription) return;
@@ -13457,8 +13760,9 @@ function SessionRecorderPage({
           phraseInboxItemId: item.id,
           frequency: detected.frequency,
           origin: "transcript",
-          reviewState: "exception",
+          reviewState: "reviewed",
           preserveDictionary: false,
+          addToDictionary: false,
           clinicianEdited: true,
         });
       }
@@ -14123,7 +14427,7 @@ function SessionRecorderPage({
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               {rapidReviewUtterance
                 ? "Decide whether each transcript phrase is Child language, Not Child, Unsure, or Unintelligible."
-                : "Add a working meaning to keep each Child phrase, or delete anything that should not be part of this session."}
+                : "Keep each meaningful Child phrase for review, with or without a working meaning, or delete anything that should not be part of this session."}
             </p>
           </div>
           {childUtterances.length > 1 && (
@@ -14301,9 +14605,9 @@ function SessionRecorderPage({
                 Confirmed Child language, held for review
               </h3>
               <p className="mt-2 max-w-2xl text-xs leading-5 text-muted-foreground">
-                Add a working meaning to keep this phrase in the session. You
-                can edit its wording and details in the next review area before
-                finalizing.
+                Keep the phrase now and add a working meaning only when you are
+                ready. Meaning-backed phrases can be reviewed for the
+                communication dictionary before finalizing.
               </p>
             </div>
             <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-primary">
@@ -14368,14 +14672,11 @@ function SessionRecorderPage({
               <div className="mt-4 flex flex-wrap gap-2">
                 <Button
                   variant="primary"
-                  disabled={
-                    updateChildPhraseInbox.isPending ||
-                    !(inboxMeaningDrafts[activeInboxItem.id] ?? "").trim()
-                  }
+                  disabled={updateChildPhraseInbox.isPending}
                   onClick={() =>
                     void updatePhraseInboxItem(
                       activeInboxItem.id,
-                      "pending",
+                      "reviewed",
                       activeInboxItem.phrase,
                     )
                   }
@@ -14405,9 +14706,13 @@ function SessionRecorderPage({
           )}
           {!phraseInboxQuery.isLoading && !activeInboxItem && (
             <p className="mt-4 rounded-xl border border-dashed border-border bg-muted/35 p-4 text-sm leading-6 text-muted-foreground">
-              {phraseInboxQuery.data?.some((item) => item.status === "deferred")
-                ? "No pending phrases. Deferred items remain saved below for later review."
-                : "Confirmed Child phrases will appear here after you classify transcript turns."}
+              {phraseInboxQuery.data?.some((item) => item.status === "reviewed")
+                ? "All selected Child phrases have been kept. Continue with the session evidence review below."
+                : phraseInboxQuery.data?.some(
+                      (item) => item.status === "deferred",
+                    )
+                  ? "No pending phrases. Deferred items remain saved below for later review."
+                  : "Confirmed Child phrases will appear here after you classify transcript turns."}
             </p>
           )}
           {phraseInboxQuery.data?.some(
@@ -16042,16 +16347,7 @@ function SessionRecorderPage({
                         label="Function"
                         value={func}
                         onChange={setFunc}
-                        options={[
-                          "Request",
-                          "Protest",
-                          "Shared Joy",
-                          "Comment",
-                          "Transition",
-                          "Regulation",
-                          "Self-Advocacy",
-                          "Unknown",
-                        ]}
+                        options={COMMUNICATION_FUNCTION_OPTIONS}
                         testId="select-session-function"
                       />
                       <SelectField
@@ -16086,7 +16382,7 @@ function SessionRecorderPage({
                     </Button>
                   </form>
                 </details>
-                <section className="space-y-4">
+                <section id="session-evidence-closeout" className="space-y-4">
                   <div>
                     <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-muted-foreground">
                       Evidence closeout
@@ -16269,7 +16565,7 @@ function SessionRecorderPage({
                             testId={`input-review-phrase-${item.id}`}
                           />
                           <Field
-                            label="Working meaning"
+                            label="Working meaning (optional)"
                             value={item.meaning}
                             onChange={(value) =>
                               updateCaptured(item.id, "meaning", value)
@@ -16283,16 +16579,7 @@ function SessionRecorderPage({
                             onChange={(value) =>
                               updateCaptured(item.id, "function", value)
                             }
-                            options={[
-                              "Request",
-                              "Protest",
-                              "Shared Joy",
-                              "Comment",
-                              "Transition",
-                              "Regulation",
-                              "Self-Advocacy",
-                              "Unknown",
-                            ]}
+                            options={COMMUNICATION_FUNCTION_OPTIONS}
                             testId={`select-review-function-${item.id}`}
                           />
                           <SelectField
@@ -16321,6 +16608,40 @@ function SessionRecorderPage({
                             testId={`select-review-context-${item.id}`}
                           />
                         </div>
+                        <label className="mt-4 flex items-start gap-3 rounded-xl border border-border bg-secondary/20 p-3">
+                          <input
+                            type="checkbox"
+                            data-testid={`checkbox-add-review-phrase-to-dictionary-${item.id}`}
+                            checked={
+                              Boolean(item.preserveDictionary) ||
+                              Boolean(item.addToDictionary)
+                            }
+                            disabled={Boolean(item.preserveDictionary)}
+                            onChange={(event) =>
+                              setCaptured((items) =>
+                                items.map((candidate) =>
+                                  candidate.id === item.id
+                                    ? {
+                                        ...candidate,
+                                        addToDictionary: event.target.checked,
+                                        reviewState: "exception",
+                                      }
+                                    : candidate,
+                                ),
+                              )
+                            }
+                            className="mt-0.5 size-4 accent-primary"
+                          />
+                          <span>
+                            <span className="block text-sm font-semibold">
+                              Add to communication dictionary
+                            </span>
+                            <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+                              Optional. The phrase can remain in this session
+                              note without becoming a dictionary entry.
+                            </span>
+                          </span>
+                        </label>
                         <label className="mt-4 block space-y-2">
                           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                             What was happening when it was said?
@@ -16346,7 +16667,7 @@ function SessionRecorderPage({
                             onClick={() => resolveExceptionPhrase(item.id)}
                             data-testid={`button-resolve-review-phrase-${item.id}`}
                           >
-                            <Check size={15} /> Mark ready to save
+                            <Check size={15} /> Keep phrase
                           </Button>
                         </div>
                       </div>
@@ -17340,6 +17661,7 @@ function Field({
   onChange,
   placeholder,
   required,
+  maxLength,
   testId,
 }: {
   label: string;
@@ -17347,6 +17669,7 @@ function Field({
   onChange: (value: string) => void;
   placeholder: string;
   required?: boolean;
+  maxLength?: number;
   testId: string;
 }) {
   return (
@@ -17357,6 +17680,7 @@ function Field({
       <input
         data-testid={testId}
         required={required}
+        maxLength={maxLength}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
@@ -17382,6 +17706,7 @@ function GestaltForm({
   const [phrase, setPhrase] = useState("");
   const [meaning, setMeaning] = useState("");
   const [func, setFunc] = useState("Connection");
+  const [otherFunction, setOtherFunction] = useState("");
   const [contexts, setContexts] = useState("");
   const [emotion, setEmotion] = useState("Curious");
   const [source, setSource] = useState("Home");
@@ -17446,7 +17771,7 @@ function GestaltForm({
           phrase,
           allowSimilar,
           meaning: meaning.trim() || undefined,
-          function: func,
+          function: formatCommunicationFunction(func, otherFunction),
           contexts: contexts
             .split(",")
             .map((item) => item.trim())
@@ -17484,7 +17809,10 @@ function GestaltForm({
               .filter(Boolean)[0] || source,
           details: `Merged from phrase entry. Working meaning submitted: ${meaning}`,
           possibleMeaning: meaning,
-          communicationFunction: "Other",
+          communicationFunction: formatCommunicationFunction(
+            func,
+            otherFunction,
+          ),
           observedAt: new Date().toISOString(),
         },
       },
@@ -17557,19 +17885,22 @@ function GestaltForm({
         </label>
         <div className="grid gap-4 sm:grid-cols-2">
           <SelectField
-            label="Function"
+            label="Communication function"
             value={func}
             onChange={setFunc}
-            options={[
-              "Connection",
-              "Request",
-              "Protest",
-              "Comment",
-              "Self-regulation",
-              "Transition",
-            ]}
+            options={COMMUNICATION_FUNCTION_OPTIONS}
             testId="select-gestalt-function"
           />
+          {func === "Other" && (
+            <Field
+              label="Describe communication function (optional)"
+              value={otherFunction}
+              onChange={setOtherFunction}
+              placeholder="Add a short description"
+              maxLength={140}
+              testId="input-gestalt-other-function"
+            />
+          )}
           <SelectField
             label="Emotional state"
             value={emotion}
@@ -17693,6 +18024,8 @@ function PhraseObservationForm({
   const [details, setDetails] = useState("");
   const [possibleMeaning, setPossibleMeaning] = useState("");
   const [communicationFunction, setCommunicationFunction] = useState("Other");
+  const [otherCommunicationFunction, setOtherCommunicationFunction] =
+    useState("");
   const submit = (event: FormEvent) => {
     event.preventDefault();
     mutation.mutate(
@@ -17703,13 +18036,10 @@ function PhraseObservationForm({
           context,
           details: details || undefined,
           possibleMeaning: possibleMeaning || undefined,
-          communicationFunction: communicationFunction as
-            | "Requesting"
-            | "Commenting"
-            | "Social Interaction"
-            | "Self-Regulation"
-            | "Shared Joy"
-            | "Other",
+          communicationFunction: formatCommunicationFunction(
+            communicationFunction,
+            otherCommunicationFunction,
+          ),
           observedAt: new Date().toISOString(),
         },
       },
@@ -17777,16 +18107,19 @@ function PhraseObservationForm({
             label="Communication function (optional)"
             value={communicationFunction}
             onChange={setCommunicationFunction}
-            options={[
-              "Other",
-              "Requesting",
-              "Commenting",
-              "Social Interaction",
-              "Self-Regulation",
-              "Shared Joy",
-            ]}
+            options={COMMUNICATION_FUNCTION_OPTIONS}
             testId="select-teacher-phrase-function"
           />
+          {communicationFunction === "Other" && (
+            <Field
+              label="Describe communication function (optional)"
+              value={otherCommunicationFunction}
+              onChange={setOtherCommunicationFunction}
+              placeholder="Add a short description"
+              maxLength={140}
+              testId="input-teacher-phrase-other-function"
+            />
+          )}
         </div>
         <label className="block space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -17852,6 +18185,8 @@ function ClinicianPhraseForm({
   const [phrase, setPhrase] = useState("");
   const [context, setContext] = useState("");
   const [communicationFunction, setCommunicationFunction] = useState("");
+  const [otherCommunicationFunction, setOtherCommunicationFunction] =
+    useState("");
   const [notes, setNotes] = useState("");
   const refresh = () => {
     client.invalidateQueries({
@@ -17883,13 +18218,10 @@ function ClinicianPhraseForm({
           context: context.trim() || "Clinical observation",
           details: notes.trim() || undefined,
           communicationFunction: communicationFunction
-            ? (communicationFunction as
-                | "Requesting"
-                | "Commenting"
-                | "Social Interaction"
-                | "Self-Regulation"
-                | "Shared Joy"
-                | "Other")
+            ? formatCommunicationFunction(
+                communicationFunction,
+                otherCommunicationFunction,
+              )
             : undefined,
           observedAt: new Date().toISOString(),
         },
@@ -17933,17 +18265,19 @@ function ClinicianPhraseForm({
             label="Communication function (optional)"
             value={communicationFunction}
             onChange={setCommunicationFunction}
-            options={[
-              "",
-              "Requesting",
-              "Commenting",
-              "Social Interaction",
-              "Self-Regulation",
-              "Shared Joy",
-              "Other",
-            ]}
+            options={["", ...COMMUNICATION_FUNCTION_OPTIONS]}
             testId="select-clinician-phrase-function"
           />
+          {communicationFunction === "Other" && (
+            <Field
+              label="Describe communication function (optional)"
+              value={otherCommunicationFunction}
+              onChange={setOtherCommunicationFunction}
+              placeholder="Add a short description"
+              maxLength={140}
+              testId="input-clinician-phrase-other-function"
+            />
+          )}
         </div>
         <label className="space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
@@ -18087,7 +18421,7 @@ function SelectField({
   label: string;
   value: string;
   onChange: (value: string) => void;
-  options: string[];
+  options: readonly string[];
   testId: string;
   placeholder?: string;
 }) {
@@ -20383,22 +20717,26 @@ function HistoricalSessionDetail({
             {session.sessionMode === "recorded" &&
             (session.clinicalObservations || session.nextSteps) ? (
               <section className="mt-6 grid gap-4 border-t border-border pt-5 md:grid-cols-2">
-                <div>
-                  <h2 className="text-sm font-bold uppercase text-muted-foreground">
-                    Clinical observations
-                  </h2>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
-                    {session.clinicalObservations || "None entered."}
-                  </p>
-                </div>
-                <div>
-                  <h2 className="text-sm font-bold uppercase text-muted-foreground">
-                    Next steps
-                  </h2>
-                  <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
-                    {session.nextSteps || "None entered."}
-                  </p>
-                </div>
+                {session.clinicalObservations ? (
+                  <div>
+                    <h2 className="text-sm font-bold uppercase text-muted-foreground">
+                      Clinical observations
+                    </h2>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                      {session.clinicalObservations}
+                    </p>
+                  </div>
+                ) : null}
+                {session.nextSteps ? (
+                  <div>
+                    <h2 className="text-sm font-bold uppercase text-muted-foreground">
+                      Next steps
+                    </h2>
+                    <p className="mt-3 whitespace-pre-wrap text-sm leading-6">
+                      {session.nextSteps}
+                    </p>
+                  </div>
+                ) : null}
               </section>
             ) : null}
 

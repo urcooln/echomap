@@ -8,6 +8,7 @@
 import type { CalibrationApplicationStatus } from './calibrationApplicationStatus';
 import type { ChildLanguagePromptSummary } from './childLanguagePromptSummary';
 import type { ProvisionalPhraseCandidate } from './provisionalPhraseCandidate';
+import type { RecordedSessionReviewDraft } from './recordedSessionReviewDraft';
 import type { SessionProcessingStage } from './sessionProcessingStage';
 import type { SessionReviewProgress } from './sessionReviewProgress';
 import type { SessionTranscriptStatus } from './sessionTranscriptStatus';
@@ -25,6 +26,7 @@ export interface SessionTranscript {
   serviceRequirementId?: number | null;
   /** @nullable */
   makeupForSessionId?: number | null;
+  reviewDraft: RecordedSessionReviewDraft | null;
   /** @nullable */
   recordingConsentConfirmedAt: Date | null;
   status: SessionTranscriptStatus;

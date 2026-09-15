@@ -21,6 +21,37 @@ import {
   usersTable,
 } from "./core-domain";
 
+export type RecordedSessionReviewDraft = {
+  selectedPhrases: Array<{
+    phrase: string;
+    meaning: string;
+    communicationFunction: string;
+    context: string;
+    emotionalState: string;
+    note: string;
+    transcriptPhraseId?: number;
+    phraseInboxItemId?: number;
+    addToDictionary: boolean;
+    preserveDictionary: boolean;
+  }>;
+  clinicalObservations: string;
+  nextSteps: string;
+  goalReviews: Array<{
+    goalId: number;
+    progressStatus:
+      | "not_addressed"
+      | "progressed"
+      | "progressing_gradually"
+      | "regressed"
+      | "goal_met";
+    promptingLevel: "na" | "independent" | "minimal" | "moderate" | "maximal";
+    comments: string;
+  }>;
+  note: string;
+  noteEdited: boolean;
+  savedAt: string;
+};
+
 export const sessionTranscriptsTable = pgTable(
   "session_transcripts",
   {
@@ -46,6 +77,7 @@ export const sessionTranscriptsTable = pgTable(
       .notNull()
       .default("openai:gpt-4o-mini-transcribe"),
     rawTranscript: text("raw_transcript").notNull().default(""),
+    reviewDraft: jsonb("review_draft").$type<RecordedSessionReviewDraft>(),
     speakerSeparationStatus: text("speaker_separation_status")
       .notNull()
       .default("pending"),

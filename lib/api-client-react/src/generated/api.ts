@@ -113,6 +113,7 @@ import type {
   Gestalt,
   GestaltInput,
   GestaltMergeInput,
+  GestaltUpdateInput,
   GetAacProfileParams,
   GetAdminChildPermissionsParams,
   GetChildParams,
@@ -185,6 +186,7 @@ import type {
   PhraseObservationInput,
   PhraseTrendReport,
   ProvisionalPhraseReviewsInput,
+  RecordedSessionReviewDraftInput,
   RecordingDiagnosticError,
   RecoverLegacyPhraseObservationParams,
   RecurringLanguagePatternDetail,
@@ -246,6 +248,7 @@ import type {
   UpdateChildProfileInput,
   UpdateChildProfileParams,
   UpdateChildSensoryParams,
+  UpdateRecordedSessionReviewDraftParams,
   UpdateSessionSoapNoteParams,
   UpdateTranscriptChildUtterancesParams,
   UpdateTranscriptProvisionalPhrasesParams,
@@ -7434,6 +7437,78 @@ export const useCreateGestalt = <TError = ErrorType<unknown>,
       return useMutation(getCreateGestaltMutationOptions(options));
     }
 
+export const getUpdateGestaltUrl = (gestaltId: number,) => {
+
+
+
+
+  return `/api/gestalts/${gestaltId}`
+}
+
+/**
+ * @summary Update a reviewed dictionary phrase
+ */
+export const updateGestalt = async (gestaltId: number,
+    gestaltUpdateInput: GestaltUpdateInput, options?: Parameters<typeof customFetch>[1]): Promise<Gestalt> => {
+
+  return customFetch<Gestalt>(getUpdateGestaltUrl(gestaltId),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(gestaltUpdateInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateGestaltMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGestalt>>, TError,{gestaltId: number;data: BodyType<GestaltUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateGestalt>>, TError,{gestaltId: number;data: BodyType<GestaltUpdateInput>}, TContext> => {
+
+const mutationKey = ['updateGestalt'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateGestalt>>, {gestaltId: number;data: BodyType<GestaltUpdateInput>}> = (props) => {
+          const {gestaltId,data} = props ?? {};
+
+          return  updateGestalt(gestaltId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateGestaltMutationResult = NonNullable<Awaited<ReturnType<typeof updateGestalt>>>
+    export type UpdateGestaltMutationBody = BodyType<GestaltUpdateInput>
+    export type UpdateGestaltMutationError = ErrorType<void>
+
+    /**
+ * @summary Update a reviewed dictionary phrase
+ */
+export const useUpdateGestalt = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateGestalt>>, TError,{gestaltId: number;data: BodyType<GestaltUpdateInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateGestalt>>,
+        TError,
+        {gestaltId: number;data: BodyType<GestaltUpdateInput>},
+        TContext
+      > => {
+      return useMutation(getUpdateGestaltMutationOptions(options));
+    }
+
 export const getDeleteGestaltUrl = (gestaltId: number,) => {
 
 
@@ -9943,6 +10018,85 @@ export const useDeleteSessionTranscriptionDraft = <TError = ErrorType<void>,
       return useMutation(getDeleteSessionTranscriptionDraftMutationOptions(options));
     }
 
+export const getUpdateRecordedSessionReviewDraftUrl = (params: UpdateRecordedSessionReviewDraftParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/sessions/transcription/review-draft?${stringifiedParams}` : `/api/sessions/transcription/review-draft`
+}
+
+/**
+ * @summary Persist the current recorded-session review and editable note draft
+ */
+export const updateRecordedSessionReviewDraft = async (recordedSessionReviewDraftInput: RecordedSessionReviewDraftInput,
+    params: UpdateRecordedSessionReviewDraftParams, options?: Parameters<typeof customFetch>[1]): Promise<SessionTranscript> => {
+
+  return customFetch<SessionTranscript>(getUpdateRecordedSessionReviewDraftUrl(params),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(recordedSessionReviewDraftInput)
+  }
+);}
+
+
+
+
+
+export const getUpdateRecordedSessionReviewDraftMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRecordedSessionReviewDraft>>, TError,{data: BodyType<RecordedSessionReviewDraftInput>;params: UpdateRecordedSessionReviewDraftParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateRecordedSessionReviewDraft>>, TError,{data: BodyType<RecordedSessionReviewDraftInput>;params: UpdateRecordedSessionReviewDraftParams}, TContext> => {
+
+const mutationKey = ['updateRecordedSessionReviewDraft'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateRecordedSessionReviewDraft>>, {data: BodyType<RecordedSessionReviewDraftInput>;params: UpdateRecordedSessionReviewDraftParams}> = (props) => {
+          const {data,params} = props ?? {};
+
+          return  updateRecordedSessionReviewDraft(data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateRecordedSessionReviewDraftMutationResult = NonNullable<Awaited<ReturnType<typeof updateRecordedSessionReviewDraft>>>
+    export type UpdateRecordedSessionReviewDraftMutationBody = BodyType<RecordedSessionReviewDraftInput>
+    export type UpdateRecordedSessionReviewDraftMutationError = ErrorType<void>
+
+    /**
+ * @summary Persist the current recorded-session review and editable note draft
+ */
+export const useUpdateRecordedSessionReviewDraft = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateRecordedSessionReviewDraft>>, TError,{data: BodyType<RecordedSessionReviewDraftInput>;params: UpdateRecordedSessionReviewDraftParams}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateRecordedSessionReviewDraft>>,
+        TError,
+        {data: BodyType<RecordedSessionReviewDraftInput>;params: UpdateRecordedSessionReviewDraftParams},
+        TContext
+      > => {
+      return useMutation(getUpdateRecordedSessionReviewDraftMutationOptions(options));
+    }
+
 export const getGetSessionTranscriptionAudioUrl = (transcriptId: number,) => {
 
 
@@ -10419,7 +10573,7 @@ export const getUpdateChildPhraseInboxUrl = (itemId: number,) => {
 }
 
 /**
- * @summary Defer or add working meaning to a Child phrase inbox item
+ * @summary Review, defer, or update a Child phrase inbox item
  */
 export const updateChildPhraseInbox = async (itemId: number,
     transcriptPhraseInboxUpdate: TranscriptPhraseInboxUpdate, options?: Parameters<typeof customFetch>[1]): Promise<TranscriptPhraseInboxUpdateResult> => {
@@ -10469,7 +10623,7 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
     export type UpdateChildPhraseInboxMutationError = ErrorType<void>
 
     /**
- * @summary Defer or add working meaning to a Child phrase inbox item
+ * @summary Review, defer, or update a Child phrase inbox item
  */
 export const useUpdateChildPhraseInbox = <TError = ErrorType<void>,
     TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateChildPhraseInbox>>, TError,{itemId: number;data: BodyType<TranscriptPhraseInboxUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}

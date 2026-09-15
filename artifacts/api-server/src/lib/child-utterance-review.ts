@@ -31,7 +31,9 @@ export const hasUnresolvedChildUtteranceReviews = (
   childSegments: ChildUtteranceReviewGateSegment[],
   reviews: ChildUtteranceReviewGateRecord[],
 ) => {
-  const reviewBySegmentId = new Map(reviews.map((review) => [review.segmentId, review]));
+  const reviewBySegmentId = new Map(
+    reviews.map((review) => [review.segmentId, review]),
+  );
   return childSegments.some((segment) => {
     const segmentId = typeof segment === "number" ? segment : segment.id;
     const review = reviewBySegmentId.get(segmentId);
@@ -41,20 +43,35 @@ export const hasUnresolvedChildUtteranceReviews = (
 
 export const hasMeaningBackedConfirmedUtterance = (
   reviews: ChildUtteranceReviewGateRecord[],
-) => reviews.some(
-  (review) =>
-    (review.disposition === "child" || review.disposition === "confirmed_gestalt")
-    && Boolean(review.meaning?.trim()),
-);
+) =>
+  reviews.some(
+    (review) =>
+      (review.disposition === "child" ||
+        review.disposition === "confirmed_gestalt") &&
+      Boolean(review.meaning?.trim()),
+  );
 
 export const canCreatePhraseEvidenceFrom = (
   segment: { intelligibility: string },
   review: ChildUtteranceReviewGateRecord,
 ) =>
-  (review.disposition === "child" || review.disposition === "confirmed_gestalt")
-  && Boolean(review.meaning?.trim())
-  && segment.intelligibility !== "unintelligible"
-  && (
-    segment.intelligibility !== "partially_intelligible"
-    || review.intelligibilityReviewStatus === "confirmed"
-  );
+  (review.disposition === "child" ||
+    review.disposition === "confirmed_gestalt") &&
+  Boolean(review.meaning?.trim()) &&
+  segment.intelligibility !== "unintelligible" &&
+  (segment.intelligibility !== "partially_intelligible" ||
+    review.intelligibilityReviewStatus === "confirmed");
+
+/**
+ * A clinician may keep a confirmed Child utterance in the session note without
+ * assigning a meaning or promoting it to the communication dictionary.
+ */
+export const canKeepReviewedChildUtteranceFrom = (
+  segment: { intelligibility: string },
+  review: ChildUtteranceReviewGateRecord,
+) =>
+  (review.disposition === "child" ||
+    review.disposition === "confirmed_gestalt") &&
+  segment.intelligibility !== "unintelligible" &&
+  (segment.intelligibility !== "partially_intelligible" ||
+    review.intelligibilityReviewStatus === "confirmed");

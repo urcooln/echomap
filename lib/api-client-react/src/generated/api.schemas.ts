@@ -1149,6 +1149,36 @@ export interface GestaltInput {
   emotionalState: string;
 }
 
+export interface GestaltUpdateInput {
+  /**
+     * @minLength 1
+     * @maxLength 600
+     */
+  phrase: string;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  meaning: string;
+  /**
+     * A supported communication function, optionally stored as "Other: description".
+     * @minLength 1
+     * @maxLength 160
+     */
+  function: string;
+  /**
+     * @maxItems 30
+     * @items.minLength 1
+     * @items.maxLength 160
+     */
+  contexts: string[];
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  emotionalState: string;
+}
+
 export interface GestaltMergeInput {
   sourceGestaltId: number;
   targetGestaltId: number;
@@ -1225,18 +1255,6 @@ export interface DictionaryDuplicateDecisionResult {
   canonicalGestalt?: Gestalt | null;
 }
 
-export type PhraseObservationInputCommunicationFunction = typeof PhraseObservationInputCommunicationFunction[keyof typeof PhraseObservationInputCommunicationFunction];
-
-
-export const PhraseObservationInputCommunicationFunction = {
-  Requesting: 'Requesting',
-  Commenting: 'Commenting',
-  Social_Interaction: 'Social Interaction',
-  'Self-Regulation': 'Self-Regulation',
-  Shared_Joy: 'Shared Joy',
-  Other: 'Other',
-} as const;
-
 export interface PhraseObservationInput {
   /**
      * @minLength 1
@@ -1254,7 +1272,11 @@ export interface PhraseObservationInput {
   details?: string;
   /** @maxLength 1200 */
   possibleMeaning?: string;
-  communicationFunction?: PhraseObservationInputCommunicationFunction;
+  /**
+     * A supported communication function, optionally stored as "Other: description".
+     * @maxLength 160
+     */
+  communicationFunction?: string;
   observedAt: string;
 }
 
@@ -1671,6 +1693,11 @@ export interface PhraseTrend {
 
 export interface FunctionTrendPoint {
   date: string;
+  /**
+     * A supported communication function, optionally stored as "Other: description".
+     * @minLength 1
+     * @maxLength 160
+     */
   function: string;
   occurrences: number;
 }
@@ -1860,6 +1887,46 @@ export interface SessionGoalReviewInput {
   /** @maxLength 4000 */
   comments: string;
 }
+
+export interface RecordedSessionSelectedPhrase {
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  phrase: string;
+  /** @maxLength 4000 */
+  meaning: string;
+  /** @maxLength 160 */
+  communicationFunction: string;
+  /** @maxLength 4000 */
+  context: string;
+  /** @maxLength 160 */
+  emotionalState: string;
+  /** @maxLength 12000 */
+  note: string;
+  transcriptPhraseId?: number;
+  phraseInboxItemId?: number;
+  addToDictionary: boolean;
+  preserveDictionary: boolean;
+}
+
+export interface RecordedSessionReviewDraftInput {
+  /** @maxItems 200 */
+  selectedPhrases: RecordedSessionSelectedPhrase[];
+  /** @maxLength 12000 */
+  clinicalObservations: string;
+  /** @maxLength 12000 */
+  nextSteps: string;
+  /** @maxItems 50 */
+  goalReviews: SessionGoalReviewInput[];
+  /** @maxLength 50000 */
+  note: string;
+  noteEdited: boolean;
+}
+
+export type RecordedSessionReviewDraft = RecordedSessionReviewDraftInput & {
+  savedAt: string;
+};
 
 export type ManualSessionInputDurationSource = typeof ManualSessionInputDurationSource[keyof typeof ManualSessionInputDurationSource];
 
@@ -2390,7 +2457,6 @@ export interface ObservationVideoUpload {
 export interface SessionGestalt {
   /** @minLength 1 */
   phrase: string;
-  /** @minLength 1 */
   meaning: string;
   function: string;
   context: string;
@@ -2400,6 +2466,8 @@ export interface SessionGestalt {
   phraseInboxItemId?: number;
   /** Reuse an exact existing child dictionary entry without changing its clinician-owned fields. */
   preserveDictionary?: boolean;
+  /** Add this reviewed utterance to the child dictionary. A kept session utterance does not require dictionary promotion. */
+  addToDictionary?: boolean;
   /** Explicitly attests that this new or changed Child phrase was reviewed by the clinician before saving. */
   clinicianReviewed?: boolean;
 }
@@ -3100,6 +3168,7 @@ export type ChildPhraseInboxStatus = typeof ChildPhraseInboxStatus[keyof typeof 
 
 export const ChildPhraseInboxStatus = {
   pending: 'pending',
+  reviewed: 'reviewed',
   deferred: 'deferred',
   dictionary_added: 'dictionary_added',
   excluded: 'excluded',
@@ -3110,6 +3179,7 @@ export type ChildPhraseInboxReviewStatus = typeof ChildPhraseInboxReviewStatus[k
 
 export const ChildPhraseInboxReviewStatus = {
   pending: 'pending',
+  reviewed: 'reviewed',
   deferred: 'deferred',
 } as const;
 
@@ -3241,6 +3311,7 @@ export interface SessionTranscript {
   serviceRequirementId?: number | null;
   /** @nullable */
   makeupForSessionId?: number | null;
+  reviewDraft: RecordedSessionReviewDraft | null;
   /** @nullable */
   recordingConsentConfirmedAt: string | null;
   status: SessionTranscriptStatus;
@@ -5115,6 +5186,11 @@ export type DeleteSessionTranscriptionDraftParams = {
 childId: number;
 transcriptId?: number;
 audioId?: string;
+};
+
+export type UpdateRecordedSessionReviewDraftParams = {
+childId: number;
+transcriptId: number;
 };
 
 export type UpdateTranscriptSpeakersParams = {

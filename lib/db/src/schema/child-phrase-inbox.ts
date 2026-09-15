@@ -14,6 +14,7 @@ import { sessionTranscriptsTable, transcriptSpeakerSegmentsTable } from "./sessi
 
 export const childPhraseInboxStatusValues = [
   "pending",
+  "reviewed",
   "deferred",
   "dictionary_added",
   "excluded",

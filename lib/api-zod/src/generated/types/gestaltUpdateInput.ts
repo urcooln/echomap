@@ -6,27 +6,32 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface PhraseObservationInput {
+export interface GestaltUpdateInput {
   /**
      * @minLength 1
      * @maxLength 600
      */
   phrase: string;
-  /** Canonical child dictionary entry selected after duplicate review. */
-  existingGestaltId?: number;
+  /**
+     * @minLength 1
+     * @maxLength 4000
+     */
+  meaning: string;
+  /**
+     * A supported communication function, optionally stored as "Other: description".
+     * @minLength 1
+     * @maxLength 160
+     */
+  function: string;
+  /**
+     * @maxItems 30
+     * @items.minLength 1
+     * @items.maxLength 160
+     */
+  contexts: string[];
   /**
      * @minLength 1
      * @maxLength 160
      */
-  context: string;
-  /** @maxLength 3000 */
-  details?: string;
-  /** @maxLength 1200 */
-  possibleMeaning?: string;
-  /**
-     * A supported communication function, optionally stored as "Other: description".
-     * @maxLength 160
-     */
-  communicationFunction?: string;
-  observedAt: Date;
+  emotionalState: string;
 }

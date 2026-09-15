@@ -226,7 +226,6 @@ export const CreateManualSessionBody = zod.object({
 
 
 
-
 export const CreateManualSessionResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
@@ -236,7 +235,7 @@ export const CreateManualSessionResponse = zod.object({
   "durationSeconds": zod.number(),
   "gestalts": zod.array(zod.object({
   "phrase": zod.string().min(1),
-  "meaning": zod.string().min(1),
+  "meaning": zod.string(),
   "function": zod.string(),
   "context": zod.string(),
   "emotionalState": zod.string(),
@@ -244,6 +243,7 @@ export const CreateManualSessionResponse = zod.object({
   "transcriptPhraseId": zod.number().optional(),
   "phraseInboxItemId": zod.number().optional(),
   "preserveDictionary": zod.boolean().optional().describe('Reuse an exact existing child dictionary entry without changing its clinician-owned fields.'),
+  "addToDictionary": zod.boolean().optional().describe('Add this reviewed utterance to the child dictionary. A kept session utterance does not require dictionary promotion.'),
   "clinicianReviewed": zod.boolean().optional().describe('Explicitly attests that this new or changed Child phrase was reviewed by the clinician before saving.')
 })),
   "clinicalObservations": zod.string(),
@@ -4137,6 +4137,61 @@ export const CreateGestaltResponse = zod.object({
 
 
 /**
+ * @summary Update a reviewed dictionary phrase
+ */
+
+
+
+export const UpdateGestaltParams = zod.object({
+  "gestaltId": zod.coerce.number().min(1)
+})
+
+export const updateGestaltBodyPhraseMax = 600;
+
+export const updateGestaltBodyMeaningMax = 4000;
+
+export const updateGestaltBodyFunctionMax = 160;
+
+export const updateGestaltBodyContextsItemMax = 160;
+
+export const updateGestaltBodyContextsMax = 30;
+
+export const updateGestaltBodyEmotionalStateMax = 160;
+
+
+
+export const UpdateGestaltBody = zod.object({
+  "phrase": zod.string().min(1).max(updateGestaltBodyPhraseMax),
+  "meaning": zod.string().min(1).max(updateGestaltBodyMeaningMax),
+  "function": zod.string().min(1).max(updateGestaltBodyFunctionMax).describe('A supported communication function, optionally stored as \"Other: description\".'),
+  "contexts": zod.array(zod.string().min(1).max(updateGestaltBodyContextsItemMax)).max(updateGestaltBodyContextsMax),
+  "emotionalState": zod.string().min(1).max(updateGestaltBodyEmotionalStateMax)
+})
+
+export const UpdateGestaltResponse = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "phrase": zod.string(),
+  "audioUrl": zod.string().nullish(),
+  "source": zod.string(),
+  "meaning": zod.string(),
+  "function": zod.string(),
+  "contexts": zod.array(zod.string()),
+  "emotionalState": zod.string(),
+  "dateAdded": zod.coerce.date(),
+  "createdBy": zod.string(),
+  "comments": zod.array(zod.object({
+  "id": zod.number(),
+  "author": zod.string(),
+  "role": zod.string(),
+  "body": zod.string(),
+  "createdAt": zod.coerce.date()
+})),
+  "aacPlanningStatus": zod.union([zod.literal('candidate'),zod.literal('review_later'),zod.literal('added_to_device'),zod.literal('not_appropriate'),zod.literal(null)]).nullable()
+})
+
+
+/**
  * @summary Remove a phrase from the active dictionary while retaining historical session evidence
  */
 
@@ -4164,6 +4219,8 @@ export const logPhraseObservationBodyDetailsMax = 3000;
 
 export const logPhraseObservationBodyPossibleMeaningMax = 1200;
 
+export const logPhraseObservationBodyCommunicationFunctionMax = 160;
+
 
 
 export const LogPhraseObservationBody = zod.object({
@@ -4172,7 +4229,7 @@ export const LogPhraseObservationBody = zod.object({
   "context": zod.string().min(1).max(logPhraseObservationBodyContextMax),
   "details": zod.string().max(logPhraseObservationBodyDetailsMax).optional(),
   "possibleMeaning": zod.string().max(logPhraseObservationBodyPossibleMeaningMax).optional(),
-  "communicationFunction": zod.enum(['Requesting', 'Commenting', 'Social Interaction', 'Self-Regulation', 'Shared Joy', 'Other']).optional(),
+  "communicationFunction": zod.string().max(logPhraseObservationBodyCommunicationFunctionMax).optional().describe('A supported communication function, optionally stored as \"Other: description\".'),
   "observedAt": zod.coerce.date()
 })
 
@@ -4613,6 +4670,10 @@ export const GetPhraseTrendsQueryParams = zod.object({
   "to": zod.coerce.string().optional()
 })
 
+export const getPhraseTrendsResponseFunctionTimelineItemFunctionMax = 160;
+
+
+
 export const GetPhraseTrendsResponse = zod.object({
   "childId": zod.number(),
   "from": zod.coerce.date(),
@@ -4635,7 +4696,7 @@ export const GetPhraseTrendsResponse = zod.object({
 })),
   "functionTimeline": zod.array(zod.object({
   "date": zod.coerce.date(),
-  "function": zod.string(),
+  "function": zod.string().min(1).max(getPhraseTrendsResponseFunctionTimelineItemFunctionMax).describe('A supported communication function, optionally stored as \"Other: description\".'),
   "occurrences": zod.number()
 })),
   "reviewedSessionCount": zod.number(),
@@ -4724,7 +4785,6 @@ export const ListSessionsQueryParams = zod.object({
 
 
 
-
 export const ListSessionsResponseItem = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
@@ -4734,7 +4794,7 @@ export const ListSessionsResponseItem = zod.object({
   "durationSeconds": zod.number(),
   "gestalts": zod.array(zod.object({
   "phrase": zod.string().min(1),
-  "meaning": zod.string().min(1),
+  "meaning": zod.string(),
   "function": zod.string(),
   "context": zod.string(),
   "emotionalState": zod.string(),
@@ -4742,6 +4802,7 @@ export const ListSessionsResponseItem = zod.object({
   "transcriptPhraseId": zod.number().optional(),
   "phraseInboxItemId": zod.number().optional(),
   "preserveDictionary": zod.boolean().optional().describe('Reuse an exact existing child dictionary entry without changing its clinician-owned fields.'),
+  "addToDictionary": zod.boolean().optional().describe('Add this reviewed utterance to the child dictionary. A kept session utterance does not require dictionary promotion.'),
   "clinicianReviewed": zod.boolean().optional().describe('Explicitly attests that this new or changed Child phrase was reviewed by the clinician before saving.')
 })),
   "clinicalObservations": zod.string(),
@@ -4800,7 +4861,6 @@ export const createSessionBodyDurationSecondsMin = 0;
 
 
 
-
 export const createSessionBodyCalibrationAudioIdsMax = 2;
 
 export const createSessionBodyGoalReviewsItemCommentsMax = 4000;
@@ -4815,7 +4875,7 @@ export const CreateSessionBody = zod.object({
   "durationSeconds": zod.number().min(createSessionBodyDurationSecondsMin),
   "gestalts": zod.array(zod.object({
   "phrase": zod.string().min(1),
-  "meaning": zod.string().min(1),
+  "meaning": zod.string(),
   "function": zod.string(),
   "context": zod.string(),
   "emotionalState": zod.string(),
@@ -4823,6 +4883,7 @@ export const CreateSessionBody = zod.object({
   "transcriptPhraseId": zod.number().optional(),
   "phraseInboxItemId": zod.number().optional(),
   "preserveDictionary": zod.boolean().optional().describe('Reuse an exact existing child dictionary entry without changing its clinician-owned fields.'),
+  "addToDictionary": zod.boolean().optional().describe('Add this reviewed utterance to the child dictionary. A kept session utterance does not require dictionary promotion.'),
   "clinicianReviewed": zod.boolean().optional().describe('Explicitly attests that this new or changed Child phrase was reviewed by the clinician before saving.')
 })),
   "clinicalObservations": zod.string(),
@@ -4844,7 +4905,6 @@ export const CreateSessionBody = zod.object({
 
 
 
-
 export const CreateSessionResponse = zod.object({
   "id": zod.number(),
   "childId": zod.number(),
@@ -4854,7 +4914,7 @@ export const CreateSessionResponse = zod.object({
   "durationSeconds": zod.number(),
   "gestalts": zod.array(zod.object({
   "phrase": zod.string().min(1),
-  "meaning": zod.string().min(1),
+  "meaning": zod.string(),
   "function": zod.string(),
   "context": zod.string(),
   "emotionalState": zod.string(),
@@ -4862,6 +4922,7 @@ export const CreateSessionResponse = zod.object({
   "transcriptPhraseId": zod.number().optional(),
   "phraseInboxItemId": zod.number().optional(),
   "preserveDictionary": zod.boolean().optional().describe('Reuse an exact existing child dictionary entry without changing its clinician-owned fields.'),
+  "addToDictionary": zod.boolean().optional().describe('Add this reviewed utterance to the child dictionary. A kept session utterance does not require dictionary promotion.'),
   "clinicianReviewed": zod.boolean().optional().describe('Explicitly attests that this new or changed Child phrase was reviewed by the clinician before saving.')
 })),
   "clinicalObservations": zod.string(),
@@ -5235,6 +5296,30 @@ export const TranscribeSessionAudioBody = zod.object({
   "retrySpeakerSeparation": zod.boolean().optional().describe('Explicit clinician retry. Ordinary transcript refreshes never restart speaker processing.')
 })
 
+export const transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax = 4000;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax = 4000;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax = 160;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemContextMax = 4000;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax = 160;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemNoteMax = 12000;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesMax = 200;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneClinicalObservationsMax = 12000;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneNextStepsMax = 12000;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneGoalReviewsItemCommentsMax = 4000;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneGoalReviewsMax = 50;
+
+export const transcribeSessionAudioResponseReviewDraftOneOneNoteMax = 50000;
+
 export const transcribeSessionAudioResponseSpeakerSeparationAttemptMin = 0;
 
 export const transcribeSessionAudioResponseSpeakersItemSpeakerConfidenceScoreMin = 0;
@@ -5285,6 +5370,32 @@ export const TranscribeSessionAudioResponse = zod.object({
   "audioId": zod.string(),
   "serviceRequirementId": zod.number().nullish(),
   "makeupForSessionId": zod.number().nullish(),
+  "reviewDraft": zod.union([zod.object({
+  "selectedPhrases": zod.array(zod.object({
+  "phrase": zod.string().min(1).max(transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax),
+  "meaning": zod.string().max(transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax),
+  "communicationFunction": zod.string().max(transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax),
+  "context": zod.string().max(transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemContextMax),
+  "emotionalState": zod.string().max(transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax),
+  "note": zod.string().max(transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesItemNoteMax),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "addToDictionary": zod.boolean(),
+  "preserveDictionary": zod.boolean()
+})).max(transcribeSessionAudioResponseReviewDraftOneOneSelectedPhrasesMax),
+  "clinicalObservations": zod.string().max(transcribeSessionAudioResponseReviewDraftOneOneClinicalObservationsMax),
+  "nextSteps": zod.string().max(transcribeSessionAudioResponseReviewDraftOneOneNextStepsMax),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(transcribeSessionAudioResponseReviewDraftOneOneGoalReviewsItemCommentsMax)
+})).max(transcribeSessionAudioResponseReviewDraftOneOneGoalReviewsMax),
+  "note": zod.string().max(transcribeSessionAudioResponseReviewDraftOneOneNoteMax),
+  "noteEdited": zod.boolean()
+}).and(zod.object({
+  "savedAt": zod.coerce.date()
+})),zod.null()]),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -5433,6 +5544,30 @@ export const GetSessionTranscriptionDraftQueryParams = zod.object({
   "transcriptId": zod.coerce.number()
 })
 
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax = 4000;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax = 4000;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax = 160;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemContextMax = 4000;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax = 160;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemNoteMax = 12000;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesMax = 200;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneClinicalObservationsMax = 12000;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneNextStepsMax = 12000;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneGoalReviewsItemCommentsMax = 4000;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneGoalReviewsMax = 50;
+
+export const getSessionTranscriptionDraftResponseReviewDraftOneOneNoteMax = 50000;
+
 export const getSessionTranscriptionDraftResponseSpeakerSeparationAttemptMin = 0;
 
 export const getSessionTranscriptionDraftResponseSpeakersItemSpeakerConfidenceScoreMin = 0;
@@ -5483,6 +5618,32 @@ export const GetSessionTranscriptionDraftResponse = zod.object({
   "audioId": zod.string(),
   "serviceRequirementId": zod.number().nullish(),
   "makeupForSessionId": zod.number().nullish(),
+  "reviewDraft": zod.union([zod.object({
+  "selectedPhrases": zod.array(zod.object({
+  "phrase": zod.string().min(1).max(getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax),
+  "meaning": zod.string().max(getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax),
+  "communicationFunction": zod.string().max(getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax),
+  "context": zod.string().max(getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemContextMax),
+  "emotionalState": zod.string().max(getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax),
+  "note": zod.string().max(getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesItemNoteMax),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "addToDictionary": zod.boolean(),
+  "preserveDictionary": zod.boolean()
+})).max(getSessionTranscriptionDraftResponseReviewDraftOneOneSelectedPhrasesMax),
+  "clinicalObservations": zod.string().max(getSessionTranscriptionDraftResponseReviewDraftOneOneClinicalObservationsMax),
+  "nextSteps": zod.string().max(getSessionTranscriptionDraftResponseReviewDraftOneOneNextStepsMax),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(getSessionTranscriptionDraftResponseReviewDraftOneOneGoalReviewsItemCommentsMax)
+})).max(getSessionTranscriptionDraftResponseReviewDraftOneOneGoalReviewsMax),
+  "note": zod.string().max(getSessionTranscriptionDraftResponseReviewDraftOneOneNoteMax),
+  "noteEdited": zod.boolean()
+}).and(zod.object({
+  "savedAt": zod.coerce.date()
+})),zod.null()]),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -5636,6 +5797,305 @@ export const DeleteSessionTranscriptionDraftResponse = zod.void()
 
 
 /**
+ * @summary Persist the current recorded-session review and editable note draft
+ */
+export const UpdateRecordedSessionReviewDraftQueryParams = zod.object({
+  "childId": zod.coerce.number(),
+  "transcriptId": zod.coerce.number()
+})
+
+export const updateRecordedSessionReviewDraftBodySelectedPhrasesItemPhraseMax = 4000;
+
+export const updateRecordedSessionReviewDraftBodySelectedPhrasesItemMeaningMax = 4000;
+
+export const updateRecordedSessionReviewDraftBodySelectedPhrasesItemCommunicationFunctionMax = 160;
+
+export const updateRecordedSessionReviewDraftBodySelectedPhrasesItemContextMax = 4000;
+
+export const updateRecordedSessionReviewDraftBodySelectedPhrasesItemEmotionalStateMax = 160;
+
+export const updateRecordedSessionReviewDraftBodySelectedPhrasesItemNoteMax = 12000;
+
+export const updateRecordedSessionReviewDraftBodySelectedPhrasesMax = 200;
+
+export const updateRecordedSessionReviewDraftBodyClinicalObservationsMax = 12000;
+
+export const updateRecordedSessionReviewDraftBodyNextStepsMax = 12000;
+
+export const updateRecordedSessionReviewDraftBodyGoalReviewsItemCommentsMax = 4000;
+
+export const updateRecordedSessionReviewDraftBodyGoalReviewsMax = 50;
+
+export const updateRecordedSessionReviewDraftBodyNoteMax = 50000;
+
+
+
+export const UpdateRecordedSessionReviewDraftBody = zod.object({
+  "selectedPhrases": zod.array(zod.object({
+  "phrase": zod.string().min(1).max(updateRecordedSessionReviewDraftBodySelectedPhrasesItemPhraseMax),
+  "meaning": zod.string().max(updateRecordedSessionReviewDraftBodySelectedPhrasesItemMeaningMax),
+  "communicationFunction": zod.string().max(updateRecordedSessionReviewDraftBodySelectedPhrasesItemCommunicationFunctionMax),
+  "context": zod.string().max(updateRecordedSessionReviewDraftBodySelectedPhrasesItemContextMax),
+  "emotionalState": zod.string().max(updateRecordedSessionReviewDraftBodySelectedPhrasesItemEmotionalStateMax),
+  "note": zod.string().max(updateRecordedSessionReviewDraftBodySelectedPhrasesItemNoteMax),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "addToDictionary": zod.boolean(),
+  "preserveDictionary": zod.boolean()
+})).max(updateRecordedSessionReviewDraftBodySelectedPhrasesMax),
+  "clinicalObservations": zod.string().max(updateRecordedSessionReviewDraftBodyClinicalObservationsMax),
+  "nextSteps": zod.string().max(updateRecordedSessionReviewDraftBodyNextStepsMax),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(updateRecordedSessionReviewDraftBodyGoalReviewsItemCommentsMax)
+})).max(updateRecordedSessionReviewDraftBodyGoalReviewsMax),
+  "note": zod.string().max(updateRecordedSessionReviewDraftBodyNoteMax),
+  "noteEdited": zod.boolean()
+})
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax = 4000;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax = 4000;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax = 160;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemContextMax = 4000;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax = 160;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemNoteMax = 12000;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesMax = 200;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneClinicalObservationsMax = 12000;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneNextStepsMax = 12000;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneGoalReviewsItemCommentsMax = 4000;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneGoalReviewsMax = 50;
+
+export const updateRecordedSessionReviewDraftResponseReviewDraftOneOneNoteMax = 50000;
+
+export const updateRecordedSessionReviewDraftResponseSpeakerSeparationAttemptMin = 0;
+
+export const updateRecordedSessionReviewDraftResponseSpeakersItemSpeakerConfidenceScoreMin = 0;
+export const updateRecordedSessionReviewDraftResponseSpeakersItemSpeakerConfidenceScoreMax = 100;
+
+export const updateRecordedSessionReviewDraftResponseSpeakersItemSuggestedRoleConfidenceScoreMin = 0;
+export const updateRecordedSessionReviewDraftResponseSpeakersItemSuggestedRoleConfidenceScoreMax = 100;
+
+export const updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceConfidenceScoreMin = 0;
+export const updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceConfidenceScoreMax = 100;
+
+export const updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceCompetingScoreMin = 0;
+export const updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceCompetingScoreMax = 100;
+
+export const updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceMarginMin = 0;
+export const updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceMarginMax = 100;
+
+export const updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceSignalSummaryItemContributionMin = 0;
+export const updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceSignalSummaryItemContributionMax = 100;
+
+export const updateRecordedSessionReviewDraftResponseSegmentsItemSpeakerConfidenceScoreMin = 0;
+export const updateRecordedSessionReviewDraftResponseSegmentsItemSpeakerConfidenceScoreMax = 100;
+
+export const updateRecordedSessionReviewDraftResponseSegmentsItemTranscriptionConfidenceScoreMin = 0;
+export const updateRecordedSessionReviewDraftResponseSegmentsItemTranscriptionConfidenceScoreMax = 100;
+
+export const updateRecordedSessionReviewDraftResponseSegmentsItemStartTimeMillisecondsMin = 0;
+
+export const updateRecordedSessionReviewDraftResponseSegmentsItemDurationMillisecondsMin = 0;
+
+export const updateRecordedSessionReviewDraftResponseChildUtterancesItemTimestampSecondsMin = 0;
+
+export const updateRecordedSessionReviewDraftResponseChildUtterancesItemDurationSecondsMin = 0;
+
+export const updateRecordedSessionReviewDraftResponseChildUtterancesItemTranscriptionConfidenceScoreMin = 0;
+export const updateRecordedSessionReviewDraftResponseChildUtterancesItemTranscriptionConfidenceScoreMax = 100;
+
+
+
+export const updateRecordedSessionReviewDraftResponseChildUtterancesItemWordCountMin = 0;
+
+
+
+
+export const UpdateRecordedSessionReviewDraftResponse = zod.object({
+  "id": zod.number(),
+  "childId": zod.number(),
+  "audioId": zod.string(),
+  "serviceRequirementId": zod.number().nullish(),
+  "makeupForSessionId": zod.number().nullish(),
+  "reviewDraft": zod.union([zod.object({
+  "selectedPhrases": zod.array(zod.object({
+  "phrase": zod.string().min(1).max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax),
+  "meaning": zod.string().max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax),
+  "communicationFunction": zod.string().max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax),
+  "context": zod.string().max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemContextMax),
+  "emotionalState": zod.string().max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax),
+  "note": zod.string().max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesItemNoteMax),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "addToDictionary": zod.boolean(),
+  "preserveDictionary": zod.boolean()
+})).max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneSelectedPhrasesMax),
+  "clinicalObservations": zod.string().max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneClinicalObservationsMax),
+  "nextSteps": zod.string().max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneNextStepsMax),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneGoalReviewsItemCommentsMax)
+})).max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneGoalReviewsMax),
+  "note": zod.string().max(updateRecordedSessionReviewDraftResponseReviewDraftOneOneNoteMax),
+  "noteEdited": zod.boolean()
+}).and(zod.object({
+  "savedAt": zod.coerce.date()
+})),zod.null()]),
+  "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
+  "status": zod.enum(['processing', 'complete', 'failed']),
+  "rawTranscript": zod.string(),
+  "speakerSeparationStatus": zod.enum(['pending', 'processing', 'completed', 'unavailable', 'failed']),
+  "speakerSeparationAttempt": zod.number().min(updateRecordedSessionReviewDraftResponseSpeakerSeparationAttemptMin),
+  "speakerSeparationFailureCode": zod.string().nullable(),
+  "speakerSeparationFailureMessage": zod.string().nullable(),
+  "calibrationStatus": zod.enum(['not_provided', 'stored_only', 'applied', 'unavailable', 'unsupported']),
+  "calibrationStatusMessage": zod.string(),
+  "processingStages": zod.array(zod.object({
+  "stage": zod.enum(['recording', 'upload', 'transcription', 'speaker_grouping', 'clinician_identification', 'phrase_extraction', 'gestalt_review', 'insight_generation']),
+  "label": zod.string(),
+  "status": zod.enum(['pending', 'processing', 'completed', 'unavailable', 'failed', 'blocked']),
+  "reason": zod.string().nullable()
+})),
+  "provider": zod.string(),
+  "model": zod.string(),
+  "transcriptionAttempted": zod.boolean(),
+  "transcriptionSucceeded": zod.boolean(),
+  "speakers": zod.array(zod.object({
+  "label": zod.string(),
+  "role": zod.enum(['unassigned', 'child', 'slp', 'parent', 'teacher', 'caregiver', 'unknown']),
+  "speakerConfidence": zod.enum(['high', 'medium', 'low']),
+  "speakerConfidenceScore": zod.number().min(updateRecordedSessionReviewDraftResponseSpeakersItemSpeakerConfidenceScoreMin).max(updateRecordedSessionReviewDraftResponseSpeakersItemSpeakerConfidenceScoreMax).nullable(),
+  "lowConfidenceTurnCount": zod.number(),
+  "reviewedTurnCount": zod.number(),
+  "suggestedRole": zod.union([zod.literal('child'),zod.literal('slp'),zod.literal('parent'),zod.literal('teacher'),zod.literal('caregiver'),zod.literal('unknown'),zod.literal(null)]).nullable(),
+  "suggestedRoleConfidenceScore": zod.number().min(updateRecordedSessionReviewDraftResponseSpeakersItemSuggestedRoleConfidenceScoreMin).max(updateRecordedSessionReviewDraftResponseSpeakersItemSuggestedRoleConfidenceScoreMax).nullable(),
+  "suggestedProfileId": zod.number().nullable(),
+  "canRememberProfile": zod.boolean().describe('Whether the provider supplied an opaque reusable characteristic. The characteristic itself is never returned to the browser.'),
+  "roleInference": zod.object({
+  "state": zod.enum(['provisional', 'review_required', 'unavailable', 'confirmed', 'rejected']),
+  "predictedRole": zod.union([zod.literal('child'),zod.literal('slp'),zod.literal('parent'),zod.literal('teacher'),zod.literal('caregiver'),zod.literal('unknown'),zod.literal(null)]).nullable(),
+  "confidenceScore": zod.number().min(updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceConfidenceScoreMin).max(updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceConfidenceScoreMax).nullable(),
+  "competingRole": zod.union([zod.literal('child'),zod.literal('slp'),zod.literal('parent'),zod.literal('teacher'),zod.literal('caregiver'),zod.literal('unknown'),zod.literal(null)]).nullable(),
+  "competingScore": zod.number().min(updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceCompetingScoreMin).max(updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceCompetingScoreMax).nullable(),
+  "margin": zod.number().min(updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceMarginMin).max(updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceMarginMax).nullable(),
+  "signalCount": zod.number(),
+  "signalSummary": zod.array(zod.object({
+  "signal": zod.enum(['diarization_consistency', 'profile_match', 'transcript_cues', 'conversation_behavior', 'confirmed_child_patterns', 'confirmed_slp_patterns', 'confirmed_feedback']),
+  "available": zod.boolean(),
+  "contribution": zod.number().min(updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceSignalSummaryItemContributionMin).max(updateRecordedSessionReviewDraftResponseSpeakersItemRoleInferenceSignalSummaryItemContributionMax),
+  "detail": zod.string()
+}))
+}).describe('Explainable, temporary role-review guidance. It is never identity evidence and cannot unlock Child clinical evidence without clinician confirmation.')
+})),
+  "segments": zod.array(zod.object({
+  "id": zod.number(),
+  "speakerLabel": zod.string(),
+  "text": zod.string(),
+  "position": zod.number(),
+  "speakerConfidence": zod.enum(['high', 'medium', 'low']),
+  "speakerConfidenceScore": zod.number().min(updateRecordedSessionReviewDraftResponseSegmentsItemSpeakerConfidenceScoreMin).max(updateRecordedSessionReviewDraftResponseSegmentsItemSpeakerConfidenceScoreMax).nullable(),
+  "intelligibility": zod.enum(['intelligible', 'partially_intelligible', 'unintelligible']),
+  "transcriptionConfidenceScore": zod.number().min(updateRecordedSessionReviewDraftResponseSegmentsItemTranscriptionConfidenceScoreMin).max(updateRecordedSessionReviewDraftResponseSegmentsItemTranscriptionConfidenceScoreMax).nullable(),
+  "startTimeMilliseconds": zod.number().min(updateRecordedSessionReviewDraftResponseSegmentsItemStartTimeMillisecondsMin).nullable(),
+  "durationMilliseconds": zod.number().min(updateRecordedSessionReviewDraftResponseSegmentsItemDurationMillisecondsMin).nullable(),
+  "speakerReviewed": zod.boolean(),
+  "role": zod.enum(['unassigned', 'child', 'slp', 'parent', 'teacher', 'caregiver', 'unknown'])
+})),
+  "childUtterances": zod.array(zod.object({
+  "id": zod.number(),
+  "segmentId": zod.number(),
+  "text": zod.string(),
+  "suggestedTranscription": zod.string().nullable(),
+  "speakerLabel": zod.string(),
+  "position": zod.number(),
+  "timestampSeconds": zod.number().min(updateRecordedSessionReviewDraftResponseChildUtterancesItemTimestampSecondsMin).nullable(),
+  "durationSeconds": zod.number().min(updateRecordedSessionReviewDraftResponseChildUtterancesItemDurationSecondsMin).nullable(),
+  "intelligibility": zod.enum(['intelligible', 'partially_intelligible', 'unintelligible']),
+  "transcriptionConfidenceScore": zod.number().min(updateRecordedSessionReviewDraftResponseChildUtterancesItemTranscriptionConfidenceScoreMin).max(updateRecordedSessionReviewDraftResponseChildUtterancesItemTranscriptionConfidenceScoreMax).nullable(),
+  "intelligibilityReviewStatus": zod.enum(['pending', 'confirmed', 'unlabeled']),
+  "disposition": zod.enum(['pending', 'child', 'not_child', 'unsure', 'unintelligible', 'confirmed_gestalt', 'not_gestalt', 'context', 'unlabeled']).describe('Explicit clinician classification. Legacy values remain readable for previously saved reviews.'),
+  "reviewRank": zod.number().min(1),
+  "priorityScore": zod.number(),
+  "priorityReasons": zod.array(zod.enum(['repeated', 'distinct', 'longer', 'new', 'high_confidence'])),
+  "repeatedInSession": zod.number().min(1),
+  "previouslyObserved": zod.boolean(),
+  "wordCount": zod.number().min(updateRecordedSessionReviewDraftResponseChildUtterancesItemWordCountMin),
+  "context": zod.string().nullable(),
+  "meaning": zod.string().nullable(),
+  "interpretation": zod.string().nullable(),
+  "note": zod.string().nullable(),
+  "crossSessionLabel": zod.string().nullable(),
+  "nlaStage": zod.enum(['stage_0', 'stage_1', 'stage_2', 'stage_3', 'stage_4_plus']).nullable().describe('Optional clinician-assigned Natural Language Acquisition reference stage. Null is shown as Not Yet Assigned.'),
+  "updatedAt": zod.coerce.date()
+})).describe('Every transcript segment is available for explicit clinician classification. Ranking is review guidance only.'),
+  "reviewProgress": zod.object({
+  "total": zod.number(),
+  "reviewed": zod.number(),
+  "unresolved": zod.number(),
+  "child": zod.number(),
+  "notChild": zod.number(),
+  "unsure": zod.number(),
+  "unintelligible": zod.number(),
+  "phraseCandidates": zod.number(),
+  "nextStep": zod.string()
+}),
+  "childLanguagePrompts": zod.object({
+  "utteranceCount": zod.number(),
+  "possibleGestaltCount": zod.number(),
+  "possibleMitigationCount": zod.number(),
+  "possibleCommunicationFunctionCount": zod.number()
+}).describe('Transient review prompts from clinician-attributed Child turns. These values are never clinical evidence or saved language conclusions.'),
+  "provisionalPhrases": zod.array(zod.object({
+  "id": zod.number(),
+  "phrase": zod.string(),
+  "frequency": zod.number().min(1),
+  "candidateKind": zod.enum(['potential_phrase', 'repeated_phrase', 'recurring_utterance']),
+  "disposition": zod.enum(['pending', 'approved', 'flagged', 'dismissed', 'saved_for_later']),
+  "workingMeaning": zod.string().nullable(),
+  "attributionLabel": zod.enum(['Speaker attribution pending']),
+  "sourceLabel": zod.enum(['Mixed-speaker transcript']),
+  "evidenceLabel": zod.enum(['Not clinical evidence']),
+  "updatedAt": zod.coerce.date()
+}).describe('Mixed-speaker review prompt. It is never clinical evidence and is excluded from dictionaries, reports, insights, and NLA analytics.')),
+  "phrases": zod.array(zod.object({
+  "id": zod.number(),
+  "phrase": zod.string(),
+  "frequency": zod.number(),
+  "childAttributed": zod.boolean(),
+  "occurrenceCount": zod.number(),
+  "firstObservedAt": zod.coerce.date().nullable(),
+  "mostRecentAt": zod.coerce.date().nullable(),
+  "exampleUtterances": zod.array(zod.string()),
+  "existingGestalt": zod.object({
+  "id": zod.number(),
+  "phrase": zod.string(),
+  "meaning": zod.string(),
+  "source": zod.string(),
+  "occurrences": zod.number(),
+  "lastSeen": zod.coerce.date().nullable()
+}).nullable()
+})),
+  "error": zod.string().nullable(),
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date()
+})
+
+
+/**
  * @summary Stream the private recording for an unsaved transcript review
  */
 export const GetSessionTranscriptionAudioParams = zod.object({
@@ -5654,6 +6114,30 @@ export const GetSessionTranscriptionAudioResponse = zod.unknown()
 export const DeleteSessionTranscriptPhraseParams = zod.object({
   "phraseId": zod.coerce.number().min(1)
 })
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax = 4000;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax = 4000;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax = 160;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemContextMax = 4000;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax = 160;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemNoteMax = 12000;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesMax = 200;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneClinicalObservationsMax = 12000;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneNextStepsMax = 12000;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneGoalReviewsItemCommentsMax = 4000;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneGoalReviewsMax = 50;
+
+export const deleteSessionTranscriptPhraseResponseReviewDraftOneOneNoteMax = 50000;
 
 export const deleteSessionTranscriptPhraseResponseSpeakerSeparationAttemptMin = 0;
 
@@ -5705,6 +6189,32 @@ export const DeleteSessionTranscriptPhraseResponse = zod.object({
   "audioId": zod.string(),
   "serviceRequirementId": zod.number().nullish(),
   "makeupForSessionId": zod.number().nullish(),
+  "reviewDraft": zod.union([zod.object({
+  "selectedPhrases": zod.array(zod.object({
+  "phrase": zod.string().min(1).max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax),
+  "meaning": zod.string().max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax),
+  "communicationFunction": zod.string().max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax),
+  "context": zod.string().max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemContextMax),
+  "emotionalState": zod.string().max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax),
+  "note": zod.string().max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesItemNoteMax),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "addToDictionary": zod.boolean(),
+  "preserveDictionary": zod.boolean()
+})).max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneSelectedPhrasesMax),
+  "clinicalObservations": zod.string().max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneClinicalObservationsMax),
+  "nextSteps": zod.string().max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneNextStepsMax),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneGoalReviewsItemCommentsMax)
+})).max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneGoalReviewsMax),
+  "note": zod.string().max(deleteSessionTranscriptPhraseResponseReviewDraftOneOneNoteMax),
+  "noteEdited": zod.boolean()
+}).and(zod.object({
+  "savedAt": zod.coerce.date()
+})),zod.null()]),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -5882,6 +6392,30 @@ export const UpdateTranscriptSpeakersBody = zod.object({
   "forgetProfileIds": zod.array(zod.number()).optional().describe('Archive child-scoped remembered speaker profiles. This never alters saved transcript attribution.')
 })
 
+export const updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax = 4000;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax = 4000;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax = 160;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemContextMax = 4000;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax = 160;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemNoteMax = 12000;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesMax = 200;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneClinicalObservationsMax = 12000;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneNextStepsMax = 12000;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneGoalReviewsItemCommentsMax = 4000;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneGoalReviewsMax = 50;
+
+export const updateTranscriptSpeakersResponseReviewDraftOneOneNoteMax = 50000;
+
 export const updateTranscriptSpeakersResponseSpeakerSeparationAttemptMin = 0;
 
 export const updateTranscriptSpeakersResponseSpeakersItemSpeakerConfidenceScoreMin = 0;
@@ -5932,6 +6466,32 @@ export const UpdateTranscriptSpeakersResponse = zod.object({
   "audioId": zod.string(),
   "serviceRequirementId": zod.number().nullish(),
   "makeupForSessionId": zod.number().nullish(),
+  "reviewDraft": zod.union([zod.object({
+  "selectedPhrases": zod.array(zod.object({
+  "phrase": zod.string().min(1).max(updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax),
+  "meaning": zod.string().max(updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax),
+  "communicationFunction": zod.string().max(updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax),
+  "context": zod.string().max(updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemContextMax),
+  "emotionalState": zod.string().max(updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax),
+  "note": zod.string().max(updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesItemNoteMax),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "addToDictionary": zod.boolean(),
+  "preserveDictionary": zod.boolean()
+})).max(updateTranscriptSpeakersResponseReviewDraftOneOneSelectedPhrasesMax),
+  "clinicalObservations": zod.string().max(updateTranscriptSpeakersResponseReviewDraftOneOneClinicalObservationsMax),
+  "nextSteps": zod.string().max(updateTranscriptSpeakersResponseReviewDraftOneOneNextStepsMax),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(updateTranscriptSpeakersResponseReviewDraftOneOneGoalReviewsItemCommentsMax)
+})).max(updateTranscriptSpeakersResponseReviewDraftOneOneGoalReviewsMax),
+  "note": zod.string().max(updateTranscriptSpeakersResponseReviewDraftOneOneNoteMax),
+  "noteEdited": zod.boolean()
+}).and(zod.object({
+  "savedAt": zod.coerce.date()
+})),zod.null()]),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -6097,6 +6657,30 @@ export const UpdateTranscriptChildUtterancesBody = zod.object({
 })).min(1)
 })
 
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax = 4000;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax = 4000;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax = 160;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemContextMax = 4000;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax = 160;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemNoteMax = 12000;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesMax = 200;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneClinicalObservationsMax = 12000;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneNextStepsMax = 12000;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneGoalReviewsItemCommentsMax = 4000;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneGoalReviewsMax = 50;
+
+export const updateTranscriptChildUtterancesResponseReviewDraftOneOneNoteMax = 50000;
+
 export const updateTranscriptChildUtterancesResponseSpeakerSeparationAttemptMin = 0;
 
 export const updateTranscriptChildUtterancesResponseSpeakersItemSpeakerConfidenceScoreMin = 0;
@@ -6147,6 +6731,32 @@ export const UpdateTranscriptChildUtterancesResponse = zod.object({
   "audioId": zod.string(),
   "serviceRequirementId": zod.number().nullish(),
   "makeupForSessionId": zod.number().nullish(),
+  "reviewDraft": zod.union([zod.object({
+  "selectedPhrases": zod.array(zod.object({
+  "phrase": zod.string().min(1).max(updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax),
+  "meaning": zod.string().max(updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax),
+  "communicationFunction": zod.string().max(updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax),
+  "context": zod.string().max(updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemContextMax),
+  "emotionalState": zod.string().max(updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax),
+  "note": zod.string().max(updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesItemNoteMax),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "addToDictionary": zod.boolean(),
+  "preserveDictionary": zod.boolean()
+})).max(updateTranscriptChildUtterancesResponseReviewDraftOneOneSelectedPhrasesMax),
+  "clinicalObservations": zod.string().max(updateTranscriptChildUtterancesResponseReviewDraftOneOneClinicalObservationsMax),
+  "nextSteps": zod.string().max(updateTranscriptChildUtterancesResponseReviewDraftOneOneNextStepsMax),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(updateTranscriptChildUtterancesResponseReviewDraftOneOneGoalReviewsItemCommentsMax)
+})).max(updateTranscriptChildUtterancesResponseReviewDraftOneOneGoalReviewsMax),
+  "note": zod.string().max(updateTranscriptChildUtterancesResponseReviewDraftOneOneNoteMax),
+  "noteEdited": zod.boolean()
+}).and(zod.object({
+  "savedAt": zod.coerce.date()
+})),zod.null()]),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -6293,7 +6903,7 @@ export const UpdateTranscriptChildUtterancesResponse = zod.object({
 export const ListChildPhraseInboxQueryParams = zod.object({
   "childId": zod.coerce.number(),
   "transcriptId": zod.coerce.number().optional(),
-  "status": zod.enum(['pending', 'deferred', 'dictionary_added', 'excluded']).optional()
+  "status": zod.enum(['pending', 'reviewed', 'deferred', 'dictionary_added', 'excluded']).optional()
 })
 
 export const ListChildPhraseInboxResponseItem = zod.object({
@@ -6305,7 +6915,7 @@ export const ListChildPhraseInboxResponseItem = zod.object({
   "phrase": zod.string(),
   "workingMeaning": zod.string().nullable(),
   "reviewDisposition": zod.enum(['pending', 'child', 'not_child', 'unsure', 'unintelligible', 'confirmed_gestalt', 'not_gestalt', 'context', 'unlabeled']).describe('Explicit clinician classification. Legacy values remain readable for previously saved reviews.'),
-  "status": zod.enum(['pending', 'deferred', 'dictionary_added', 'excluded']),
+  "status": zod.enum(['pending', 'reviewed', 'deferred', 'dictionary_added', 'excluded']),
   "sourceLabel": zod.enum(['Confirmed Child transcript']),
   "updatedAt": zod.coerce.date()
 })
@@ -6313,7 +6923,7 @@ export const ListChildPhraseInboxResponse = zod.array(ListChildPhraseInboxRespon
 
 
 /**
- * @summary Defer or add working meaning to a Child phrase inbox item
+ * @summary Review, defer, or update a Child phrase inbox item
  */
 export const UpdateChildPhraseInboxParams = zod.object({
   "itemId": zod.coerce.number()
@@ -6324,9 +6934,33 @@ export const updateChildPhraseInboxBodyWorkingMeaningMax = 2000;
 
 
 export const UpdateChildPhraseInboxBody = zod.object({
-  "status": zod.enum(['pending', 'deferred']),
+  "status": zod.enum(['pending', 'reviewed', 'deferred']),
   "workingMeaning": zod.string().max(updateChildPhraseInboxBodyWorkingMeaningMax).nullish()
 })
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemPhraseMax = 4000;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemMeaningMax = 4000;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax = 160;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemContextMax = 4000;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax = 160;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemNoteMax = 12000;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesMax = 200;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneClinicalObservationsMax = 12000;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneNextStepsMax = 12000;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneGoalReviewsItemCommentsMax = 4000;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneGoalReviewsMax = 50;
+
+export const updateChildPhraseInboxResponseTranscriptReviewDraftOneOneNoteMax = 50000;
 
 export const updateChildPhraseInboxResponseTranscriptSpeakerSeparationAttemptMin = 0;
 
@@ -6382,7 +7016,7 @@ export const UpdateChildPhraseInboxResponse = zod.object({
   "phrase": zod.string(),
   "workingMeaning": zod.string().nullable(),
   "reviewDisposition": zod.enum(['pending', 'child', 'not_child', 'unsure', 'unintelligible', 'confirmed_gestalt', 'not_gestalt', 'context', 'unlabeled']).describe('Explicit clinician classification. Legacy values remain readable for previously saved reviews.'),
-  "status": zod.enum(['pending', 'deferred', 'dictionary_added', 'excluded']),
+  "status": zod.enum(['pending', 'reviewed', 'deferred', 'dictionary_added', 'excluded']),
   "sourceLabel": zod.enum(['Confirmed Child transcript']),
   "updatedAt": zod.coerce.date()
 }),
@@ -6392,6 +7026,32 @@ export const UpdateChildPhraseInboxResponse = zod.object({
   "audioId": zod.string(),
   "serviceRequirementId": zod.number().nullish(),
   "makeupForSessionId": zod.number().nullish(),
+  "reviewDraft": zod.union([zod.object({
+  "selectedPhrases": zod.array(zod.object({
+  "phrase": zod.string().min(1).max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemPhraseMax),
+  "meaning": zod.string().max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemMeaningMax),
+  "communicationFunction": zod.string().max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax),
+  "context": zod.string().max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemContextMax),
+  "emotionalState": zod.string().max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax),
+  "note": zod.string().max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesItemNoteMax),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "addToDictionary": zod.boolean(),
+  "preserveDictionary": zod.boolean()
+})).max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneSelectedPhrasesMax),
+  "clinicalObservations": zod.string().max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneClinicalObservationsMax),
+  "nextSteps": zod.string().max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneNextStepsMax),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneGoalReviewsItemCommentsMax)
+})).max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneGoalReviewsMax),
+  "note": zod.string().max(updateChildPhraseInboxResponseTranscriptReviewDraftOneOneNoteMax),
+  "noteEdited": zod.boolean()
+}).and(zod.object({
+  "savedAt": zod.coerce.date()
+})),zod.null()]),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),
@@ -6558,6 +7218,30 @@ export const UpdateTranscriptProvisionalPhrasesBody = zod.object({
 })).min(1).max(updateTranscriptProvisionalPhrasesBodyReviewsMax)
 })
 
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax = 4000;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax = 4000;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax = 160;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemContextMax = 4000;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax = 160;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemNoteMax = 12000;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesMax = 200;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneClinicalObservationsMax = 12000;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneNextStepsMax = 12000;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneGoalReviewsItemCommentsMax = 4000;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneGoalReviewsMax = 50;
+
+export const updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneNoteMax = 50000;
+
 export const updateTranscriptProvisionalPhrasesResponseSpeakerSeparationAttemptMin = 0;
 
 export const updateTranscriptProvisionalPhrasesResponseSpeakersItemSpeakerConfidenceScoreMin = 0;
@@ -6608,6 +7292,32 @@ export const UpdateTranscriptProvisionalPhrasesResponse = zod.object({
   "audioId": zod.string(),
   "serviceRequirementId": zod.number().nullish(),
   "makeupForSessionId": zod.number().nullish(),
+  "reviewDraft": zod.union([zod.object({
+  "selectedPhrases": zod.array(zod.object({
+  "phrase": zod.string().min(1).max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemPhraseMax),
+  "meaning": zod.string().max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemMeaningMax),
+  "communicationFunction": zod.string().max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemCommunicationFunctionMax),
+  "context": zod.string().max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemContextMax),
+  "emotionalState": zod.string().max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemEmotionalStateMax),
+  "note": zod.string().max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesItemNoteMax),
+  "transcriptPhraseId": zod.number().optional(),
+  "phraseInboxItemId": zod.number().optional(),
+  "addToDictionary": zod.boolean(),
+  "preserveDictionary": zod.boolean()
+})).max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneSelectedPhrasesMax),
+  "clinicalObservations": zod.string().max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneClinicalObservationsMax),
+  "nextSteps": zod.string().max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneNextStepsMax),
+  "goalReviews": zod.array(zod.object({
+  "goalId": zod.number(),
+  "progressStatus": zod.enum(['progressed', 'progressing_gradually', 'regressed', 'goal_met', 'not_addressed']),
+  "promptingLevel": zod.enum(['independent', 'minimal', 'moderate', 'maximal', 'na']),
+  "comments": zod.string().max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneGoalReviewsItemCommentsMax)
+})).max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneGoalReviewsMax),
+  "note": zod.string().max(updateTranscriptProvisionalPhrasesResponseReviewDraftOneOneNoteMax),
+  "noteEdited": zod.boolean()
+}).and(zod.object({
+  "savedAt": zod.coerce.date()
+})),zod.null()]),
   "recordingConsentConfirmedAt": zod.coerce.date().nullable(),
   "status": zod.enum(['processing', 'complete', 'failed']),
   "rawTranscript": zod.string(),

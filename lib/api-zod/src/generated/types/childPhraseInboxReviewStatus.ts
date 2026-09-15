@@ -11,5 +11,6 @@ export type ChildPhraseInboxReviewStatus = typeof ChildPhraseInboxReviewStatus[k
 
 export const ChildPhraseInboxReviewStatus = {
   pending: 'pending',
+  reviewed: 'reviewed',
   deferred: 'deferred',
 } as const;

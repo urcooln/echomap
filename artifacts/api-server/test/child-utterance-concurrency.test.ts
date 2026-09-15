@@ -619,16 +619,23 @@ test("keeps confirmed Child phrases idempotent, deferred, audited, and outside d
     );
     assert.equal(deferResponse.status, 200);
     const deferred = (await deferResponse.json()) as {
-      item: { status: string; workingMeaning: string | null };
+      item: {
+        status: string;
+        workingMeaning: string | null;
+        transcriptPhraseId: number | null;
+      };
     };
     assert.equal(deferred.item.status, "deferred");
     assert.equal(deferred.item.workingMeaning, "Requests more bubbles.");
-    assert.deepEqual(
-      await db
-        .select({ id: transcriptPhrasesTable.id })
-        .from(transcriptPhrasesTable)
-        .where(eq(transcriptPhrasesTable.transcriptId, fixture.transcriptId)),
-      [],
+    assert.equal(deferred.item.transcriptPhraseId, null);
+    assert.equal(
+      (
+        await db
+          .select({ id: transcriptPhrasesTable.id })
+          .from(transcriptPhrasesTable)
+          .where(eq(transcriptPhrasesTable.transcriptId, fixture.transcriptId))
+      ).length,
+      1,
     );
 
     const returnResponse = await fetch(
@@ -694,6 +701,201 @@ test("keeps confirmed Child phrases idempotent, deferred, audited, and outside d
       audits.some((audit) => audit.action === "CHILD_PHRASE_INBOX_UPDATED"),
       true,
     );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve()));
+    });
+    await cleanupFixture(fixture);
+  }
+});
+
+test("persists and finalizes a kept Child phrase without forcing dictionary promotion", async () => {
+  const fixture = await createFixture();
+  const server = createTestApp(
+    makeActor(fixture.organizationId, fixture.childId, fixture.userId),
+  ).listen(0);
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  try {
+    const reviewResponse = await requestReview(
+      baseUrl,
+      fixture,
+      "confirmed_gestalt",
+    );
+    assert.equal(reviewResponse.status, 200);
+    const [inboxItem] = await db
+      .select()
+      .from(childPhraseInboxItemsTable)
+      .where(eq(childPhraseInboxItemsTable.transcriptId, fixture.transcriptId));
+    assert.ok(inboxItem);
+
+    const keepResponse = await fetch(
+      `${baseUrl}/sessions/transcription/phrase-inbox/${inboxItem.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "reviewed", workingMeaning: null }),
+      },
+    );
+    assert.equal(keepResponse.status, 200);
+    const kept = (await keepResponse.json()) as {
+      item: {
+        status: string;
+        workingMeaning: string | null;
+        transcriptPhraseId: number | null;
+      };
+    };
+    assert.equal(kept.item.status, "reviewed");
+    assert.equal(kept.item.workingMeaning, null);
+    assert.equal(typeof kept.item.transcriptPhraseId, "number");
+    fixture.phraseId = kept.item.transcriptPhraseId!;
+    fixture.phraseInboxItemId = inboxItem.id;
+
+    const [storedItem] = await db
+      .select()
+      .from(childPhraseInboxItemsTable)
+      .where(eq(childPhraseInboxItemsTable.id, inboxItem.id));
+    assert.equal(storedItem?.status, "reviewed");
+    assert.equal(storedItem?.workingMeaning, null);
+    assert.equal(
+      (
+        await db
+          .select({ id: transcriptPhrasesTable.id })
+          .from(transcriptPhrasesTable)
+          .where(eq(transcriptPhrasesTable.transcriptId, fixture.transcriptId))
+      ).length,
+      1,
+    );
+
+    const draftResponse = await fetch(
+      `${baseUrl}/sessions/transcription/review-draft?childId=${fixture.childId}&transcriptId=${fixture.transcriptId}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          selectedPhrases: [
+            {
+              phrase: "more bubbles",
+              meaning: "",
+              communicationFunction: "Unknown",
+              context: "Water play",
+              emotionalState: "Engaged",
+              note: "Selected for later interpretation.",
+              transcriptPhraseId: fixture.phraseId,
+              phraseInboxItemId: inboxItem.id,
+              addToDictionary: false,
+              preserveDictionary: false,
+            },
+          ],
+          clinicalObservations: "Used the phrase during a turn-taking routine.",
+          nextSteps: "",
+          goalReviews: [],
+          note: "Reviewed child communication:\n1. more bubbles",
+          noteEdited: false,
+        }),
+      },
+    );
+    assert.equal(draftResponse.status, 200);
+    const savedDraft = (await draftResponse.json()) as {
+      reviewDraft: {
+        selectedPhrases: Array<{ phrase: string; meaning: string }>;
+        clinicalObservations: string;
+        nextSteps: string;
+      };
+    };
+    assert.equal(savedDraft.reviewDraft.selectedPhrases.length, 1);
+    assert.equal(savedDraft.reviewDraft.selectedPhrases[0]?.meaning, "");
+    assert.equal(savedDraft.reviewDraft.nextSteps, "");
+
+    const reopenDraftResponse = await fetch(
+      `${baseUrl}/sessions/transcription/draft?childId=${fixture.childId}&transcriptId=${fixture.transcriptId}`,
+    );
+    assert.equal(reopenDraftResponse.status, 200);
+    const reopenedDraft = (await reopenDraftResponse.json()) as {
+      reviewDraft: { selectedPhrases: Array<{ phrase: string }> };
+    };
+    assert.equal(
+      reopenedDraft.reviewDraft.selectedPhrases[0]?.phrase,
+      "more bubbles",
+    );
+
+    const finalizeResponse = await fetch(
+      `${baseUrl}/sessions?childId=${fixture.childId}`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          serviceRequirementId: fixture.serviceRequirementId,
+          durationSeconds: 60,
+          gestalts: [
+            {
+              phrase: "more bubbles",
+              meaning: "",
+              function: "Unknown",
+              context: "Water play",
+              emotionalState: "Engaged",
+              note: "Selected for later interpretation.",
+              transcriptPhraseId: fixture.phraseId,
+              phraseInboxItemId: inboxItem.id,
+              preserveDictionary: false,
+              addToDictionary: false,
+              clinicianReviewed: true,
+            },
+          ],
+          clinicalObservations: "Used the phrase during a turn-taking routine.",
+          nextSteps: "",
+          note: "Reviewed child communication:\n1. more bubbles",
+          audioId: fixture.audioId,
+          transcriptionId: fixture.transcriptId,
+          goalReviews: [],
+          consentConfirmed: true,
+          consentConfirmedAt: new Date().toISOString(),
+        }),
+      },
+    );
+    assert.equal(finalizeResponse.status, 201, await finalizeResponse.text());
+    const [savedPhrase] = await db
+      .select()
+      .from(therapySessionGestaltsTable)
+      .where(eq(therapySessionGestaltsTable.phraseInboxItemId, inboxItem.id));
+    assert.equal(savedPhrase?.phrase, "more bubbles");
+    assert.equal(savedPhrase?.meaning, "");
+    assert.equal(savedPhrase?.gestaltId, null);
+    assert.equal(
+      (
+        await db
+          .select({ id: clinicalGestaltsTable.id })
+          .from(clinicalGestaltsTable)
+          .where(eq(clinicalGestaltsTable.childId, fixture.childId))
+      ).length,
+      1,
+    );
+    const [finalInboxItem] = await db
+      .select({ status: childPhraseInboxItemsTable.status })
+      .from(childPhraseInboxItemsTable)
+      .where(eq(childPhraseInboxItemsTable.id, inboxItem.id));
+    assert.equal(finalInboxItem?.status, "reviewed");
+
+    const historyResponse = await fetch(
+      `${baseUrl}/sessions?childId=${fixture.childId}`,
+    );
+    assert.equal(historyResponse.status, 200);
+    const history = (await historyResponse.json()) as Array<{
+      gestalts: Array<{ phrase: string; meaning: string }>;
+      clinicalObservations: string;
+      nextSteps: string;
+      note: string;
+    }>;
+    assert.equal(history[0]?.gestalts[0]?.phrase, "more bubbles");
+    assert.equal(history[0]?.gestalts[0]?.meaning, "");
+    assert.equal(
+      history[0]?.clinicalObservations,
+      "Used the phrase during a turn-taking routine.",
+    );
+    assert.equal(history[0]?.nextSteps, "");
+    assert.match(history[0]?.note ?? "", /more bubbles/u);
   } finally {
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
@@ -957,10 +1159,7 @@ test("serializes Child utterance revocation before session save and never saves 
     );
     assert.equal(review.status, 200);
     assert.equal(save.status, 500);
-    assert.match(
-      save.body,
-      /Transcript evidence must come from a meaning-backed confirmed Child utterance review/u,
-    );
+    assert.match(save.body, /confirmed Child speaker evidence changed/u);
 
     const [transcript] = await db
       .select({

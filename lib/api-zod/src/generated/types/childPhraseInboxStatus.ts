@@ -11,6 +11,7 @@ export type ChildPhraseInboxStatus = typeof ChildPhraseInboxStatus[keyof typeof 
 
 export const ChildPhraseInboxStatus = {
   pending: 'pending',
+  reviewed: 'reviewed',
   deferred: 'deferred',
   dictionary_added: 'dictionary_added',
   excluded: 'excluded',

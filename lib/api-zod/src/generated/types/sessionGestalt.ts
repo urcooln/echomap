@@ -9,7 +9,6 @@
 export interface SessionGestalt {
   /** @minLength 1 */
   phrase: string;
-  /** @minLength 1 */
   meaning: string;
   function: string;
   context: string;
@@ -19,6 +18,8 @@ export interface SessionGestalt {
   phraseInboxItemId?: number;
   /** Reuse an exact existing child dictionary entry without changing its clinician-owned fields. */
   preserveDictionary?: boolean;
+  /** Add this reviewed utterance to the child dictionary. A kept session utterance does not require dictionary promotion. */
+  addToDictionary?: boolean;
   /** Explicitly attests that this new or changed Child phrase was reviewed by the clinician before saving. */
   clinicianReviewed?: boolean;
 }
