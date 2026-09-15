@@ -92,6 +92,9 @@ test("only a Super Admin can approve an SLP into a fresh workspace", async () =>
     actor = ownerActor;
     const response = await fetch(endpoint, { method: "POST" });
     assert.equal(response.status, 200);
+    const repeatedResponse = await fetch(endpoint, { method: "POST" });
+    assert.equal(repeatedResponse.status, 200);
+    assert.equal((await repeatedResponse.json()).status, "approved");
 
     const [updated] = await db
       .select()

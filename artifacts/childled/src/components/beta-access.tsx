@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'wouter';
-import { AlertCircle, Leaf, Shield, CheckCircle } from 'lucide-react';
+import { AlertCircle, Check, CheckCircle, Copy, Leaf, Loader2, Shield } from 'lucide-react';
 import { Button } from './ui/button';
 import { Checkbox } from './ui/checkbox';
 import type { Viewer } from '@workspace/api-client-react';
@@ -268,6 +268,7 @@ export function SuperAdminBetaControls() {
   const [requests, setRequests] = useState<any[]>([]);
   const [controls, setControls] = useState<{ enabled: boolean; invitationLimitPerDay: number; currentNoticeVersion: string } | null>(null);
   const [loading, setLoading] = useState(true);
+  const [processingRequest, setProcessingRequest] = useState<number | null>(null);
   
   const [targetId, setTargetId] = useState('');
   const [targetType, setTargetType] = useState<'users' | 'organizations'>('users');
@@ -293,7 +294,24 @@ export function SuperAdminBetaControls() {
     loadData();
   }, []);
 
+  const copyInvitation = async (invitationPath: string) => {
+    const invitationUrl = new URL(invitationPath, window.location.origin).toString();
+    if (!navigator.clipboard?.writeText) {
+      setActionMessage('Copy is unavailable in this browser. Press and hold the invitation link to copy it.');
+      return false;
+    }
+    try {
+      await navigator.clipboard.writeText(invitationUrl);
+      return true;
+    } catch {
+      setActionMessage('The invitation was created, but automatic copy was blocked. Press and hold the invitation link to copy it.');
+      return false;
+    }
+  };
+
   const handleRequestAction = async (id: number, action: 'approve' | 'reject' | 'archive') => {
+    setProcessingRequest(id);
+    setActionMessage('');
     try {
       const response = await fetch(`/api/admin/beta-access-requests/${id}/${action}`, {
         method: 'POST',
@@ -304,13 +322,27 @@ export function SuperAdminBetaControls() {
         setActionMessage(result?.error || `Failed to ${action} request.`);
         return;
       }
+      setRequests(current => current.map(request =>
+        request.id === id
+          ? { ...request, status: result?.status || request.status, invitationPath: result?.invitationPath || request.invitationPath }
+          : request
+      ));
       if (result?.invitationPath) {
-        await navigator.clipboard.writeText(result.invitationPath);
-        setActionMessage('Invitation created and copied. Share it through your approved secure channel.');
+        const copied = await copyInvitation(result.invitationPath);
+        if (copied) setActionMessage('SLP approved. The invitation link was copied.');
+      } else {
+        setActionMessage(
+          action === 'approve'
+            ? 'This SLP request is approved. Clerk has sent the invitation email.'
+            : `Request ${action === 'reject' ? 'rejected' : 'archived'}.`
+        );
       }
-      loadData();
+      await loadData();
     } catch (e) {
       console.error(e);
+      setActionMessage(`Network error while trying to ${action} this request.`);
+    } finally {
+      setProcessingRequest(null);
     }
   };
 
@@ -365,6 +397,11 @@ export function SuperAdminBetaControls() {
       </div>
 
       <div className="mt-8 space-y-8">
+        {actionMessage && (
+          <p role="status" className="rounded-xl bg-accent p-3 text-center text-sm font-semibold text-accent-foreground">
+            {actionMessage}
+          </p>
+        )}
         <div>
           <h3 className="text-sm font-bold uppercase tracking-wider text-muted-foreground">Beta Requests Queue</h3>
           <div className="mt-4 space-y-3">
@@ -373,15 +410,37 @@ export function SuperAdminBetaControls() {
             ) : (
               requests.map(req => (
                 <div key={req.id} className="flex flex-col gap-3 rounded-xl border border-border bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="font-semibold text-foreground">{req.fullName} <span className="text-muted-foreground font-normal">({req.email})</span></p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-foreground">{req.fullName} <span className="text-muted-foreground font-normal">({req.email})</span></p>
+                      <span className={`inline-flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold ${req.status === 'approved' ? 'bg-primary/10 text-primary' : req.status === 'rejected' ? 'bg-destructive/10 text-destructive' : 'bg-accent text-accent-foreground'}`}>
+                        {req.status === 'approved' && <Check size={13} aria-hidden="true" />}
+                        {req.status === 'approved' ? 'Approved' : req.status === 'rejected' ? 'Rejected' : 'Pending'}
+                      </span>
+                    </div>
                     <p className="text-xs text-muted-foreground mt-1">{req.role} at {req.organization || 'No organization'}</p>
                     {req.message && <p className="text-xs text-muted-foreground mt-2 italic">"{req.message}"</p>}
+                    {req.status === 'approved' && req.invitationPath && (
+                      <div className="mt-3 flex min-w-0 items-center gap-2">
+                        <a href={req.invitationPath} className="min-w-0 truncate text-xs text-primary underline" target="_blank" rel="noreferrer">
+                          {req.invitationPath}
+                        </a>
+                        <Button type="button" size="icon" variant="outline" className="size-9 shrink-0" onClick={() => void copyInvitation(req.invitationPath)} aria-label={`Copy invitation link for ${req.fullName}`} title="Copy invitation link">
+                          <Copy size={16} aria-hidden="true" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
-                  <div className="grid w-full grid-cols-3 gap-2 sm:flex sm:w-auto sm:shrink-0 sm:items-center">
-                    <Button size="sm" onClick={() => handleRequestAction(req.id, 'approve')}>Approve</Button>
-                    <Button size="sm" variant="outline" onClick={() => handleRequestAction(req.id, 'reject')}>Reject</Button>
-                    <Button size="sm" variant="ghost" onClick={() => handleRequestAction(req.id, 'archive')}>Archive</Button>
+                  <div className={`grid w-full gap-2 sm:flex sm:w-auto sm:shrink-0 sm:items-center ${req.status === 'pending' ? 'grid-cols-3' : 'grid-cols-1'}`}>
+                    {req.status === 'pending' && (
+                      <>
+                        <Button size="sm" disabled={processingRequest === req.id} onClick={() => handleRequestAction(req.id, 'approve')}>
+                          {processingRequest === req.id ? <Loader2 className="animate-spin" size={16} aria-label="Approving" /> : 'Approve'}
+                        </Button>
+                        <Button size="sm" variant="outline" disabled={processingRequest === req.id} onClick={() => handleRequestAction(req.id, 'reject')}>Reject</Button>
+                      </>
+                    )}
+                    <Button size="sm" variant="ghost" disabled={processingRequest === req.id} onClick={() => handleRequestAction(req.id, 'archive')}>Archive</Button>
                   </div>
                 </div>
               ))
@@ -430,11 +489,6 @@ export function SuperAdminBetaControls() {
           </div>
         </div>
         
-        {actionMessage && (
-          <p className="rounded-xl bg-accent p-3 text-center text-sm font-semibold text-accent-foreground">
-            {actionMessage}
-          </p>
-        )}
       </div>
     </section>
   );

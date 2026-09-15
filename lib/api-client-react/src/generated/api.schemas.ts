@@ -4766,6 +4766,7 @@ export interface BetaAccessRequestAdmin {
   message?: string | null;
   /** @nullable */
   invitationId?: number | null;
+  invitationPath?: string;
   status: string;
   createdAt: string;
 }

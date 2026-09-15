@@ -8128,6 +8128,7 @@ export const ListBetaAccessRequestsResponseItem = zod.object({
   "organization": zod.string().nullish(),
   "message": zod.string().nullish(),
   "invitationId": zod.number().nullish(),
+  "invitationPath": zod.string().optional(),
   "status": zod.string(),
   "createdAt": zod.coerce.date()
 })

@@ -8401,6 +8401,7 @@ components:
         organization: { type: [string, "null"] }
         message: { type: [string, "null"] }
         invitationId: { type: [number, "null"] }
+        invitationPath: { type: string }
         status: { type: string }
         createdAt: { type: string, format: date-time }
     BetaAccessRequestAction:

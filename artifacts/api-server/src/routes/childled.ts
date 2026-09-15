@@ -24016,18 +24016,58 @@ router.get("/admin/beta-access-requests", async (req, res): Promise<void> => {
     .from(betaAccessRequestsTable)
     .where(isNull(betaAccessRequestsTable.archivedAt))
     .orderBy(desc(betaAccessRequestsTable.createdAt));
+  const invitationIds = requests.flatMap((request) =>
+    request.status === "approved" && request.invitationId
+      ? [request.invitationId]
+      : [],
+  );
+  const invitations = invitationIds.length
+    ? await db
+        .select()
+        .from(careTeamInvitationsTable)
+        .where(inArray(careTeamInvitationsTable.id, invitationIds))
+    : [];
+  let invitationUrls = new Map<string, string>();
+  try {
+    invitationUrls = await pendingApplicationInvitationUrls(
+      invitations.flatMap((invitation) =>
+        invitation.status === "pending" && invitation.clerkInvitationId
+          ? [invitation.clerkInvitationId]
+          : [],
+      ),
+    );
+  } catch (error) {
+    req.log.warn(
+      { err: error },
+      "Could not retrieve approved SLP invitation links",
+    );
+  }
+  const invitationsById = new Map(
+    invitations.map((invitation) => [invitation.id, invitation]),
+  );
   res.json(
-    requests.map((item) => ({
-      id: item.id,
-      fullName: item.displayName,
-      email: item.email,
-      role: item.requestedRole,
-      organization: item.organizationName,
-      message: item.message,
-      status: item.status,
-      invitationId: item.invitationId,
-      createdAt: item.createdAt.toISOString(),
-    })),
+    requests.map((item) => {
+      const invitation = item.invitationId
+        ? invitationsById.get(item.invitationId)
+        : undefined;
+      return {
+        id: item.id,
+        fullName: item.displayName,
+        email: item.email,
+        role: item.requestedRole,
+        organization: item.organizationName,
+        message: item.message,
+        status: item.status,
+        invitationId: item.invitationId,
+        ...(invitation?.clerkInvitationId &&
+        invitationUrls.has(invitation.clerkInvitationId)
+          ? {
+              invitationPath: invitationUrls.get(invitation.clerkInvitationId),
+            }
+          : {}),
+        createdAt: item.createdAt.toISOString(),
+      };
+    }),
   );
 });
 
@@ -24126,6 +24166,48 @@ for (const action of ["approve", "reject", "archive"] as const) {
           return updated ? { request: updated, invite, organization } : null;
         });
         if (!approved) {
+          const [current] = await db
+            .select()
+            .from(betaAccessRequestsTable)
+            .where(eq(betaAccessRequestsTable.id, id))
+            .limit(1);
+          if (current?.status === "approved") {
+            let invitationPath: string | undefined;
+            let expiresAt: string | undefined;
+            if (current.invitationId) {
+              const [invitation] = await db
+                .select()
+                .from(careTeamInvitationsTable)
+                .where(eq(careTeamInvitationsTable.id, current.invitationId))
+                .limit(1);
+              expiresAt = invitation?.expiresAt?.toISOString();
+              if (
+                invitation?.status === "pending" &&
+                invitation.clerkInvitationId
+              ) {
+                try {
+                  const invitationUrls = await pendingApplicationInvitationUrls(
+                    [invitation.clerkInvitationId],
+                  );
+                  invitationPath = invitationUrls.get(
+                    invitation.clerkInvitationId,
+                  );
+                } catch (error) {
+                  req.log.warn(
+                    { err: error, invitationId: invitation.id },
+                    "Could not retrieve existing SLP invitation link",
+                  );
+                }
+              }
+            }
+            res.json({
+              id: current.id,
+              status: current.status,
+              ...(invitationPath ? { invitationPath } : {}),
+              ...(expiresAt ? { expiresAt } : {}),
+            });
+            return;
+          }
           res.status(409).json({
             error:
               "This SLP request cannot be approved or already has a pending invitation.",
