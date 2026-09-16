@@ -29,10 +29,7 @@ export interface ManualSessionInput {
   timerElapsedSeconds: number;
   durationSource: ManualSessionInputDurationSource;
   durationEdited: boolean;
-  /**
-     * @minItems 1
-     * @maxItems 50
-     */
+  /** @maxItems 50 */
   goals: ManualSessionGoalProgressInput[];
   /**
      * @minLength 1

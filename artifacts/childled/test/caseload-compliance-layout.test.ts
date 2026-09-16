@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import test from "node:test";
 
-test("keeps student rows concise and reveals compliance by service", async () => {
+test("shows one service directly and expands only multi-service students", async () => {
   const appSource = await readFile(
     new URL("../src/App.tsx", import.meta.url),
     "utf8",
@@ -38,8 +38,36 @@ test("keeps student rows concise and reveals compliance by service", async () =>
 
   assert.match(pageSource, /const \[expandedStudents, setExpandedStudents\]/);
   assert.match(pageSource, /useState<Set<number>>\(\s*\(\) => new Set\(\)/);
+  assert.equal(
+    pageSource.match(
+      /const hasMultipleServices\s*=\s*student\.serviceRequirements\.length > 1;/g,
+    )?.length,
+    2,
+  );
+  assert.equal(
+    pageSource.match(
+      /const expanded\s*=\s*!hasMultipleServices\s*\|\|\s*expandedStudents\.has\(student\.childId\);/g,
+    )?.length,
+    2,
+  );
+  assert.match(
+    pageSource,
+    /\{student\.serviceRequirements\.length !== 1 \? \(/,
+  );
+  assert.ok(/\{hasMultipleServices \? \([\s\S]*?<ChevronDown/.test(pageSource));
+  assert.ok(/\) : \(\s*studentIdentity\s*\)\}/.test(pageSource));
+  assert.match(
+    pageSource,
+    /\{expanded && student\.serviceRequirements\.length/,
+  );
+  assert.ok(/\{hasMultipleServices \? "pl-9" : ""\}/.test(pageSource));
+  assert.match(
+    pageSource,
+    /\{hasMultipleServices \? \([\s\S]*?services[\s\S]*?\) : null\}/,
+  );
   assert.match(desktopStudentRow, /colSpan=\{4\}/);
-  assert.match(desktopStudentRow, /active service/);
+  assert.match(desktopStudentRow, /active\s+services/);
+  assert.doesNotMatch(desktopStudentRow, /1 active service/);
   assert.doesNotMatch(
     desktopStudentRow,
     /statusBadge\(student\.serviceStatus\)/,
@@ -82,4 +110,34 @@ test("keeps student rows concise and reveals compliance by service", async () =>
   assert.match(pageSource, /Choose a service to log/);
   assert.match(pageSource, /table-fixed/);
   assert.doesNotMatch(pageSource, /overflow-x-auto/);
+});
+
+test("keeps Add Student above four balanced Quick Actions", async () => {
+  const appSource = await readFile(
+    new URL("../src/App.tsx", import.meta.url),
+    "utf8",
+  );
+  const actionsStart = appSource.indexOf("function ClinicianQuickActions(");
+  const actionsEnd = appSource.indexOf("\nfunction ", actionsStart + 1);
+  const actionsSource = appSource.slice(actionsStart, actionsEnd);
+  const overviewStart = appSource.indexOf("function CaseloadOverviewPage(");
+  const overviewSource = appSource.slice(overviewStart);
+
+  assert.ok(actionsStart >= 0);
+  assert.ok(overviewStart >= 0);
+  assert.doesNotMatch(
+    actionsSource,
+    /onAddStudent|button-overview-quick-add-student/,
+  );
+  assert.match(actionsSource, /grid-cols-2 gap-3 md:grid-cols-4/);
+  for (const label of [
+    "Record Session",
+    "Track Manually",
+    "Add Phrase",
+    "Inbox",
+  ]) {
+    assert.match(actionsSource, new RegExp(`label: "${label}"`));
+  }
+  assert.match(overviewSource, /data-testid="button-overview-add-student"/);
+  assert.match(overviewSource, /onClick=\{onAddStudent\}/);
 });

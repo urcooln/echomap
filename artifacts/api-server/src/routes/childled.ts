@@ -18939,7 +18939,7 @@ router.post("/manual-sessions", async (req, res) => {
   const query = CreateManualSessionQueryParams.safeParse(req.query);
   const body = CreateManualSessionBody.safeParse(req.body);
   if (!query.success || !body.success)
-    return fail(res, "Complete the session duration, goal data, and note.");
+    return fail(res, "Complete the session duration and note.");
   if (!requireChildAccess(req, res, query.data.childId)) return;
   const actor = requireClinician(req, res);
   if (!actor?.organizationId) return;
@@ -19014,17 +19014,19 @@ router.post("/manual-sessions", async (req, res) => {
       fieldError ?? "Add valid progress data for every selected goal.",
     );
   }
-  const activeGoals = await db
-    .select()
-    .from(communicationGoalsTable)
-    .where(
-      and(
-        eq(communicationGoalsTable.organizationId, actor.organizationId),
-        eq(communicationGoalsTable.childId, query.data.childId),
-        eq(communicationGoalsTable.status, "active"),
-        inArray(communicationGoalsTable.id, goalIds),
-      ),
-    );
+  const activeGoals = goalIds.length
+    ? await db
+        .select()
+        .from(communicationGoalsTable)
+        .where(
+          and(
+            eq(communicationGoalsTable.organizationId, actor.organizationId),
+            eq(communicationGoalsTable.childId, query.data.childId),
+            eq(communicationGoalsTable.status, "active"),
+            inArray(communicationGoalsTable.id, goalIds),
+          ),
+        )
+    : [];
   if (activeGoals.length !== goalIds.length)
     return fail(
       res,
@@ -19073,30 +19075,32 @@ router.post("/manual-sessions", async (req, res) => {
       if (!completedMiss)
         throw new Error("The missed session changed before the makeup saved.");
     }
-    const progress = await transaction
-      .insert(therapySessionGoalProgressTable)
-      .values(
-        validatedGoalProgress.map(({ goal: entry, validation }) => {
-          const goal = goalById.get(entry.goalId)!;
-          return {
-            organizationId: actor.organizationId!,
-            childId: query.data.childId,
-            sessionId: session.id,
-            goalId: goal.id,
-            goalVersion: goal.version,
-            goalTitleSnapshot: goal.title,
-            goalAreaSnapshot: goal.goalArea,
-            accuracyPercent: validation.values.accuracyPercent,
-            successfulAttempts: validation.values.successfulAttempts,
-            totalAttempts: validation.values.totalAttempts,
-            progressStatus: null,
-            promptingLevel: entry.promptingLevel ?? null,
-            progressNote: entry.progressNote.trim(),
-            reviewedByUserId: actor.userId,
-          };
-        }),
-      )
-      .returning();
+    const progress = validatedGoalProgress.length
+      ? await transaction
+          .insert(therapySessionGoalProgressTable)
+          .values(
+            validatedGoalProgress.map(({ goal: entry, validation }) => {
+              const goal = goalById.get(entry.goalId)!;
+              return {
+                organizationId: actor.organizationId!,
+                childId: query.data.childId,
+                sessionId: session.id,
+                goalId: goal.id,
+                goalVersion: goal.version,
+                goalTitleSnapshot: goal.title,
+                goalAreaSnapshot: goal.goalArea,
+                accuracyPercent: validation.values.accuracyPercent,
+                successfulAttempts: validation.values.successfulAttempts,
+                totalAttempts: validation.values.totalAttempts,
+                progressStatus: null,
+                promptingLevel: entry.promptingLevel ?? null,
+                progressNote: entry.progressNote.trim(),
+                reviewedByUserId: actor.userId,
+              };
+            }),
+          )
+          .returning()
+      : [];
     return { session, progress };
   });
   await writeSecurityAudit({

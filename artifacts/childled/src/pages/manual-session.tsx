@@ -365,10 +365,6 @@ export function ManualSessionTrackingPage({
       setError("Select the service this session should count toward.");
       return;
     }
-    if (!selectedGoals.length) {
-      setError("Select at least one IEP goal worked on during this session.");
-      return;
-    }
     if (durationSeconds < 60) {
       setError("Enter a final session duration of at least one minute.");
       return;
@@ -468,8 +464,8 @@ export function ManualSessionTrackingPage({
           <h1 className="serif mt-5 text-3xl font-semibold">Session saved</h1>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {child?.name}&apos;s{" "}
-            {initialMakeupForSessionId ? "makeup" : "manual"} session and IEP
-            goal data are now in session history.
+            {initialMakeupForSessionId ? "makeup" : "manual"} session is now in
+            session history.
           </p>
           <Button
             className="mt-6 min-h-12"
@@ -626,8 +622,8 @@ export function ManualSessionTrackingPage({
               </div>
             ) : !setupQuery.data?.goals.length ? (
               <div className="mt-4 border border-dashed border-border bg-card p-5 text-sm text-muted-foreground">
-                This child has no active communication goals. Add an active goal
-                from the child profile before tracking a manual session.
+                This student has no active goals. You can still document and
+                save this session.
               </div>
             ) : (
               <div className="mt-4 space-y-3">

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
 import { validateManualSessionGoalProgress } from "../../../lib/api-zod/src/manual-session-goal-progress.ts";
+import { CreateManualSessionBody } from "../../../lib/api-zod/src/generated/api.ts";
 
 const progress = (
   successfulAttempts: string,
@@ -92,4 +93,34 @@ test("manual goal fields distinguish guidance from entered clinical data", async
   assert.match(source, /placeholder="Enter total opportunities"/);
   assert.match(source, /Select prompting level/);
   assert.match(source, /<option value="na"/);
+});
+
+test("manual session permits no goals while retaining service, duration, and note requirements", async () => {
+  const source = await readFile(
+    new URL("../src/pages/manual-session.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(source, /if \(!selectedGoals\.length\)/);
+  assert.match(source, /goals,\s*note: note\.trim\(\)/);
+  assert.match(source, /This student has no active goals\. You can still document and/);
+
+  const valid = {
+    serviceRequirementId: 1,
+    sessionDate: "2026-09-16",
+    durationSeconds: 1_800,
+    timerElapsedSeconds: 0,
+    durationSource: "manual",
+    durationEdited: false,
+    goals: [],
+    note: "Coordinated assistive technology support.",
+  };
+  assert.equal(CreateManualSessionBody.safeParse(valid).success, true);
+  assert.equal(
+    CreateManualSessionBody.safeParse({ ...valid, note: "" }).success,
+    false,
+  );
+  assert.equal(
+    CreateManualSessionBody.safeParse({ ...valid, durationSeconds: 0 }).success,
+    false,
+  );
 });

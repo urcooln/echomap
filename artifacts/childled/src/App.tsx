@@ -320,7 +320,11 @@ import {
   sessionStatusLabel,
   sortSessionsByDate,
 } from "@/lib/session-history";
-import { buildRecordedSessionSummary } from "@/lib/recorded-session-review";
+import {
+  buildRecordedSessionSummary,
+  hasUnpreparedChildTranscriptPhrase,
+  nextPrioritizedChildLanguageReview,
+} from "@/lib/recorded-session-review";
 import { refreshSessionTrackingQueries } from "@/lib/session-query-refresh";
 import {
   emptySessionGoalReview,
@@ -3588,14 +3592,12 @@ const overviewChangePresentation = {
 function ClinicianQuickActions({
   onRecordSession,
   onManualSession,
-  onAddStudent,
   onAddPhrase,
   onOpenInbox,
   unreadMessageCount = 0,
 }: {
   onRecordSession: () => void;
   onManualSession: () => void;
-  onAddStudent: () => void;
   onAddPhrase: () => void;
   onOpenInbox: () => void;
   unreadMessageCount?: number;
@@ -3614,13 +3616,6 @@ function ClinicianQuickActions({
       icon: ClipboardList,
       onClick: onManualSession,
       testId: "button-overview-manual-session",
-    },
-    {
-      label: "Add Student",
-      detail: "Create a student profile",
-      icon: UserPlus,
-      onClick: onAddStudent,
-      testId: "button-overview-quick-add-student",
     },
     {
       label: "Add Phrase",
@@ -3656,7 +3651,7 @@ function ClinicianQuickActions({
           Quick Actions
         </h2>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
         {actions.map((action) => {
           const Icon = action.icon;
           return (
@@ -4603,7 +4598,6 @@ function CaseloadOverviewPage({
       <ClinicianQuickActions
         onRecordSession={onRecordSession}
         onManualSession={onManualSession}
-        onAddStudent={onAddStudent}
         onAddPhrase={onAddPhrase}
         onOpenInbox={onOpenInbox}
         unreadMessageCount={teamInbox?.totalUnread}
@@ -4680,11 +4674,11 @@ function CaseloadOverviewPage({
             <table className="w-full table-fixed border-collapse text-left text-xs">
               <colgroup>
                 <col className="w-[21%]" />
-                <col className="w-[15%]" />
-                <col className="w-[18%]" />
                 <col className="w-[14%]" />
-                <col className="w-[14%]" />
-                <col className="w-[18%]" />
+                <col className="w-[17%]" />
+                <col className="w-[13%]" />
+                <col className="w-[13%]" />
+                <col className="w-[22%]" />
               </colgroup>
               <thead className="bg-muted/45 text-[11px] font-bold uppercase text-muted-foreground">
                 <tr>
@@ -4698,159 +4692,171 @@ function CaseloadOverviewPage({
               </thead>
               <tbody>
                 {filteredStudents.map((student, studentIndex) => {
-                  const expanded = expandedStudents.has(student.childId);
+                  const hasMultipleServices =
+                    student.serviceRequirements.length > 1;
+                  const expanded =
+                    !hasMultipleServices ||
+                    expandedStudents.has(student.childId);
                   const studentTone =
                     studentIndex % 2 === 0 ? "bg-card" : "bg-secondary/30";
+                  const studentIdentity = (
+                    <span className="min-w-0">
+                      <span className="block truncate font-bold text-primary">
+                        {student.childName}
+                      </span>
+                      <span className="mono mt-0.5 block truncate text-[10px] font-semibold text-primary/65">
+                        {student.childLedId}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                        {student.teacherNames.length
+                          ? student.teacherNames.join(", ")
+                          : "Teacher not assigned"}
+                        {student.grade ? ` · ${student.grade}` : ""}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+                        {student.school || "School not added"}
+                      </span>
+                    </span>
+                  );
                   return (
                     <Fragment key={student.childId}>
-                      <tr
-                        data-testid={`overview-student-${student.childId}`}
-                        className={`${studentTone} border-t-4 border-muted align-middle`}
-                      >
-                        <td className="px-3 py-3">
-                          <button
-                            type="button"
-                            onClick={() => toggleStudent(student.childId)}
-                            aria-expanded={expanded}
-                            className="flex max-w-full items-center gap-2 rounded-sm text-left focus-ring"
-                          >
-                            <span className="grid size-7 shrink-0 place-items-center rounded-md bg-secondary/70 text-primary">
-                              <ChevronDown
-                                size={17}
-                                className={`transition-transform ${expanded ? "" : "-rotate-90"}`}
-                              />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block truncate font-bold text-primary">
-                                {student.childName}
-                              </span>
-                              <span className="mono mt-0.5 block truncate text-[10px] font-semibold text-primary/65">
-                                {student.childLedId}
-                              </span>
-                              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                                {student.teacherNames.length
-                                  ? student.teacherNames.join(", ")
-                                  : "Teacher not assigned"}
-                                {student.grade ? ` · ${student.grade}` : ""}
-                              </span>
-                              <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
-                                {student.school || "School not added"}
-                              </span>
-                            </span>
-                          </button>
-                        </td>
-                        <td colSpan={4} className="px-2 py-3">
-                          <span className="block font-semibold text-primary">
-                            {student.serviceRequirements.length} active service
-                            {student.serviceRequirements.length === 1
-                              ? ""
-                              : "s"}
-                          </span>
-                          {!student.serviceRequirements.length ? (
-                            <span className="mt-0.5 block text-[11px] font-semibold text-amber-800">
-                              Service setup required
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-3 py-3 text-right">
-                          <div className="flex justify-end gap-1">
-                            {student.serviceRequirements.length > 1 ? (
-                              <DropdownMenu>
-                                <DropdownMenuTrigger asChild>
-                                  <Button
-                                    className="h-8 min-h-8 px-2 text-[11px]"
-                                    title={`Choose a service for ${student.childName}`}
-                                    aria-label={`Choose a service to log for ${student.childName}`}
-                                  >
-                                    <ClipboardList size={13} /> Log
-                                  </Button>
-                                </DropdownMenuTrigger>
-                                <DropdownMenuContent
-                                  align="end"
-                                  className="isolate w-64 border-primary/25 bg-card text-foreground opacity-100 shadow-xl"
-                                >
-                                  {student.serviceRequirements.map(
-                                    (service) => (
-                                      <DropdownMenuItem
-                                        key={service.id}
-                                        onSelect={() =>
-                                          openSessionLogger(
-                                            student.childId,
-                                            student.childName,
-                                            service,
-                                          )
-                                        }
-                                      >
-                                        <ClipboardList />
-                                        <span>
-                                          <span className="block font-semibold">
-                                            {serviceTypeLabel(
-                                              service.serviceType,
-                                            )}
-                                          </span>
-                                          <span className="block text-xs text-muted-foreground">
-                                            {service.periodLabel}
-                                          </span>
-                                        </span>
-                                      </DropdownMenuItem>
-                                    ),
-                                  )}
-                                </DropdownMenuContent>
-                              </DropdownMenu>
-                            ) : (
-                              <Button
-                                className="h-8 min-h-8 px-2 text-[11px]"
-                                disabled={!student.serviceRequirements.length}
-                                onClick={() => {
-                                  const service =
-                                    student.serviceRequirements[0];
-                                  if (service) {
-                                    openSessionLogger(
-                                      student.childId,
-                                      student.childName,
-                                      service,
-                                    );
-                                  }
-                                }}
-                                title={`Log a session for ${student.childName}`}
-                                aria-label={`Log a session for ${student.childName}`}
+                      {student.serviceRequirements.length !== 1 ? (
+                        <tr
+                          data-testid={`overview-student-${student.childId}`}
+                          className={`${studentTone} border-t-4 border-muted align-middle`}
+                        >
+                          <td className="px-3 py-3">
+                            {hasMultipleServices ? (
+                              <button
+                                type="button"
+                                onClick={() => toggleStudent(student.childId)}
+                                aria-expanded={expanded}
+                                aria-label={`${expanded ? "Collapse" : "Expand"} services for ${student.childName}`}
+                                className="flex max-w-full items-center gap-2 rounded-sm text-left focus-ring"
                               >
-                                <ClipboardList size={13} /> Log
-                              </Button>
+                                <span className="grid size-7 shrink-0 place-items-center rounded-md bg-secondary/70 text-primary">
+                                  <ChevronDown
+                                    size={17}
+                                    className={`transition-transform ${expanded ? "" : "-rotate-90"}`}
+                                  />
+                                </span>
+                                {studentIdentity}
+                              </button>
+                            ) : (
+                              studentIdentity
                             )}
-                            <Button
-                              variant="outline"
-                              className="h-8 min-h-8 bg-card px-2 text-[11px] text-primary"
-                              onClick={() =>
-                                setEditingStudent({
-                                  childId: student.childId,
-                                  childName: student.childName,
-                                })
-                              }
-                              title={`Add a service for ${student.childName}`}
-                              aria-label={`Add a service for ${student.childName}`}
-                            >
-                              <Plus size={13} /> Service
-                            </Button>
-                            <Button
-                              variant="outline"
-                              className="relative size-9 min-h-9 overflow-hidden bg-card p-0 text-primary"
-                              onClick={() => onOpenProfile(student.childId)}
-                              title="View student profile"
-                              aria-label="View student profile"
-                              data-testid={`button-view-student-profile-${student.childId}`}
-                            >
-                              <span className="relative z-10 grid size-6 place-items-center text-primary">
-                                <UserRound
-                                  aria-hidden="true"
-                                  className="!size-5"
-                                  strokeWidth={2.5}
-                                />
+                          </td>
+                          <td colSpan={4} className="px-2 py-3">
+                            <span className="block font-semibold text-primary">
+                              {student.serviceRequirements.length} active
+                              services
+                            </span>
+                            {!student.serviceRequirements.length ? (
+                              <span className="mt-0.5 block text-[11px] font-semibold text-amber-800">
+                                Service setup required
                               </span>
-                            </Button>
-                          </div>
-                        </td>
-                      </tr>
+                            ) : null}
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            <div className="flex justify-end gap-1">
+                              {student.serviceRequirements.length > 1 ? (
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button
+                                      className="h-8 min-h-8 px-2 text-[11px]"
+                                      title={`Choose a service for ${student.childName}`}
+                                      aria-label={`Choose a service to log for ${student.childName}`}
+                                    >
+                                      <ClipboardList size={13} /> Log
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent
+                                    align="end"
+                                    className="isolate w-64 border-primary/25 bg-card text-foreground opacity-100 shadow-xl"
+                                  >
+                                    {student.serviceRequirements.map(
+                                      (service) => (
+                                        <DropdownMenuItem
+                                          key={service.id}
+                                          onSelect={() =>
+                                            openSessionLogger(
+                                              student.childId,
+                                              student.childName,
+                                              service,
+                                            )
+                                          }
+                                        >
+                                          <ClipboardList />
+                                          <span>
+                                            <span className="block font-semibold">
+                                              {serviceTypeLabel(
+                                                service.serviceType,
+                                              )}
+                                            </span>
+                                            <span className="block text-xs text-muted-foreground">
+                                              {service.periodLabel}
+                                            </span>
+                                          </span>
+                                        </DropdownMenuItem>
+                                      ),
+                                    )}
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              ) : (
+                                <Button
+                                  className="h-8 min-h-8 px-2 text-[11px]"
+                                  disabled={!student.serviceRequirements.length}
+                                  onClick={() => {
+                                    const service =
+                                      student.serviceRequirements[0];
+                                    if (service) {
+                                      openSessionLogger(
+                                        student.childId,
+                                        student.childName,
+                                        service,
+                                      );
+                                    }
+                                  }}
+                                  title={`Log a session for ${student.childName}`}
+                                  aria-label={`Log a session for ${student.childName}`}
+                                >
+                                  <ClipboardList size={13} /> Log
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                className="h-8 min-h-8 bg-card px-2 text-[11px] text-primary"
+                                onClick={() =>
+                                  setEditingStudent({
+                                    childId: student.childId,
+                                    childName: student.childName,
+                                  })
+                                }
+                                title={`Add a service for ${student.childName}`}
+                                aria-label={`Add a service for ${student.childName}`}
+                              >
+                                <Plus size={13} /> Service
+                              </Button>
+                              <Button
+                                variant="outline"
+                                className="relative size-9 min-h-9 overflow-hidden bg-card p-0 text-primary"
+                                onClick={() => onOpenProfile(student.childId)}
+                                title="View student profile"
+                                aria-label="View student profile"
+                                data-testid={`button-view-student-profile-${student.childId}`}
+                              >
+                                <span className="relative z-10 grid size-6 place-items-center text-primary">
+                                  <UserRound
+                                    aria-hidden="true"
+                                    className="!size-5"
+                                    strokeWidth={2.5}
+                                  />
+                                </span>
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
                       {expanded && student.serviceRequirements.length
                         ? student.serviceRequirements.map(
                             (service, serviceIndex) => {
@@ -4858,13 +4864,19 @@ function CaseloadOverviewPage({
                               return (
                                 <tr
                                   key={service.id}
-                                  className={`${studentTone} border-t border-border/70 align-middle hover:bg-secondary/55`}
+                                  className={`${studentTone} ${hasMultipleServices ? "border-t border-border/70" : "border-t-4 border-muted"} align-middle hover:bg-secondary/55`}
                                   data-testid={`overview-service-${service.id}`}
                                 >
-                                  <td className="px-3 py-3 pl-9">
-                                    <span className="block border-l-2 border-primary/25 pl-3 text-[11px] font-semibold text-muted-foreground">
-                                      Service {serviceIndex + 1}
-                                    </span>
+                                  <td
+                                    className={`px-3 py-3 ${hasMultipleServices ? "pl-9" : ""}`}
+                                  >
+                                    {hasMultipleServices ? (
+                                      <span className="block border-l-2 border-primary/25 pl-3 text-[11px] font-semibold text-muted-foreground">
+                                        Service {serviceIndex + 1}
+                                      </span>
+                                    ) : (
+                                      studentIdentity
+                                    )}
                                   </td>
                                   <td className="px-2 py-3">
                                     <span className="block font-bold text-primary">
@@ -4966,6 +4978,39 @@ function CaseloadOverviewPage({
                                       >
                                         <ClipboardList size={13} /> Log
                                       </Button>
+                                      {!hasMultipleServices ? (
+                                        <>
+                                          <Button
+                                            variant="outline"
+                                            className="size-9 min-h-9 bg-card p-0 text-primary"
+                                            onClick={() =>
+                                              setEditingStudent({
+                                                childId: student.childId,
+                                                childName: student.childName,
+                                              })
+                                            }
+                                            title={`Add a service for ${student.childName}`}
+                                            aria-label={`Add a service for ${student.childName}`}
+                                          >
+                                            <Plus size={15} />
+                                          </Button>
+                                          <Button
+                                            variant="outline"
+                                            className="size-9 min-h-9 bg-card p-0 text-primary"
+                                            onClick={() =>
+                                              onOpenProfile(student.childId)
+                                            }
+                                            title="View student profile"
+                                            aria-label="View student profile"
+                                            data-testid={`button-view-student-profile-${student.childId}`}
+                                          >
+                                            <UserRound
+                                              className="!size-5"
+                                              strokeWidth={2.5}
+                                            />
+                                          </Button>
+                                        </>
+                                      ) : null}
                                       <DropdownMenu>
                                         <DropdownMenuTrigger asChild>
                                           <Button
@@ -5075,7 +5120,25 @@ function CaseloadOverviewPage({
 
           <div className="divide-y-[10px] divide-muted/80 lg:hidden">
             {filteredStudents.map((student, studentIndex) => {
-              const expanded = expandedStudents.has(student.childId);
+              const hasMultipleServices =
+                student.serviceRequirements.length > 1;
+              const expanded =
+                !hasMultipleServices || expandedStudents.has(student.childId);
+              const studentIdentity = (
+                <span className="min-w-0">
+                  <span className="block truncate font-bold text-primary">
+                    {student.childName}
+                  </span>
+                  <span className="mono mt-0.5 block truncate text-[10px] font-semibold text-primary/65">
+                    {student.childLedId}
+                  </span>
+                  <span className="mt-1 block text-xs text-muted-foreground">
+                    {student.teacherNames.length
+                      ? student.teacherNames.join(", ")
+                      : student.grade || student.school || "Student profile"}
+                  </span>
+                </span>
+              );
               return (
                 <article
                   key={student.childId}
@@ -5083,38 +5146,30 @@ function CaseloadOverviewPage({
                   className={`p-4 ${studentIndex % 2 ? "bg-secondary/30" : "bg-card"}`}
                 >
                   <div className="flex min-w-0 items-start justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => toggleStudent(student.childId)}
-                      aria-expanded={expanded}
-                      className="flex min-w-0 items-start gap-2 rounded-sm text-left focus-ring"
-                    >
-                      <span className="grid size-7 shrink-0 place-items-center rounded-md bg-secondary/70 text-primary">
-                        <ChevronDown
-                          size={17}
-                          className={`transition-transform ${expanded ? "" : "-rotate-90"}`}
-                        />
+                    {hasMultipleServices ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleStudent(student.childId)}
+                        aria-expanded={expanded}
+                        aria-label={`${expanded ? "Collapse" : "Expand"} services for ${student.childName}`}
+                        className="flex min-w-0 items-start gap-2 rounded-sm text-left focus-ring"
+                      >
+                        <span className="grid size-7 shrink-0 place-items-center rounded-md bg-secondary/70 text-primary">
+                          <ChevronDown
+                            size={17}
+                            className={`transition-transform ${expanded ? "" : "-rotate-90"}`}
+                          />
+                        </span>
+                        {studentIdentity}
+                      </button>
+                    ) : (
+                      studentIdentity
+                    )}
+                    {hasMultipleServices ? (
+                      <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
+                        {student.serviceRequirements.length} services
                       </span>
-                      <span className="min-w-0">
-                        <span className="block truncate font-bold text-primary">
-                          {student.childName}
-                        </span>
-                        <span className="mono mt-0.5 block truncate text-[10px] font-semibold text-primary/65">
-                          {student.childLedId}
-                        </span>
-                        <span className="mt-1 block text-xs text-muted-foreground">
-                          {student.teacherNames.length
-                            ? student.teacherNames.join(", ")
-                            : student.grade ||
-                              student.school ||
-                              "Student profile"}
-                        </span>
-                      </span>
-                    </button>
-                    <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-bold text-muted-foreground">
-                      {student.serviceRequirements.length} service
-                      {student.serviceRequirements.length === 1 ? "" : "s"}
-                    </span>
+                    ) : null}
                   </div>
 
                   {expanded ? (
@@ -5792,11 +5847,7 @@ function CommunicationGoalsPanel({ childId }: { childId: number }) {
     setError("");
   };
   const save = async () => {
-    if (
-      !form.title.trim() ||
-      !form.goalArea.trim() ||
-      !form.startDate
-    ) {
+    if (!form.title.trim() || !form.goalArea.trim() || !form.startDate) {
       setError("Title, goal area, and start date are required.");
       return;
     }
@@ -11739,7 +11790,10 @@ function SessionRecorderPage({
   const [provisionalNotes, setProvisionalNotes] = useState<
     Record<number, { phrase?: string; workingMeaning?: string }>
   >({});
-  const [showFullTranscript, setShowFullTranscript] = useState(false);
+  const [transcriptReviewMode, setTranscriptReviewMode] = useState<
+    "prioritized" | "chronological"
+  >("prioritized");
+  const showFullTranscript = transcriptReviewMode === "chronological";
   const [reviewProgressSaved, setReviewProgressSaved] = useState(false);
   const [inboxMeaningDrafts, setInboxMeaningDrafts] = useState<
     Record<number, string>
@@ -12122,7 +12176,7 @@ function SessionRecorderPage({
     setSelectedChildUtteranceIds([]);
     setUtteranceNotes({});
     setProvisionalNotes({});
-    setShowFullTranscript(false);
+    setTranscriptReviewMode("prioritized");
     setCaptured((items) =>
       items
         .filter((item) => item.origin !== "transcript")
@@ -12787,6 +12841,7 @@ function SessionRecorderPage({
         },
       });
       setTranscription(result);
+      addTranscriptDrafts(result);
       await queryClient.invalidateQueries({
         queryKey: getListChildPhraseInboxQueryKey({
           childId,
@@ -12798,7 +12853,6 @@ function SessionRecorderPage({
         current.filter((id) => !segmentIds.includes(id)),
       );
       setTranscriptionError("");
-      addTranscriptDrafts(result);
     } catch (error: any) {
       setTranscriptionError(
         error?.message ??
@@ -13718,14 +13772,20 @@ function SessionRecorderPage({
   const reviewPreparationPending =
     transcriptionStatus === "complete" &&
     Boolean(transcription) &&
-    Boolean(
-      transcription?.phrases.some(
-        (detected) =>
-          detected.childAttributed &&
-          !ignoredTranscriptPhraseIds.includes(detected.id) &&
-          !captured.some((item) => item.transcriptPhraseId === detected.id),
+    hasUnpreparedChildTranscriptPhrase({
+      phrases: transcription?.phrases ?? [],
+      ignoredPhraseIds: ignoredTranscriptPhraseIds,
+      capturedPhraseIds: captured.flatMap((item) =>
+        typeof item.transcriptPhraseId === "number"
+          ? [item.transcriptPhraseId]
+          : [],
       ),
-    );
+      inboxPhraseIds: (phraseInboxQuery.data ?? []).flatMap((item) =>
+        typeof item.transcriptPhraseId === "number"
+          ? [item.transcriptPhraseId]
+          : [],
+      ),
+    });
   const transcriptionPending =
     transcriptionStatus === "uploading" ||
     transcriptionStatus === "transcribing" ||
@@ -13769,9 +13829,8 @@ function SessionRecorderPage({
         !segment.speakerReviewed,
     ).length ?? 0;
   const childUtterances = transcription?.childUtterances ?? [];
-  const rapidReviewUtterance = [...childUtterances]
-    .sort((left, right) => left.reviewRank - right.reviewRank)
-    .find((utterance) => utterance.disposition === "pending");
+  const rapidReviewUtterance =
+    nextPrioritizedChildLanguageReview(childUtterances);
   const activeInboxItem = phraseInboxQuery.data?.find(
     (item) => item.status === "pending",
   );
@@ -13892,20 +13951,6 @@ function SessionRecorderPage({
     updateTranscriptChildUtterances.isPending,
   ]);
   const hasRawTranscript = Boolean(transcription?.rawTranscript.trim());
-  useEffect(() => {
-    if (
-      transcriptionStatus === "complete" &&
-      hasRawTranscript &&
-      childUtterances.length === 0
-    ) {
-      setShowFullTranscript(true);
-    }
-  }, [
-    childUtterances.length,
-    hasRawTranscript,
-    transcription?.id,
-    transcriptionStatus,
-  ]);
   const routineCaptured = captured.filter(
     (item) => item.reviewState === "routine",
   );
@@ -14475,7 +14520,8 @@ function SessionRecorderPage({
     transcription &&
     (Boolean(rapidReviewUtterance) ||
       Boolean(activeInboxItem) ||
-      showFullTranscript) ? (
+      showFullTranscript ||
+      (hasRawTranscript && childUtterances.length === 0)) ? (
       <section
         data-testid="section-identify-child-language"
         className="flex flex-col rounded-3xl border border-accent/35 bg-accent/10 p-5 md:p-7"
@@ -14499,7 +14545,11 @@ function SessionRecorderPage({
           {childUtterances.length > 1 && (
             <Button
               variant="outline"
-              onClick={() => setShowFullTranscript((current) => !current)}
+              onClick={() =>
+                setTranscriptReviewMode((current) =>
+                  current === "chronological" ? "prioritized" : "chronological",
+                )
+              }
               data-testid="button-toggle-full-transcript"
             >
               {showFullTranscript
@@ -15539,7 +15589,7 @@ function SessionRecorderPage({
                   <Button
                     variant="outline"
                     className="min-h-11 px-3 text-xs"
-                    onClick={() => setShowFullTranscript(true)}
+                    onClick={() => setTranscriptReviewMode("chronological")}
                     data-testid="button-review-transcript-decisions"
                   >
                     <ClipboardList size={15} /> Review transcript decisions

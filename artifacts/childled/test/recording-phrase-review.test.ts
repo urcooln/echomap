@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
-import { buildRecordedSessionSummary } from "../src/lib/recorded-session-review.ts";
+import {
+  buildRecordedSessionSummary,
+  hasUnpreparedChildTranscriptPhrase,
+  nextPrioritizedChildLanguageReview,
+} from "../src/lib/recorded-session-review.ts";
 
 const phrase = (value: string) => ({
   phrase: value,
@@ -117,5 +121,98 @@ test("protects clinician edits during regeneration", async () => {
   assert.match(
     appSource,
     /sessionNoteEdited &&[\s\S]*?window\.confirm\([\s\S]*?Regenerating will replace your edits/,
+  );
+});
+
+test("keeps transcript review mode independent from all phrase decisions", async () => {
+  const appSource = await readFile(
+    new URL("../src/App.tsx", import.meta.url),
+    "utf8",
+  );
+  const mutationStart = appSource.indexOf(
+    "const reviewChildUtterances = async",
+  );
+  const mutationEnd = appSource.indexOf(
+    "const updatePhraseInboxItem = async",
+    mutationStart,
+  );
+  const mutationSource = appSource.slice(mutationStart, mutationEnd);
+
+  assert.match(
+    appSource,
+    /useState<\s*"prioritized" \| "chronological"\s*>\("prioritized"\)/,
+  );
+  assert.doesNotMatch(mutationSource, /setTranscriptReviewMode/);
+  assert.doesNotMatch(
+    appSource,
+    /childUtterances\.length === 0[\s\S]{0,200}setTranscriptReviewMode/,
+  );
+  for (const [testId, decision] of [
+    ["button-utterance-child-", "child"],
+    ["button-utterance-not-child-", "not_child"],
+    ["button-utterance-unsure-", "unsure"],
+    ["button-utterance-unintelligible-", "unintelligible"],
+  ] as const) {
+    const testIdIndex = appSource.indexOf(testId);
+    const buttonStart = appSource.lastIndexOf("<Button", testIdIndex);
+    const buttonSource = appSource.slice(buttonStart, testIdIndex + 120);
+    assert.notEqual(testIdIndex, -1);
+    assert.match(buttonSource, /reviewChildUtterances/);
+    assert.match(buttonSource, new RegExp(`"${decision}"`));
+    assert.doesNotMatch(buttonSource, /setTranscriptReviewMode/);
+  }
+});
+
+test("advances to the next pending phrase by review priority", () => {
+  const utterances = [
+    { segmentId: 30, reviewRank: 3, disposition: "pending" },
+    { segmentId: 10, reviewRank: 1, disposition: "child" },
+    { segmentId: 20, reviewRank: 2, disposition: "pending" },
+  ];
+
+  assert.equal(nextPrioritizedChildLanguageReview(utterances)?.segmentId, 20);
+
+  for (const decision of ["child", "not_child", "unsure", "unintelligible"]) {
+    const reviewed = utterances.map((utterance) =>
+      utterance.segmentId === 20
+        ? { ...utterance, disposition: decision }
+        : utterance,
+    );
+    assert.equal(nextPrioritizedChildLanguageReview(reviewed)?.segmentId, 30);
+  }
+});
+
+test("does not return to transcription loading for an inbox-managed Child phrase", () => {
+  const phrases = [
+    { id: 41, childAttributed: true },
+    { id: 42, childAttributed: false },
+  ];
+
+  assert.equal(
+    hasUnpreparedChildTranscriptPhrase({
+      phrases,
+      ignoredPhraseIds: [],
+      capturedPhraseIds: [],
+      inboxPhraseIds: [],
+    }),
+    true,
+  );
+  assert.equal(
+    hasUnpreparedChildTranscriptPhrase({
+      phrases,
+      ignoredPhraseIds: [],
+      capturedPhraseIds: [41],
+      inboxPhraseIds: [],
+    }),
+    false,
+  );
+  assert.equal(
+    hasUnpreparedChildTranscriptPhrase({
+      phrases,
+      ignoredPhraseIds: [],
+      capturedPhraseIds: [],
+      inboxPhraseIds: [41],
+    }),
+    false,
   );
 });

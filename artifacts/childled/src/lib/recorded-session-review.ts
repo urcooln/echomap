@@ -8,6 +8,43 @@ export type ReviewedSessionPhraseSummary = {
   frequency?: number;
 };
 
+export type PrioritizedChildLanguageReview = {
+  reviewRank: number;
+  disposition: string;
+};
+
+export const nextPrioritizedChildLanguageReview = <
+  T extends PrioritizedChildLanguageReview,
+>(
+  utterances: readonly T[],
+) =>
+  utterances.reduce<T | undefined>((next, utterance) => {
+    if (utterance.disposition !== "pending") return next;
+    if (!next || utterance.reviewRank < next.reviewRank) return utterance;
+    return next;
+  }, undefined);
+
+export const hasUnpreparedChildTranscriptPhrase = ({
+  phrases,
+  ignoredPhraseIds,
+  capturedPhraseIds,
+  inboxPhraseIds,
+}: {
+  phrases: readonly { id: number; childAttributed: boolean }[];
+  ignoredPhraseIds: readonly number[];
+  capturedPhraseIds: readonly number[];
+  inboxPhraseIds: readonly number[];
+}) => {
+  const ignored = new Set(ignoredPhraseIds);
+  const prepared = new Set([...capturedPhraseIds, ...inboxPhraseIds]);
+  return phrases.some(
+    (phrase) =>
+      phrase.childAttributed &&
+      !ignored.has(phrase.id) &&
+      !prepared.has(phrase.id),
+  );
+};
+
 export const buildRecordedSessionSummary = ({
   sessionLabel,
   selectedPhrases,

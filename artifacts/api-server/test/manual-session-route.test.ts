@@ -143,6 +143,20 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     .returning();
   assert.ok(unassignedChild);
   ids.children.push(unassignedChild.id);
+  const [assistiveTechnologyChild] = await db
+    .insert(childProfilesTable)
+    .values({
+      organizationId: organization.id,
+      displayName: "Assistive technology child",
+    })
+    .returning();
+  assert.ok(assistiveTechnologyChild);
+  ids.children.push(assistiveTechnologyChild.id);
+  await db.insert(childCareTeamMembershipsTable).values({
+    childId: assistiveTechnologyChild.id,
+    userId,
+    role: "clinician",
+  });
   const [unrelatedGoal] = await db
     .insert(communicationGoalsTable)
     .values({
@@ -163,7 +177,7 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     userId,
     author: "Manual Session Clinician",
     role: "SLP",
-    childIds: [child.id],
+    childIds: [child.id, assistiveTechnologyChild.id],
     isAdmin: false,
     organizationId: organization.id,
     expiresAt: Date.now() + 60_000,
@@ -226,6 +240,123 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
       ),
       false,
     );
+
+    const assistiveTechnologySetup = await request(
+      `/manual-sessions/setup?childId=${assistiveTechnologyChild.id}`,
+    );
+    assert.equal(assistiveTechnologySetup.status, 200);
+    assert.deepEqual(assistiveTechnologySetup.body.goals, []);
+
+    const assistiveTechnologyService = await json(
+      "PUT",
+      `/iep-service-requirements?childId=${assistiveTechnologyChild.id}`,
+      {
+        serviceType: "assistive_technology",
+        requiredSessions: 2,
+        requiredMinutes: 60,
+        sessionDurationMinutes: 30,
+        period: "custom",
+        effectiveFrom: "2026-09-01",
+        effectiveTo: "2026-09-30",
+      },
+    );
+    assert.equal(assistiveTechnologyService.status, 200);
+    const goalFreeNote =
+      "Called and spoke with the device vendor about programming issues.";
+    const assistiveTechnologyBody = {
+      serviceRequirementId: assistiveTechnologyService.body.id,
+      sessionDate: "2026-09-10",
+      startedAt: null,
+      endedAt: null,
+      durationSeconds: 1_800,
+      timerElapsedSeconds: 0,
+      durationSource: "manual",
+      durationEdited: false,
+      goals: [],
+      note: goalFreeNote,
+    };
+    const goalFreeSession = await json(
+      "POST",
+      `/manual-sessions?childId=${assistiveTechnologyChild.id}`,
+      assistiveTechnologyBody,
+    );
+    assert.equal(goalFreeSession.status, 201);
+    ids.sessions.push(goalFreeSession.body.id);
+    assert.equal(goalFreeSession.body.sessionStatus, "completed");
+    assert.equal(
+      goalFreeSession.body.serviceRequirementId,
+      assistiveTechnologyService.body.id,
+    );
+    assert.equal(goalFreeSession.body.note, goalFreeNote);
+    assert.deepEqual(goalFreeSession.body.goalProgress, []);
+
+    const [assistiveTechnologyGoal] = await db
+      .insert(communicationGoalsTable)
+      .values({
+        organizationId: organization.id,
+        childId: assistiveTechnologyChild.id,
+        title: "Device navigation",
+        goalArea: "Assistive technology",
+        description: "Navigate familiar communication device screens.",
+        startDate: "2026-09-01",
+        createdByUserId: userId,
+        updatedByUserId: userId,
+      })
+      .returning();
+    assert.ok(assistiveTechnologyGoal);
+    ids.goals.push(assistiveTechnologyGoal.id);
+    const setupWithGoal = await request(
+      `/manual-sessions/setup?childId=${assistiveTechnologyChild.id}`,
+    );
+    assert.equal(setupWithGoal.status, 200);
+    assert.equal(setupWithGoal.body.goals.length, 1);
+
+    const unaddressedGoalSession = await json(
+      "POST",
+      `/manual-sessions?childId=${assistiveTechnologyChild.id}`,
+      {
+        ...assistiveTechnologyBody,
+        sessionDate: "2026-09-11",
+        note: "Coordinated a device programming meeting with the team.",
+      },
+    );
+    assert.equal(unaddressedGoalSession.status, 201);
+    ids.sessions.push(unaddressedGoalSession.body.id);
+    assert.deepEqual(unaddressedGoalSession.body.goalProgress, []);
+    const goalFreeProgress = await db
+      .select({ id: therapySessionGoalProgressTable.id })
+      .from(therapySessionGoalProgressTable)
+      .where(
+        inArray(therapySessionGoalProgressTable.sessionId, [
+          goalFreeSession.body.id,
+          unaddressedGoalSession.body.id,
+        ]),
+      );
+    assert.deepEqual(goalFreeProgress, []);
+
+    const assistiveTechnologyHistory = await request(
+      `/sessions?childId=${assistiveTechnologyChild.id}`,
+    );
+    assert.equal(assistiveTechnologyHistory.status, 200);
+    assert.equal(assistiveTechnologyHistory.body.length, 2);
+    assert.ok(
+      assistiveTechnologyHistory.body.every(
+        (session: { goalProgress: unknown[]; sessionMode: string }) =>
+          session.sessionMode === "manual" && session.goalProgress.length === 0,
+      ),
+    );
+    const assistiveTechnologyAfterSessions = await request(
+      `/manual-sessions/setup?childId=${assistiveTechnologyChild.id}`,
+    );
+    const completedAssistiveTechnology =
+      assistiveTechnologyAfterSessions.body.serviceRequirements.find(
+        (service: { id: number }) =>
+          service.id === assistiveTechnologyService.body.id,
+      );
+    assert.equal(completedAssistiveTechnology.sessionsCompleted, 2);
+    assert.equal(completedAssistiveTechnology.sessionsRemaining, 0);
+    assert.equal(completedAssistiveTechnology.minutesCompleted, 60);
+    assert.equal(completedAssistiveTechnology.lastSessionDate, "2026-09-11");
 
     const serviceSettings = await json(
       "PUT",
@@ -1102,7 +1233,7 @@ test("manual and recorded sessions share IEP service delivery totals", async () 
     }
     await db
       .delete(iepServiceRequirementsTable)
-      .where(eq(iepServiceRequirementsTable.childId, child.id));
+      .where(inArray(iepServiceRequirementsTable.childId, ids.children));
     await db
       .delete(communicationGoalsTable)
       .where(inArray(communicationGoalsTable.id, ids.goals));

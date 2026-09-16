@@ -5439,7 +5439,6 @@ components:
         durationEdited: { type: boolean }
         goals:
           type: array
-          minItems: 1
           maxItems: 50
           items: { $ref: "#/components/schemas/ManualSessionGoalProgressInput" }
         note: { type: string, minLength: 1, maxLength: 10000 }

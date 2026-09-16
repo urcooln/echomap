@@ -220,7 +220,7 @@ export const CreateManualSessionBody = zod.object({
   "totalAttempts": zod.number().min(createManualSessionBodyGoalsItemTotalAttemptsMin).nullish(),
   "promptingLevel": zod.union([zod.literal('independent'),zod.literal('minimal'),zod.literal('moderate'),zod.literal('maximal'),zod.literal('total'),zod.literal('na'),zod.literal(null)]).nullish(),
   "progressNote": zod.string().max(createManualSessionBodyGoalsItemProgressNoteMax)
-})).min(1).max(createManualSessionBodyGoalsMax),
+})).max(createManualSessionBodyGoalsMax),
   "note": zod.string().min(1).max(createManualSessionBodyNoteMax)
 })
 
