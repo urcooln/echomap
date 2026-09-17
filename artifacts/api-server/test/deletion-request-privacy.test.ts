@@ -159,9 +159,20 @@ test("processed observation deletion removes typed phrase-observation evidence",
     join(process.cwd(), "src/routes/childled.ts"),
     "utf8",
   );
+  const processDeletion = routeSource.slice(
+    routeSource.indexOf("const processDeletion = async"),
+  );
+  const observationBranch = processDeletion.slice(
+    processDeletion.indexOf('if (selected.has("observations")) {'),
+    processDeletion.indexOf('if (selected.has("recordings")) {'),
+  );
 
   assert.match(
-    routeSource,
-    /if \(selected\.has\("observations"\)\) \{[\s\S]*?await db\.delete\(legacyPhraseObservationRecoveriesTable\)\.where\(eq\(legacyPhraseObservationRecoveriesTable\.childId, request\.childId\)\);[\s\S]*?await db\.delete\(phraseObservationsTable\)\.where\(eq\(phraseObservationsTable\.childId, request\.childId\)\);/,
+    observationBranch,
+    /await db\s*\.delete\(legacyPhraseObservationRecoveriesTable\)\s*\.where\(\s*eq\(legacyPhraseObservationRecoveriesTable\.childId, request\.childId\),?\s*\);/,
+  );
+  assert.match(
+    observationBranch,
+    /await db\s*\.delete\(phraseObservationsTable\)\s*\.where\(eq\(phraseObservationsTable\.childId, request\.childId\)\);/,
   );
 });

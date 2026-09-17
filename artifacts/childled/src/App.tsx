@@ -10206,7 +10206,7 @@ function AdminSecurityPage() {
 
       <section className="rounded-2xl border border-border bg-card p-6 md:p-8 soft-shadow">
         <h2 className="serif text-2xl font-semibold mb-6">
-          Data retention policies
+          Data retention settings
         </h2>
         <div className="grid gap-6 md:grid-cols-4 mb-8">
           <label className="block space-y-2">
@@ -10251,7 +10251,7 @@ function AdminSecurityPage() {
           </label>
           <label className="block space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Session notes (days)
+              Session note retention target (days)
             </span>
             <input
               type="number"
@@ -10266,10 +10266,14 @@ function AdminSecurityPage() {
               }
               className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition-shadow focus-ring"
             />
+            <span className="block text-xs font-normal leading-5 text-muted-foreground">
+              Planning target only. Session notes are not automatically deleted
+              after this period.
+            </span>
           </label>
           <label className="block space-y-2">
             <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-              Archived storage (days)
+              Archived storage retention target (days)
             </span>
             <input
               type="number"
@@ -10284,6 +10288,10 @@ function AdminSecurityPage() {
               }
               className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm outline-none transition-shadow focus-ring"
             />
+            <span className="block text-xs font-normal leading-5 text-muted-foreground">
+              Planning target only. Archived storage is not automatically
+              deleted after this period.
+            </span>
           </label>
         </div>
         <Button
