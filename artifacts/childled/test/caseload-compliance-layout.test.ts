@@ -88,6 +88,10 @@ test("shows one service directly and expands only multi-service students", async
   assert.match(appSource, /label: "Behind on sessions"/);
   assert.match(appSource, /label: "Below expected pace"/);
   assert.match(pageSource, /service\.sessionsCompleted/);
+  assert.match(pageSource, /sessionsAccountedFor\(service\)/);
+  assert.match(pageSource, /sessionRequirementProgress\(service\)/);
+  assert.match(pageSource, /accounted for/);
+  assert.match(pageSource, /Delivered: \{service\.sessionsCompleted\}/);
   assert.match(pageSource, /service\.sessionsMissed/);
   assert.match(pageSource, /service\.sessionsRemaining/);
   assert.match(pageSource, /service\.outstandingMakeups/);
@@ -97,7 +101,7 @@ test("shows one service directly and expands only multi-service students", async
   assert.match(pageSource, /Sessions: \{service\.sessionsRemaining\}/);
   assert.match(pageSource, /Minutes: \{service\.minutesRemaining\} min/);
   assert.match(pageSource, /Makeups: \{service\.outstandingMakeups\}/);
-  assert.match(pageSource, /Sessions delivered/);
+  assert.match(pageSource, /Sessions accounted for/);
   assert.match(pageSource, /Outstanding makeups/);
   assert.match(pageSource, /service\.customFrequencyDescription/);
   assert.match(pageSource, /onOpenProfile\(student\.childId\)/);
@@ -140,4 +144,58 @@ test("keeps Add Student above four balanced Quick Actions", async () => {
   }
   assert.match(overviewSource, /data-testid="button-overview-add-student"/);
   assert.match(overviewSource, /onClick=\{onAddStudent\}/);
+});
+
+test("caseload actions show distinct, accessible service and profile icons", async () => {
+  const appSource = await readFile(
+    new URL("../src/App.tsx", import.meta.url),
+    "utf8",
+  );
+  const pageStart = appSource.indexOf("function CaseloadOverviewPage(");
+  const pageEnd = appSource.indexOf("\nconst childProfileIncomplete", pageStart);
+  const pageSource = appSource.slice(pageStart, pageEnd);
+  const desktopTable = pageSource.slice(
+    pageSource.indexOf('<div className="hidden lg:block">'),
+    pageSource.indexOf('className="divide-y-[10px] divide-muted/80 lg:hidden"'),
+  );
+
+  assert.equal((desktopTable.match(/title="Add service"/g) ?? []).length, 2);
+  assert.equal((desktopTable.match(/aria-label="Add service"/g) ?? []).length, 2);
+  assert.equal(
+    (desktopTable.match(/title="View student profile"/g) ?? []).length,
+    2,
+  );
+  assert.equal(
+    (desktopTable.match(/aria-label="View student profile"/g) ?? []).length,
+    2,
+  );
+  assert.equal(
+    (desktopTable.match(/data-testid=\{`button-add-service-\$\{student\.childId\}`\}/g) ?? [])
+      .length,
+    2,
+  );
+  assert.equal(
+    (desktopTable.match(/data-testid=\{`button-view-student-profile-\$\{student\.childId\}`\}/g) ?? [])
+      .length,
+    2,
+  );
+  assert.equal((desktopTable.match(/<Plus\s+aria-hidden="true"/g) ?? []).length, 2);
+  assert.equal((desktopTable.match(/<UserRound\s+aria-hidden="true"/g) ?? []).length, 2);
+  assert.equal(
+    (
+      desktopTable.match(
+        /className="size-9 min-h-9 shrink-0 bg-card !p-0 text-primary"/g,
+      ) ?? []
+    ).length,
+    3,
+  );
+  assert.match(
+    pageSource,
+    /className="size-9 min-h-9 shrink-0 bg-card !p-0 text-destructive"/,
+  );
+  assert.equal((pageSource.match(/aria-label="Add service"/g) ?? []).length, 3);
+  assert.match(pageSource, /className="!size-5 shrink-0 stroke-current"/);
+  assert.match(desktopTable, /setEditingStudent\(\{\s*childId: student\.childId/);
+  assert.match(desktopTable, /onOpenProfile\(student\.childId\)/);
+  assert.doesNotMatch(desktopTable, /onOpenCareTeam/);
 });

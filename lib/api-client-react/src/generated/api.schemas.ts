@@ -3099,14 +3099,14 @@ export type ProvisionalPhraseCandidateAttributionLabel = typeof ProvisionalPhras
 
 
 export const ProvisionalPhraseCandidateAttributionLabel = {
-  Speaker_attribution_pending: 'Speaker attribution pending',
+  'Child-language_review_pending': 'Child-language review pending',
 } as const;
 
 export type ProvisionalPhraseCandidateSourceLabel = typeof ProvisionalPhraseCandidateSourceLabel[keyof typeof ProvisionalPhraseCandidateSourceLabel];
 
 
 export const ProvisionalPhraseCandidateSourceLabel = {
-  'Mixed-speaker_transcript': 'Mixed-speaker transcript',
+  Completed_transcript: 'Completed transcript',
 } as const;
 
 export type ProvisionalPhraseCandidateEvidenceLabel = typeof ProvisionalPhraseCandidateEvidenceLabel[keyof typeof ProvisionalPhraseCandidateEvidenceLabel];

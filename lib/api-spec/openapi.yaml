@@ -6454,8 +6454,8 @@ components:
         disposition:
           { $ref: "#/components/schemas/ProvisionalPhraseDisposition" }
         workingMeaning: { type: ["string", "null"] }
-        attributionLabel: { type: string, enum: [Speaker attribution pending] }
-        sourceLabel: { type: string, enum: [Mixed-speaker transcript] }
+        attributionLabel: { type: string, enum: [Child-language review pending] }
+        sourceLabel: { type: string, enum: [Completed transcript] }
         evidenceLabel: { type: string, enum: [Not clinical evidence] }
         updatedAt: { type: string, format: date-time }
     ProvisionalPhraseReview:

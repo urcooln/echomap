@@ -322,10 +322,14 @@ import {
 } from "@/lib/session-history";
 import {
   buildRecordedSessionSummary,
-  hasUnpreparedChildTranscriptPhrase,
+  isRecordedTranscriptionPending,
   nextPrioritizedChildLanguageReview,
 } from "@/lib/recorded-session-review";
 import { refreshSessionTrackingQueries } from "@/lib/session-query-refresh";
+import {
+  sessionsAccountedFor,
+  sessionRequirementProgress,
+} from "@/lib/caseload-session-progress";
 import {
   emptySessionGoalReview,
   SessionGoalReview,
@@ -4519,16 +4523,6 @@ function CaseloadOverviewPage({
     );
   };
 
-  const requirementProgress = (requirement?: IepServiceRequirement) =>
-    requirement
-      ? Math.round(
-          Math.min(
-            1,
-            requirement.sessionsCompleted / requirement.requiredSessions,
-          ) * 100,
-        )
-      : 0;
-
   const toggleStudent = (childId: number) =>
     setExpandedStudents((current) => {
       const next = new Set(current);
@@ -4832,26 +4826,30 @@ function CaseloadOverviewPage({
                                     childName: student.childName,
                                   })
                                 }
-                                title={`Add a service for ${student.childName}`}
-                                aria-label={`Add a service for ${student.childName}`}
+                                title="Add service"
+                                aria-label="Add service"
+                                data-testid={`button-add-service-${student.childId}`}
                               >
-                                <Plus size={13} /> Service
+                                <Plus
+                                  aria-hidden="true"
+                                  className="!size-4 stroke-current"
+                                  strokeWidth={2.5}
+                                />{" "}
+                                Service
                               </Button>
                               <Button
                                 variant="outline"
-                                className="relative size-9 min-h-9 overflow-hidden bg-card p-0 text-primary"
+                                className="size-9 min-h-9 shrink-0 bg-card !p-0 text-primary"
                                 onClick={() => onOpenProfile(student.childId)}
                                 title="View student profile"
                                 aria-label="View student profile"
                                 data-testid={`button-view-student-profile-${student.childId}`}
                               >
-                                <span className="relative z-10 grid size-6 place-items-center text-primary">
-                                  <UserRound
-                                    aria-hidden="true"
-                                    className="!size-5"
-                                    strokeWidth={2.5}
-                                  />
-                                </span>
+                                <UserRound
+                                  aria-hidden="true"
+                                  className="!size-5 stroke-current"
+                                  strokeWidth={2.5}
+                                />
                               </Button>
                             </div>
                           </td>
@@ -4860,7 +4858,8 @@ function CaseloadOverviewPage({
                       {expanded && student.serviceRequirements.length
                         ? student.serviceRequirements.map(
                             (service, serviceIndex) => {
-                              const progress = requirementProgress(service);
+                              const progress = sessionRequirementProgress(service);
+                              const accountedFor = sessionsAccountedFor(service);
                               return (
                                 <tr
                                   key={service.id}
@@ -4914,18 +4913,21 @@ function CaseloadOverviewPage({
                                   </td>
                                   <td className="px-2 py-3 text-center">
                                     <span className="block font-bold">
-                                      {service.sessionsCompleted} /{" "}
-                                      {service.requiredSessions} delivered
+                                      {accountedFor} / {service.requiredSessions}{" "}
+                                      accounted for
                                     </span>
                                     <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                                      {service.minutesCompleted} /{" "}
-                                      {service.requiredMinutes} min delivered
+                                      Delivered: {service.sessionsCompleted}
                                     </span>
                                     {service.sessionsMissed ? (
                                       <span className="mt-0.5 block text-[11px] font-semibold text-amber-800">
                                         Missed: {service.sessionsMissed}
                                       </span>
                                     ) : null}
+                                    <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                      {service.minutesCompleted} /{" "}
+                                      {service.requiredMinutes} min delivered
+                                    </span>
                                     <div className="mx-auto mt-1.5 h-1.5 w-full max-w-16 overflow-hidden rounded-full bg-muted">
                                       <div
                                         className="h-full rounded-full bg-primary"
@@ -4982,21 +4984,26 @@ function CaseloadOverviewPage({
                                         <>
                                           <Button
                                             variant="outline"
-                                            className="size-9 min-h-9 bg-card p-0 text-primary"
+                                            className="size-9 min-h-9 shrink-0 bg-card !p-0 text-primary"
                                             onClick={() =>
                                               setEditingStudent({
                                                 childId: student.childId,
                                                 childName: student.childName,
                                               })
                                             }
-                                            title={`Add a service for ${student.childName}`}
-                                            aria-label={`Add a service for ${student.childName}`}
+                                            title="Add service"
+                                            aria-label="Add service"
+                                            data-testid={`button-add-service-${student.childId}`}
                                           >
-                                            <Plus size={15} />
+                                            <Plus
+                                              aria-hidden="true"
+                                              className="!size-5 stroke-current"
+                                              strokeWidth={2.5}
+                                            />
                                           </Button>
                                           <Button
                                             variant="outline"
-                                            className="size-9 min-h-9 bg-card p-0 text-primary"
+                                            className="size-9 min-h-9 shrink-0 bg-card !p-0 text-primary"
                                             onClick={() =>
                                               onOpenProfile(student.childId)
                                             }
@@ -5005,7 +5012,8 @@ function CaseloadOverviewPage({
                                             data-testid={`button-view-student-profile-${student.childId}`}
                                           >
                                             <UserRound
-                                              className="!size-5"
+                                              aria-hidden="true"
+                                              className="!size-5 stroke-current"
                                               strokeWidth={2.5}
                                             />
                                           </Button>
@@ -5175,7 +5183,8 @@ function CaseloadOverviewPage({
                   {expanded ? (
                     <div className="mt-4 space-y-3">
                       {student.serviceRequirements.map((service) => {
-                        const progress = requirementProgress(service);
+                        const progress = sessionRequirementProgress(service);
+                        const accountedFor = sessionsAccountedFor(service);
                         return (
                           <section
                             key={service.id}
@@ -5220,7 +5229,7 @@ function CaseloadOverviewPage({
                                 <Button
                                   type="button"
                                   variant="outline"
-                                  className="size-9 min-h-9 bg-card text-destructive"
+                                  className="size-9 min-h-9 shrink-0 bg-card !p-0 text-destructive"
                                   onClick={() =>
                                     setDeletingService({
                                       childId: student.childId,
@@ -5231,7 +5240,11 @@ function CaseloadOverviewPage({
                                   aria-label={`Delete ${service.serviceName}`}
                                   title="Delete service"
                                 >
-                                  <Trash2 size={15} />
+                                  <Trash2
+                                    aria-hidden="true"
+                                    className="!size-5 stroke-current"
+                                    strokeWidth={2.5}
+                                  />
                                 </Button>
                               </span>
                             </div>
@@ -5244,13 +5257,16 @@ function CaseloadOverviewPage({
                             <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
                               <span className="rounded-md bg-muted/45 p-2">
                                 <strong className="block text-sm text-primary">
-                                  {service.sessionsCompleted} /{" "}
+                                  {accountedFor} /{" "}
                                   {service.requiredSessions}
                                 </strong>
-                                Sessions delivered
+                                Sessions accounted for
+                                <span className="mt-0.5 block text-[11px] text-muted-foreground">
+                                  Delivered: {service.sessionsCompleted}
+                                </span>
                                 <span className="mt-0.5 block text-[11px] text-muted-foreground">
                                   {service.minutesCompleted} /{" "}
-                                  {service.requiredMinutes} min
+                                  {service.requiredMinutes} min delivered
                                 </span>
                               </span>
                               <span className="rounded-md bg-muted/45 p-2">
@@ -5324,8 +5340,15 @@ function CaseloadOverviewPage({
                               childName: student.childName,
                             })
                           }
+                          title="Add service"
+                          aria-label="Add service"
                         >
-                          <Plus size={15} /> Add Service
+                          <Plus
+                            aria-hidden="true"
+                            className="!size-5 shrink-0 stroke-current"
+                            strokeWidth={2.5}
+                          />{" "}
+                          Add Service
                         </Button>
                         <Button
                           variant="outline"
@@ -5333,7 +5356,12 @@ function CaseloadOverviewPage({
                           title="View student profile"
                           aria-label="View student profile"
                         >
-                          <UserRound size={15} /> Profile
+                          <UserRound
+                            aria-hidden="true"
+                            className="!size-5 shrink-0 stroke-current"
+                            strokeWidth={2.5}
+                          />{" "}
+                          Profile
                         </Button>
                       </div>
                     </div>
@@ -12955,10 +12983,9 @@ function SessionRecorderPage({
         }, 0);
       }
     } catch (error: any) {
+      if (import.meta.env.DEV) console.error("Child phrase save failed", error);
       setTranscriptionError(
-        error?.data?.error ??
-          error?.message ??
-          "We could not update the Child Phrase Inbox.",
+        "That phrase could not be saved. Please try again.",
       );
     }
   };
@@ -13769,28 +13796,10 @@ function SessionRecorderPage({
       );
     }
   };
-  const reviewPreparationPending =
-    transcriptionStatus === "complete" &&
-    Boolean(transcription) &&
-    hasUnpreparedChildTranscriptPhrase({
-      phrases: transcription?.phrases ?? [],
-      ignoredPhraseIds: ignoredTranscriptPhraseIds,
-      capturedPhraseIds: captured.flatMap((item) =>
-        typeof item.transcriptPhraseId === "number"
-          ? [item.transcriptPhraseId]
-          : [],
-      ),
-      inboxPhraseIds: (phraseInboxQuery.data ?? []).flatMap((item) =>
-        typeof item.transcriptPhraseId === "number"
-          ? [item.transcriptPhraseId]
-          : [],
-      ),
-    });
-  const transcriptionPending =
-    transcriptionStatus === "uploading" ||
-    transcriptionStatus === "transcribing" ||
-    (transcriptionStatus === "complete" && !transcription) ||
-    reviewPreparationPending;
+  const transcriptionPending = isRecordedTranscriptionPending(
+    transcriptionStatus,
+    Boolean(transcription),
+  );
   const transcriptionProgressTitle =
     transcriptionStatus === "uploading"
       ? "Uploading the private recording…"
@@ -13834,6 +13843,15 @@ function SessionRecorderPage({
   const activeInboxItem = phraseInboxQuery.data?.find(
     (item) => item.status === "pending",
   );
+  const keptMeaningPendingCount = (phraseInboxQuery.data ?? []).filter(
+    (item) => {
+      if (item.status !== "reviewed") return false;
+      const currentMeaning =
+        captured.find((phrase) => phrase.phraseInboxItemId === item.id)
+          ?.meaning ?? item.workingMeaning;
+      return !currentMeaning?.trim();
+    },
+  ).length;
   useEffect(() => {
     const inboxItems = phraseInboxQuery.data ?? [];
     if (!inboxItems.length) return;
@@ -14726,12 +14744,19 @@ function SessionRecorderPage({
                 communication dictionary before finalizing.
               </p>
             </div>
-            <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-primary">
-              {phraseInboxQuery.data?.filter(
-                (item) => item.status === "pending",
-              ).length ?? 0}{" "}
-              pending
-            </span>
+            <div className="flex flex-wrap gap-2">
+              <span className="rounded-full bg-secondary px-3 py-1.5 text-xs font-bold text-primary">
+                {phraseInboxQuery.data?.filter(
+                  (item) => item.status === "pending",
+                ).length ?? 0}{" "}
+                pending
+              </span>
+              {keptMeaningPendingCount > 0 ? (
+                <span className="rounded-full bg-muted px-3 py-1.5 text-xs font-bold text-muted-foreground">
+                  {keptMeaningPendingCount} meaning pending
+                </span>
+              ) : null}
+            </div>
           </div>
           {phraseInboxQuery.isLoading && (
             <p className="mt-4 rounded-xl bg-muted/55 p-4 text-sm text-muted-foreground">
@@ -16534,7 +16559,9 @@ function SessionRecorderPage({
                               <span className="rounded-full bg-card px-2.5 py-1 text-[10px] font-bold text-primary">
                                 {item.reviewState === "routine"
                                   ? "Routine dictionary match"
-                                  : "Clinician reviewed"}
+                                  : item.meaning.trim()
+                                    ? "Clinician reviewed"
+                                    : "Meaning pending"}
                               </span>
                             </div>
                             <p className="mt-1 text-xs leading-5 text-muted-foreground">

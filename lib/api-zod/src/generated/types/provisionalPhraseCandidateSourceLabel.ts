@@ -10,5 +10,5 @@ export type ProvisionalPhraseCandidateSourceLabel = typeof ProvisionalPhraseCand
 
 
 export const ProvisionalPhraseCandidateSourceLabel = {
-  'Mixed-speaker_transcript': 'Mixed-speaker transcript',
+  Completed_transcript: 'Completed transcript',
 } as const;

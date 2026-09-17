@@ -24,26 +24,13 @@ export const nextPrioritizedChildLanguageReview = <
     return next;
   }, undefined);
 
-export const hasUnpreparedChildTranscriptPhrase = ({
-  phrases,
-  ignoredPhraseIds,
-  capturedPhraseIds,
-  inboxPhraseIds,
-}: {
-  phrases: readonly { id: number; childAttributed: boolean }[];
-  ignoredPhraseIds: readonly number[];
-  capturedPhraseIds: readonly number[];
-  inboxPhraseIds: readonly number[];
-}) => {
-  const ignored = new Set(ignoredPhraseIds);
-  const prepared = new Set([...capturedPhraseIds, ...inboxPhraseIds]);
-  return phrases.some(
-    (phrase) =>
-      phrase.childAttributed &&
-      !ignored.has(phrase.id) &&
-      !prepared.has(phrase.id),
-  );
-};
+export const isRecordedTranscriptionPending = (
+  status: "idle" | "uploading" | "transcribing" | "complete" | "error",
+  hasTranscript: boolean,
+) =>
+  status === "uploading" ||
+  status === "transcribing" ||
+  (status === "complete" && !hasTranscript);
 
 export const buildRecordedSessionSummary = ({
   sessionLabel,

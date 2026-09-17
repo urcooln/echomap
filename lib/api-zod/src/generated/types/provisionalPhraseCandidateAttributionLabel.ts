@@ -10,5 +10,5 @@ export type ProvisionalPhraseCandidateAttributionLabel = typeof ProvisionalPhras
 
 
 export const ProvisionalPhraseCandidateAttributionLabel = {
-  Speaker_attribution_pending: 'Speaker attribution pending',
+  'Child-language_review_pending': 'Child-language review pending',
 } as const;

@@ -32,6 +32,7 @@ import {
   therapySessionsTable,
   transcriptChildUtteranceReviewsTable,
   transcriptPhrasesTable,
+  transcriptProvisionalPhrasesTable,
   transcriptSpeakerRolesTable,
   transcriptSpeakerSegmentsTable,
   usersTable,
@@ -730,6 +731,21 @@ test("persists and finalizes a kept Child phrase without forcing dictionary prom
       .from(childPhraseInboxItemsTable)
       .where(eq(childPhraseInboxItemsTable.transcriptId, fixture.transcriptId));
     assert.ok(inboxItem);
+    await db.insert(transcriptProvisionalPhrasesTable).values({
+      transcriptId: fixture.transcriptId,
+      phrase: "another phrase to review",
+      normalizedPhrase: "another phrase to review",
+    });
+
+    const invalidStatusResponse = await fetch(
+      `${baseUrl}/sessions/transcription/phrase-inbox/${inboxItem.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "Child-language review pending" }),
+      },
+    );
+    assert.equal(invalidStatusResponse.status, 400);
 
     const keepResponse = await fetch(
       `${baseUrl}/sessions/transcription/phrase-inbox/${inboxItem.id}`,
@@ -746,9 +762,23 @@ test("persists and finalizes a kept Child phrase without forcing dictionary prom
         workingMeaning: string | null;
         transcriptPhraseId: number | null;
       };
+      transcript: {
+        provisionalPhrases: Array<{
+          attributionLabel: string;
+          sourceLabel: string;
+        }>;
+      };
     };
     assert.equal(kept.item.status, "reviewed");
     assert.equal(kept.item.workingMeaning, null);
+    assert.equal(
+      kept.transcript.provisionalPhrases[0]?.attributionLabel,
+      "Child-language review pending",
+    );
+    assert.equal(
+      kept.transcript.provisionalPhrases[0]?.sourceLabel,
+      "Completed transcript",
+    );
     assert.equal(typeof kept.item.transcriptPhraseId, "number");
     fixture.phraseId = kept.item.transcriptPhraseId!;
     fixture.phraseInboxItemId = inboxItem.id;
@@ -759,6 +789,54 @@ test("persists and finalizes a kept Child phrase without forcing dictionary prom
       .where(eq(childPhraseInboxItemsTable.id, inboxItem.id));
     assert.equal(storedItem?.status, "reviewed");
     assert.equal(storedItem?.workingMeaning, null);
+    const reopenedInboxResponse = await fetch(
+      `${baseUrl}/sessions/transcription/phrase-inbox?childId=${fixture.childId}&transcriptId=${fixture.transcriptId}`,
+    );
+    assert.equal(reopenedInboxResponse.status, 200);
+    const reopenedInbox = (await reopenedInboxResponse.json()) as Array<{
+      id: number;
+      status: string;
+      workingMeaning: string | null;
+    }>;
+    assert.equal(reopenedInbox[0]?.id, inboxItem.id);
+    assert.equal(reopenedInbox[0]?.status, "reviewed");
+    assert.equal(reopenedInbox[0]?.workingMeaning, null);
+
+    const addMeaningResponse = await fetch(
+      `${baseUrl}/sessions/transcription/phrase-inbox/${inboxItem.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          status: "reviewed",
+          workingMeaning: "Requests more bubbles.",
+        }),
+      },
+    );
+    assert.equal(addMeaningResponse.status, 200);
+    const withMeaning = (await addMeaningResponse.json()) as {
+      item: { workingMeaning: string | null };
+    };
+    assert.equal(withMeaning.item.workingMeaning, "Requests more bubbles.");
+
+    const clearMeaningResponse = await fetch(
+      `${baseUrl}/sessions/transcription/phrase-inbox/${inboxItem.id}`,
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ status: "reviewed", workingMeaning: "" }),
+      },
+    );
+    assert.equal(clearMeaningResponse.status, 200);
+    const clearedMeaning = (await clearMeaningResponse.json()) as {
+      item: {
+        workingMeaning: string | null;
+        transcriptPhraseId: number | null;
+      };
+    };
+    assert.equal(clearedMeaning.item.workingMeaning, null);
+    assert.equal(typeof clearedMeaning.item.transcriptPhraseId, "number");
+    fixture.phraseId = clearedMeaning.item.transcriptPhraseId!;
     assert.equal(
       (
         await db

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import {
   buildRecordedSessionSummary,
-  hasUnpreparedChildTranscriptPhrase,
+  isRecordedTranscriptionPending,
   nextPrioritizedChildLanguageReview,
 } from "../src/lib/recorded-session-review.ts";
 
@@ -81,6 +81,36 @@ test("advances pending phrase review and exposes the next review step", async ()
     appSource,
     /<section id="session-evidence-closeout" className="space-y-4">/,
   );
+});
+
+test("kept phrases without meaning advance safely and remain identifiable", async () => {
+  const appSource = await readFile(
+    new URL("../src/App.tsx", import.meta.url),
+    "utf8",
+  );
+  const updateStart = appSource.indexOf("const updatePhraseInboxItem = async");
+  const updateEnd = appSource.indexOf(
+    "const saveReviewProgress = async",
+    updateStart,
+  );
+  const updateSource = appSource.slice(updateStart, updateEnd);
+
+  assert.ok(updateStart >= 0 && updateEnd > updateStart);
+  assert.match(
+    updateSource,
+    /workingMeaning: inboxMeaningDrafts\[itemId\]\?\.trim\(\) \|\| null/,
+  );
+  assert.match(updateSource, /setQueryData\(/);
+  assert.match(updateSource, /status === "reviewed" && !hasAnotherPendingItem/);
+  assert.match(
+    updateSource,
+    /That phrase could not be saved\. Please try again\./,
+  );
+  assert.doesNotMatch(updateSource, /error\?\.message|error\?\.data\?\.error/);
+  assert.match(appSource, /item\.status === "reviewed"/);
+  assert.match(appSource, /keptMeaningPendingCount/);
+  assert.match(appSource, /Meaning pending/);
+  assert.match(appSource, /label="Working meaning \(optional\)"/);
 });
 
 test("persists selected phrases separately from dictionary promotion", async () => {
@@ -182,37 +212,80 @@ test("advances to the next pending phrase by review priority", () => {
   }
 });
 
-test("does not return to transcription loading for an inbox-managed Child phrase", () => {
-  const phrases = [
-    { id: 41, childAttributed: true },
-    { id: 42, childAttributed: false },
-  ];
+test("a Child decision cannot put a completed transcript back into loading", async () => {
+  const appSource = await readFile(
+    new URL("../src/App.tsx", import.meta.url),
+    "utf8",
+  );
+  const mutationStart = appSource.indexOf(
+    "const reviewChildUtterances = async",
+  );
+  const mutationEnd = appSource.indexOf(
+    "const updatePhraseInboxItem = async",
+    mutationStart,
+  );
+  const mutationSource = appSource.slice(mutationStart, mutationEnd);
+  const loadingStart = appSource.indexOf(
+    "const transcriptionPending =",
+    mutationEnd,
+  );
+  const loadingEnd = appSource.indexOf(
+    "const transcriptionProgressTitle =",
+    loadingStart,
+  );
+  const loadingSource = appSource.slice(loadingStart, loadingEnd);
 
-  assert.equal(
-    hasUnpreparedChildTranscriptPhrase({
-      phrases,
-      ignoredPhraseIds: [],
-      capturedPhraseIds: [],
-      inboxPhraseIds: [],
-    }),
-    true,
+  assert.ok(mutationStart >= 0 && mutationEnd > mutationStart);
+  assert.match(mutationSource, /setTranscription\(result\)/);
+  assert.doesNotMatch(
+    mutationSource,
+    /setTranscriptionStatus|setStage|setTranscription\(undefined\)/,
   );
-  assert.equal(
-    hasUnpreparedChildTranscriptPhrase({
-      phrases,
-      ignoredPhraseIds: [],
-      capturedPhraseIds: [41],
-      inboxPhraseIds: [],
-    }),
-    false,
+  assert.match(
+    loadingSource,
+    /isRecordedTranscriptionPending\(\s*transcriptionStatus,\s*Boolean\(transcription\)/,
   );
-  assert.equal(
-    hasUnpreparedChildTranscriptPhrase({
-      phrases,
-      ignoredPhraseIds: [],
-      capturedPhraseIds: [],
-      inboxPhraseIds: [41],
-    }),
-    false,
+  assert.doesNotMatch(
+    loadingSource,
+    /phraseInboxQuery|captured|reviewPreparationPending/,
   );
+
+  // Child decisions can create pending inbox items with no phrase pointer.
+  // Repeated classification still must not change the loading gate.
+  const transcript = {
+    id: 41,
+    status: "complete" as const,
+    utterances: [
+      { segmentId: 1, disposition: "pending" },
+      { segmentId: 2, disposition: "pending" },
+    ],
+    inboxItems: [] as { status: string; transcriptPhraseId: number | null }[],
+  };
+  for (const [segmentId, disposition] of [
+    [1, "child"],
+    [2, "child"],
+    [1, "not_child"],
+    [2, "unsure"],
+    [2, "unintelligible"],
+  ] as const) {
+    const utterance = transcript.utterances.find(
+      (item) => item.segmentId === segmentId,
+    );
+    assert.ok(utterance);
+    utterance.disposition = disposition;
+    if (disposition === "child") {
+      transcript.inboxItems.push({
+        status: "pending",
+        transcriptPhraseId: null,
+      });
+    }
+    assert.equal(
+      isRecordedTranscriptionPending(transcript.status, Boolean(transcript.id)),
+      false,
+      `${disposition} must stay in transcript review`,
+    );
+  }
+  assert.equal(isRecordedTranscriptionPending("uploading", true), true);
+  assert.equal(isRecordedTranscriptionPending("transcribing", true), true);
+  assert.equal(isRecordedTranscriptionPending("complete", false), true);
 });
