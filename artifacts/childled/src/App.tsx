@@ -42,6 +42,7 @@ import {
   ArrowLeftRight,
   ArrowRight,
   Bell,
+  Building2,
   BookOpen,
   Check,
   CheckCircle,
@@ -276,6 +277,7 @@ import {
 import { DocumentationCenter } from "@/pages/documentation-center";
 import { FamilyResourcesPage } from "@/pages/family-resources";
 import { TeacherResourcesPage } from "@/pages/teacher-resources";
+import { SchoolDistrictsPage, SchoolDistrictSummary } from "@/pages/school-districts";
 import NotFound from "@/pages/not-found";
 import { ClinicianUnclearSpeechPage } from "@/pages/unclear-speech";
 import { ClinicianLearningPage } from "@/pages/clinician-learning";
@@ -3606,38 +3608,6 @@ function ClinicianQuickActions({
   onOpenInbox: () => void;
   unreadMessageCount?: number;
 }) {
-  const actions = [
-    {
-      label: "Record Session",
-      detail: "Capture and review audio",
-      icon: Mic,
-      onClick: onRecordSession,
-      testId: "button-overview-record-session",
-    },
-    {
-      label: "Track Manually",
-      detail: "Log goals without audio",
-      icon: ClipboardList,
-      onClick: onManualSession,
-      testId: "button-overview-manual-session",
-    },
-    {
-      label: "Add Phrase",
-      detail: "Add language to a profile",
-      icon: Plus,
-      onClick: onAddPhrase,
-      testId: "button-overview-add-phrase",
-    },
-    {
-      label: "Inbox",
-      detail: "Open care-team updates",
-      icon: MessageCircle,
-      onClick: onOpenInbox,
-      testId: "button-overview-messages",
-      unreadCount: unreadMessageCount,
-    },
-  ];
-
   return (
     <section
       aria-labelledby="quick-actions-heading"
@@ -3655,40 +3625,72 @@ function ClinicianQuickActions({
           Quick Actions
         </h2>
       </div>
-      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-4">
-        {actions.map((action) => {
-          const Icon = action.icon;
-          return (
+      <div className="mt-4 rounded-2xl bg-primary p-4 text-primary-foreground soft-shadow sm:p-5">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center gap-3">
+            <span className="grid size-10 shrink-0 place-items-center rounded-full bg-primary-foreground/10 text-accent">
+              <Mic size={21} aria-hidden="true" />
+            </span>
+            <h3 className="serif text-xl font-semibold sm:text-2xl">
+              Start a Session
+            </h3>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:w-[28rem]">
             <button
-              key={action.label}
               type="button"
-              data-testid={action.testId}
-              onClick={action.onClick}
-              className="focus-ring min-h-28 min-w-0 rounded-lg border border-border bg-card p-4 text-left transition hover:border-primary/35 hover:bg-secondary/25"
+              data-testid="button-overview-record-session"
+              onClick={onRecordSession}
+              className="gold-action focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-bold text-accent-foreground transition hover:brightness-105"
             >
-              <span className="flex items-start justify-between gap-2">
-                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-secondary text-primary">
-                  <Icon size={18} />
-                </span>
-                {action.unreadCount ? (
-                  <span
-                    data-testid="badge-overview-unread-messages"
-                    className="inline-flex min-w-6 items-center justify-center rounded-full bg-primary px-2 py-1 text-[10px] font-bold text-primary-foreground"
-                    aria-label={`${action.unreadCount} unread notifications`}
-                  >
-                    {action.unreadCount > 99 ? "99+" : action.unreadCount}
-                  </span>
-                ) : null}
-              </span>
-              <span className="mt-3 block text-sm font-bold text-foreground">
-                {action.label}
-              </span>
-              <span className="mt-1 block text-xs leading-5 text-muted-foreground">
-                {action.detail}
-              </span>
+              <Mic size={18} aria-hidden="true" /> Record Session
             </button>
-          );
-        })}
+            <button
+              type="button"
+              data-testid="button-overview-manual-session"
+              onClick={onManualSession}
+              className="focus-ring inline-flex min-h-12 items-center justify-center gap-2 rounded-lg border border-primary-foreground/35 px-4 py-2.5 text-sm font-bold text-primary-foreground transition hover:bg-primary-foreground/10"
+            >
+              <ClipboardList size={18} aria-hidden="true" /> Track Manually
+            </button>
+          </div>
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-3">
+        <button
+          type="button"
+          data-testid="button-overview-add-phrase"
+          onClick={onAddPhrase}
+          className="focus-ring relative flex min-h-20 min-w-0 flex-col items-start gap-2 rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/35 hover:bg-secondary/35 sm:min-h-16 sm:flex-row sm:items-center"
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-primary">
+            <Plus size={18} aria-hidden="true" />
+          </span>
+          <span className="min-w-0 text-sm font-bold text-foreground">
+            Add Phrase
+          </span>
+        </button>
+        <button
+          type="button"
+          data-testid="button-overview-messages"
+          onClick={onOpenInbox}
+          className="focus-ring relative flex min-h-20 min-w-0 flex-col items-start gap-2 rounded-lg border border-border bg-card p-3 text-left transition hover:border-primary/35 hover:bg-secondary/35 sm:min-h-16 sm:flex-row sm:items-center"
+        >
+          <span className="grid size-8 shrink-0 place-items-center rounded-full bg-secondary text-primary">
+            <MessageCircle size={18} aria-hidden="true" />
+          </span>
+          <span className="min-w-0 text-sm font-bold text-foreground">
+            Inbox
+          </span>
+          {unreadMessageCount > 0 ? (
+            <span
+              data-testid="badge-overview-unread-messages"
+              className="absolute right-3 top-3 inline-flex min-w-6 items-center justify-center rounded-full bg-accent px-2 py-1 text-[10px] font-bold text-accent-foreground sm:static sm:ml-auto"
+              aria-label={`${unreadMessageCount} unread notifications`}
+            >
+              {unreadMessageCount > 99 ? "99+" : unreadMessageCount}
+            </span>
+          ) : null}
+        </button>
       </div>
     </section>
   );
@@ -19705,7 +19707,7 @@ function ClinicalKnowledgePage({
   );
 }
 
-function AdminPortal({ isSuperAdmin }: { isSuperAdmin: boolean }) {
+function AdminPortal({ isSuperAdmin, canManageDistricts }: { isSuperAdmin: boolean; canManageDistricts: boolean }) {
   return (
     <div className="space-y-7 animate-rise">
       <SectionHeading
@@ -19730,6 +19732,7 @@ function AdminPortal({ isSuperAdmin }: { isSuperAdmin: boolean }) {
         </div>
       </section>
       <div className="grid gap-5 md:grid-cols-2">
+        {canManageDistricts ? <SchoolDistrictSummary /> : null}
         <Link
           href="/security"
           data-testid="link-admin-security"
@@ -21124,292 +21127,266 @@ function SessionsLandingPage({
         </div>
       ) : null}
       <section
-        className={`${sessionActive ? "hidden" : ""} overflow-hidden rounded-[2rem] border border-primary/15 bg-card soft-shadow`}
+        className={`${sessionActive ? "hidden" : ""} overflow-hidden rounded-2xl bg-primary text-primary-foreground soft-shadow`}
         data-testid="recording-hero"
       >
-        <div className="relative p-5 md:p-7 lg:p-8">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-16 -top-20 size-64 rounded-full bg-secondary/70 blur-3xl"
-          />
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -bottom-24 left-1/3 size-48 rounded-full bg-accent/10 blur-3xl"
-          />
-
-          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-stretch">
-            {/* Left Column: Context & Workflow */}
-            <div className="flex flex-1 flex-col justify-between gap-6">
-              <div>
-                <p className="mono text-[10px] font-bold uppercase tracking-[.2em] text-primary">
-                  Clinician Workspace · Session Hub
-                </p>
-                {selectedChild ? (
-                  <div className="mt-5">
-                    <div className="flex items-start gap-4">
-                      {selectedChild.photoUrl ? (
-                        <img
-                          src={selectedChild.photoUrl}
-                          alt=""
-                          className="size-16 shrink-0 rounded-2xl object-cover ring-4 ring-secondary md:size-20"
-                        />
-                      ) : (
+        <div className="p-5 sm:p-6 lg:p-7">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(260px,340px)] lg:gap-7">
+            <div className="min-w-0">
+              <p className="mono text-[10px] font-bold uppercase tracking-[.18em] text-accent">
+                Session workspace
+              </p>
+              {selectedChild ? (
+                <div className="mt-4">
+                  <div className="flex items-start gap-3">
+                    {selectedChild.photoUrl ? (
+                      <img
+                        src={selectedChild.photoUrl}
+                        alt=""
+                        className="size-12 shrink-0 rounded-full object-cover ring-2 ring-primary-foreground/25 sm:size-14"
+                      />
+                    ) : (
                         <Avatar
                           name={selectedChild.name}
-                          className="size-16 rounded-2xl bg-secondary text-lg ring-4 ring-card md:size-20"
+                          className="size-12 rounded-full bg-secondary text-sm text-primary ring-0 sm:size-14"
                         />
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
-                          <div className="min-w-0">
-                            <h1
-                              className="serif break-words text-2xl font-semibold sm:text-3xl md:text-4xl"
-                              data-testid="recording-hero-title"
-                            >
-                              Sessions for {selectedChild.name}
-                            </h1>
-                            <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
-                              <span className="rounded-full bg-secondary px-2.5 py-1 text-secondary-foreground">
-                                {selectedChild.age
-                                  ? `Age ${selectedChild.age}`
-                                  : selectedChild.grade || "Grade not added"}
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-col items-start gap-3 sm:flex-row sm:justify-between sm:gap-4">
+                        <div className="min-w-0">
+                          <h1
+                            className="serif break-words text-2xl font-semibold sm:text-3xl"
+                            data-testid="recording-hero-title"
+                          >
+                            Sessions for {selectedChild.name}
+                          </h1>
+                          <div className="mt-2 flex flex-wrap gap-2 text-xs font-semibold">
+                            <span className="rounded-full bg-primary-foreground/10 px-2.5 py-1 text-primary-foreground">
+                              {selectedChild.age
+                                ? `Age ${selectedChild.age}`
+                                : selectedChild.grade || "Grade not added"}
+                            </span>
+                            {selectedChild.grade && (
+                              <span className="rounded-full bg-primary-foreground/10 px-2.5 py-1 text-primary-foreground">
+                                {selectedChild.grade}
                               </span>
-                              {selectedChild.grade && (
-                                <span className="rounded-full bg-muted px-2.5 py-1 text-muted-foreground">
-                                  {selectedChild.grade}
-                                </span>
-                              )}
-                              {isAacActive && (
-                                <span className="rounded-full bg-accent/20 px-2.5 py-1 text-primary">
-                                  <MessageCircle
-                                    className="mr-1 inline"
-                                    size={12}
-                                  />{" "}
-                                  AAC active
-                                </span>
-                              )}
-                            </div>
+                            )}
+                            {isAacActive && (
+                              <span className="rounded-full bg-accent/20 px-2.5 py-1 text-accent">
+                                <MessageCircle
+                                  className="mr-1 inline"
+                                  size={12}
+                                />{" "}
+                                AAC active
+                              </span>
+                            )}
                           </div>
-                          <label className="w-full text-left sm:w-auto sm:shrink-0 sm:text-right">
-                            <span className="sr-only">Switch child</span>
-                            <select
-                              ref={childSelectRef}
-                              value={selectedChildId ?? ""}
-                              onChange={(event) =>
-                                requestChildSelection(
-                                  Number(event.target.value) || undefined,
-                                )
-                              }
-                              className="h-10 w-full cursor-pointer rounded-xl border border-input bg-card px-2 text-xs font-bold text-muted-foreground outline-none transition-colors hover:bg-secondary/50 focus-ring sm:w-auto"
-                              data-testid="select-session-child"
-                            >
-                              {children.map((child) => (
-                                <option key={child.id} value={child.id}>
-                                  {child.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
                         </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-6 flex flex-wrap gap-x-8 gap-y-4 rounded-2xl border border-border bg-muted/20 p-4">
-                      <div className="flex items-center gap-3">
-                        <span className="grid size-8 place-items-center rounded-xl bg-background text-primary shadow-sm">
-                          <Clock3 size={14} />
-                        </span>
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                            Last session
-                          </p>
-                          <p className="text-sm font-semibold">
-                            {selectedSessionsQuery.isLoading
-                              ? "Loading…"
-                              : selectedSessionsQuery.isError
-                                ? "Unavailable"
-                                : selectedChildLastSession
-                                  ? formatSessionDate(
-                                      selectedChildLastSession.sessionDate ??
-                                        selectedChildLastSession.createdAt,
-                                      { month: "short", day: "numeric" },
-                                    )
-                                  : "No session yet"}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="grid size-8 place-items-center rounded-xl bg-background text-accent shadow-sm">
-                          <ClipboardList size={14} />
-                        </span>
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                            Pending review
-                          </p>
-                          <p className="text-sm font-semibold">
-                            {selectedChildReviews.length}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <span className="grid size-8 place-items-center rounded-xl bg-background text-primary/60 shadow-sm">
-                          <FileText size={14} />
-                        </span>
-                        <div>
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                            Draft count
-                          </p>
-                          <p className="text-sm font-semibold">
-                            {selectedChildDrafts.length}
-                          </p>
-                        </div>
+                        <label className="w-full text-left sm:w-auto sm:shrink-0">
+                          <span className="mb-1 block text-[11px] font-bold uppercase text-primary-foreground/70">
+                            Student
+                          </span>
+                          <select
+                            ref={childSelectRef}
+                            value={selectedChildId ?? ""}
+                            onChange={(event) =>
+                              requestChildSelection(
+                                Number(event.target.value) || undefined,
+                              )
+                            }
+                            className="h-11 w-full cursor-pointer rounded-lg border border-primary-foreground/20 bg-card px-3 text-sm font-semibold text-foreground outline-none focus-ring sm:w-44"
+                            data-testid="select-session-child"
+                          >
+                            {children.map((child) => (
+                              <option key={child.id} value={child.id}>
+                                {child.name}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
                       </div>
                     </div>
                   </div>
-                ) : (
-                  <div className="mt-5">
-                    <h1 className="serif text-3xl font-semibold tracking-tight md:text-5xl">
-                      Therapy Sessions
-                    </h1>
-                    <p className="mt-3 max-w-xl text-sm leading-6 text-muted-foreground">
-                      Choose an authorized child to review session history,
-                      record, or track IEP goal progress manually.
-                    </p>
-                    <label className="mt-6 block max-w-sm">
-                      <span className="mb-2 block text-xs font-bold uppercase tracking-[.14em] text-muted-foreground">
-                        Student
-                      </span>
-                      <select
-                        ref={childSelectRef}
-                        value={selectedChildId ?? ""}
-                        onChange={(event) =>
-                          requestChildSelection(
-                            Number(event.target.value) || undefined,
-                          )
-                        }
-                        className="h-12 w-full rounded-xl border border-input bg-card px-3 text-sm font-semibold outline-none focus-ring"
-                        data-testid="select-session-child"
-                      >
-                        <option value="">Select a child</option>
-                        {children.map((child) => (
-                          <option key={child.id} value={child.id}>
-                            {child.name}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Column: Dominant Action & Readiness */}
-            <div className="flex w-full flex-col gap-4 lg:w-80 lg:shrink-0">
-              <div className="flex flex-col justify-center rounded-3xl border border-primary/15 bg-secondary/30 p-5 pt-6 text-center">
-                {selectedChild ? (
-                  <label className="mb-4 block text-left">
-                    <span className="mb-1.5 block text-xs font-bold uppercase text-muted-foreground">
-                      Service
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <h1 className="serif text-3xl font-semibold">
+                    Therapy Sessions
+                  </h1>
+                  <p className="mt-2 max-w-xl text-sm leading-6 text-primary-foreground/75">
+                    Choose an authorized child to review session history,
+                    record, or track IEP goal progress manually.
+                  </p>
+                  <label className="mt-4 block max-w-sm">
+                    <span className="mb-1.5 block text-xs font-bold uppercase text-primary-foreground/75">
+                      Student
                     </span>
                     <select
-                      ref={serviceSelectRef}
-                      value={selectedServiceId ?? ""}
+                      ref={childSelectRef}
+                      value={selectedChildId ?? ""}
                       onChange={(event) =>
-                        setSelectedServiceId(
+                        requestChildSelection(
                           Number(event.target.value) || undefined,
                         )
                       }
-                      className="h-12 w-full rounded-md border border-input bg-card px-3 text-sm font-semibold outline-none focus-ring"
-                      data-testid="select-session-service"
+                      className="h-11 w-full rounded-lg border border-primary-foreground/20 bg-card px-3 text-sm font-semibold text-foreground outline-none focus-ring"
+                      data-testid="select-session-child"
                     >
-                      <option value="">Select a service</option>
-                      {activeServices.map((service) => (
-                        <option key={service.id} value={service.id}>
-                          {serviceTypeLabel(service.serviceType)} ·{" "}
-                          {service.period}
+                      <option value="">Select a child</option>
+                      {children.map((child) => (
+                        <option key={child.id} value={child.id}>
+                          {child.name}
                         </option>
                       ))}
                     </select>
-                    {!manualSessionSetupQuery.isLoading &&
-                    !activeServices.length ? (
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setLocation(
-                            `/service-setup?childId=${selectedChild.id}`,
-                          )
-                        }
-                        className="mt-2 text-xs font-bold text-primary underline underline-offset-2"
-                      >
-                        Add a service first
-                      </button>
-                    ) : null}
                   </label>
-                ) : null}
-                <div className="grid gap-3">
-                  <Button
-                    variant="primary"
-                    className="min-h-14 w-full text-base shadow-lg"
-                    onClick={requestNewRecording}
-                    disabled={
-                      !selectedChild ||
-                      !selectedServiceId ||
-                      sessionActive ||
-                      Boolean(resumeTranscriptId)
-                    }
-                    data-testid="button-start-recording"
-                  >
-                    <Mic size={18} />
-                    {sessionActive
-                      ? "Session in progress"
-                      : resumeTranscriptId
-                        ? "Previous work is open"
-                        : "Record Session"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="min-h-14 w-full text-base"
-                    onClick={requestManualSession}
-                    disabled={
-                      !selectedChild ||
-                      !selectedServiceId ||
-                      sessionActive ||
-                      Boolean(resumeTranscriptId)
-                    }
-                    data-testid="button-start-manual-session"
-                  >
-                    <ClipboardList size={18} /> Track Manually
-                  </Button>
                 </div>
-                <p className="mt-4 text-[11px] leading-5 text-muted-foreground">
-                  Audio consent is required only when recording. Manual tracking
-                  stores session and goal data without audio.
-                </p>
-              </div>
+              )}
+            </div>
 
-              <div className="rounded-2xl border border-border bg-muted/35 p-4">
-                <div className="flex items-start gap-3">
-                  <span
-                    className={`grid size-8 shrink-0 place-items-center rounded-xl ${selectedChild ? "bg-primary/10 text-primary" : "bg-background text-muted-foreground"} shadow-sm`}
-                  >
-                    <Shield size={16} />
+            <div className="min-w-0 border-t border-primary-foreground/20 pt-5 lg:border-l lg:border-t-0 lg:pl-7 lg:pt-0">
+              {selectedChild ? (
+                <label className="block">
+                  <span className="mb-1.5 block text-xs font-bold uppercase text-primary-foreground/75">
+                    Service
                   </span>
-                  <div>
-                    <h3 className="text-xs font-bold text-foreground">
-                      Session Ready
-                    </h3>
-                    <p className="mt-1 text-[11px] leading-relaxed text-muted-foreground">
-                      {selectedChild
-                        ? selectedService
-                          ? `${serviceTypeLabel(selectedService.serviceType)} is selected for this session.`
-                          : "Select the service this session should count toward."
-                        : "Select a child to prepare the session options."}
-                    </p>
-                  </div>
-                </div>
+                  <select
+                    ref={serviceSelectRef}
+                    value={selectedServiceId ?? ""}
+                    onChange={(event) =>
+                      setSelectedServiceId(
+                        Number(event.target.value) || undefined,
+                      )
+                    }
+                    className="h-11 w-full rounded-lg border border-primary-foreground/20 bg-card px-3 text-sm font-semibold text-foreground outline-none focus-ring"
+                    data-testid="select-session-service"
+                  >
+                    <option value="">Select a service</option>
+                    {activeServices.map((service) => (
+                      <option key={service.id} value={service.id}>
+                        {serviceTypeLabel(service.serviceType)} ·{" "}
+                        {service.period}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
+              <div
+                className="min-h-6 pt-2 text-xs text-primary-foreground/80"
+                aria-live="polite"
+              >
+                {selectedService ? (
+                  <span>
+                    {selectedService.requiredSessions} ×{" "}
+                    {selectedService.sessionDurationMinutes} min ·{" "}
+                    {selectedService.periodLabel}
+                  </span>
+                ) : selectedChild ? (
+                  manualSessionSetupQuery.isLoading ? (
+                    "Loading services…"
+                  ) : manualSessionSetupQuery.isError ? (
+                    "Services are unavailable. Refresh to try again."
+                  ) : activeServices.length ? (
+                    "Select the service this session should count toward."
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLocation(
+                          `/service-setup?childId=${selectedChild.id}`,
+                        )
+                      }
+                      className="focus-ring font-bold text-accent underline underline-offset-2"
+                    >
+                      Add a service first
+                    </button>
+                  )
+                ) : (
+                  "Select a student to choose a service."
+                )}
               </div>
+              <div className="mt-3 grid gap-2.5">
+                <Button
+                  variant="warm"
+                  className="min-h-12 w-full rounded-lg text-base"
+                  onClick={requestNewRecording}
+                  disabled={
+                    !selectedChild ||
+                    !selectedServiceId ||
+                    sessionActive ||
+                    Boolean(resumeTranscriptId)
+                  }
+                  data-testid="button-start-recording"
+                >
+                  <Mic size={19} aria-hidden="true" />
+                  {sessionActive
+                    ? "Session in progress"
+                    : resumeTranscriptId
+                      ? "Previous work is open"
+                      : "Record Session"}
+                </Button>
+                <button
+                  type="button"
+                  className="focus-ring inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-lg border border-primary-foreground/35 px-4 py-2.5 text-base font-semibold text-primary-foreground transition hover:bg-primary-foreground/10 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={requestManualSession}
+                  disabled={
+                    !selectedChild ||
+                    !selectedServiceId ||
+                    sessionActive ||
+                    Boolean(resumeTranscriptId)
+                  }
+                  data-testid="button-start-manual-session"
+                >
+                  <ClipboardList size={18} aria-hidden="true" /> Track Manually
+                </button>
+              </div>
+              <p className="mt-3 text-[11px] leading-5 text-primary-foreground/70">
+                Audio consent is required only when recording. Manual tracking
+                stores session and goal data without audio.
+              </p>
             </div>
           </div>
+          {selectedChild ? (
+            <div
+              className="mt-5 grid grid-cols-3 gap-3 border-t border-primary-foreground/20 pt-4 lg:max-w-xl"
+              data-testid="session-workspace-summary"
+            >
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase text-primary-foreground/65">
+                  Last session
+                </p>
+                <p className="mt-1 break-words text-sm font-semibold">
+                  {selectedSessionsQuery.isLoading
+                    ? "Loading…"
+                    : selectedSessionsQuery.isError
+                      ? "Unavailable"
+                      : selectedChildLastSession
+                        ? formatSessionDate(
+                            selectedChildLastSession.sessionDate ??
+                              selectedChildLastSession.createdAt,
+                            { month: "short", day: "numeric" },
+                          )
+                        : "No session yet"}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase text-primary-foreground/65">
+                  Pending review
+                </p>
+                <p className="mt-1 text-sm font-semibold">
+                  {selectedChildReviews.length}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-[10px] font-bold uppercase text-primary-foreground/65">
+                  Draft count
+                </p>
+                <p className="mt-1 text-sm font-semibold">
+                  {selectedChildDrafts.length}
+                </p>
+              </div>
+            </div>
+          ) : null}
         </div>
       </section>
       {selectedChild && (
@@ -22361,13 +22338,20 @@ function Workspace() {
         : viewer?.role === "Administrator"
           ? adminNavItems
           : clinicalNavItems;
-  const navigation =
-    viewer?.isSuperAdmin && !viewer?.isRolePreview
-      ? [
-          ...baseNavigation,
-          { href: "/ux-testing", label: "UX Testing", icon: Sparkles },
-        ]
-      : baseNavigation;
+  const canManageDistricts = Boolean(
+    viewer?.isSuperAdmin &&
+      viewer.role === "Administrator" &&
+      (!viewer.isRolePreview || viewer.isDevelopmentDemo),
+  );
+  const navigation = [
+    ...baseNavigation,
+    ...(canManageDistricts
+      ? [{ href: "/school-districts", label: "School Districts", icon: Building2 }]
+      : []),
+    ...(viewer?.isSuperAdmin && !viewer?.isRolePreview
+      ? [{ href: "/ux-testing", label: "UX Testing", icon: Sparkles }]
+      : []),
+  ];
   const navigationWithUnread = navigation.map((item) => {
     const href =
       item.href === "/session" && selectedId
@@ -22383,6 +22367,7 @@ function Workspace() {
     isAdmin: viewer?.isAdmin,
     isSuperAdmin: viewer?.isSuperAdmin,
     isRolePreview: viewer?.isRolePreview,
+    isDevelopmentDemo: viewer?.isDevelopmentDemo,
     isNativeDevelopmentDemo,
   });
   const portalTimeline = (gestaltsQuery.data ?? [])
@@ -22615,7 +22600,10 @@ function Workspace() {
       }}
     />
   ) : viewer.role === "Administrator" ? (
-    <AdminPortal isSuperAdmin={viewer.isSuperAdmin && !viewer.isRolePreview} />
+    <AdminPortal
+      isSuperAdmin={viewer.isSuperAdmin && !viewer.isRolePreview}
+      canManageDistricts={canManageDistricts}
+    />
   ) : (
     <CaseloadOverviewPage
       overview={clinicianOverviewQuery.data}
@@ -22684,6 +22672,8 @@ function Workspace() {
     />
   ) : routePath === "/" || routePath === currentRoleOverviewPath ? (
     portalHome
+  ) : routePath === "/school-districts" || routePath.startsWith("/school-districts/") ? (
+    <SchoolDistrictsPage districtId={routePath === "/school-districts" ? undefined : Number(routePath.split("/")[2])} />
   ) : routePath === "/family-resources" ? (
     <FamilyResourcesPage childId={activeId} />
   ) : routePath === "/teacher-resources" ? (
@@ -23268,6 +23258,8 @@ function Router() {
           "/teacher-overview",
           "/teacher-resources",
           "/admin-overview",
+          "/school-districts",
+          "/school-districts/:id",
           "/ot-overview",
           "/pt-overview",
           "/bcba-overview",

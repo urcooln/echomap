@@ -2,6 +2,7 @@ import { and, eq } from "drizzle-orm";
 import {
   db,
   organizationMembershipsTable,
+  schoolDistrictsTable,
   slpProfilesTable,
   userAgreementAcceptancesTable,
   usersTable,
@@ -14,7 +15,7 @@ export type SlpOnboardingProfileValues = {
   lastName: string;
   professionalTitle: string;
   school: string;
-  schoolDistrict: string;
+  districtId: number;
   licensureState: string;
   licenseNumber: string;
   licenseExpirationDate: string | null;
@@ -25,6 +26,13 @@ export class SlpOnboardingMembershipError extends Error {
   constructor() {
     super("SLP membership is not active.");
     this.name = "SlpOnboardingMembershipError";
+  }
+}
+
+export class SlpOnboardingDistrictError extends Error {
+  constructor() {
+    super("Select an active ChildLed school district.");
+    this.name = "SlpOnboardingDistrictError";
   }
 }
 
@@ -42,18 +50,37 @@ export const completeSlpOnboardingAccount = async ({
   completedAt?: Date;
 }) =>
   db.transaction(async (tx) => {
+    if (!Number.isSafeInteger(profile.districtId) || profile.districtId < 1) {
+      throw new SlpOnboardingDistrictError();
+    }
+    const [district] = await tx
+      .select({ id: schoolDistrictsTable.id, name: schoolDistrictsTable.name })
+      .from(schoolDistrictsTable)
+      .where(
+        and(
+          eq(schoolDistrictsTable.id, profile.districtId),
+          eq(schoolDistrictsTable.active, true),
+        ),
+      )
+      .limit(1);
+    if (!district) throw new SlpOnboardingDistrictError();
+    const { districtId: _districtId, ...profileFields } = profile;
     await tx
       .insert(slpProfilesTable)
       .values({
         organizationId,
         userId,
-        ...profile,
+        ...profileFields,
+        districtId: district.id,
+        schoolDistrict: district.name,
         licenseVerificationStatus: "unverified",
       })
       .onConflictDoUpdate({
         target: [slpProfilesTable.organizationId, slpProfilesTable.userId],
         set: {
-          ...profile,
+          ...profileFields,
+          districtId: district.id,
+          schoolDistrict: district.name,
           updatedAt: completedAt,
         },
       });

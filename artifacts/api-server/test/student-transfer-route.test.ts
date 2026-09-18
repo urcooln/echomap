@@ -15,6 +15,7 @@ import {
   organizationsTable,
   pool,
   securityAuditLogsTable,
+  schoolDistrictsTable,
   slpProfilesTable,
   studentTransfersTable,
   teamConversationsTable,
@@ -551,6 +552,14 @@ test("student transfers preserve the child record and complete only for an eligi
       "pending",
     );
 
+    const [district] = await db
+      .select({ id: schoolDistrictsTable.id })
+      .from(schoolDistrictsTable)
+      .where(
+        eq(schoolDistrictsTable.name, "Burlington County Special Services"),
+      )
+      .limit(1);
+    assert.ok(district);
     const onboarding = await completeSlpOnboardingAccount({
       organizationId: organization.id,
       userId: invitedUserId,
@@ -560,7 +569,7 @@ test("student transfers preserve the child record and complete only for an eligi
         lastName: "SLP",
         professionalTitle: "Speech-Language Pathologist",
         school: "Pilot School",
-        schoolDistrict: "Pilot District",
+        districtId: district.id,
         licensureState: "Ohio",
         licenseNumber: "SELF-REPORTED-TRANSFER",
         licenseExpirationDate: null,

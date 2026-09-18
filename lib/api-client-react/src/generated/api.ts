@@ -34,6 +34,8 @@ import type {
   AdminTeamConversationSearch,
   AdminUxTesting,
   AiSessionNoteCreateInput,
+  AssignSlpDistrictInput,
+  AssignSlpDistrictResult,
   BetaAccessControlResult,
   BetaAccessRequestAction,
   BetaAccessRequestAdmin,
@@ -198,6 +200,11 @@ import type {
   RetentionSettings,
   RetentionSettingsInput,
   RolePreviewInput,
+  SchoolDistrict,
+  SchoolDistrictDetail,
+  SchoolDistrictInput,
+  SchoolDistrictSummary,
+  SchoolDistrictUpdate,
   SensoryProfile,
   SensoryProfileInput,
   Session,
@@ -241,6 +248,7 @@ import type {
   TranscriptPhraseInboxUpdate,
   TranscriptPhraseInboxUpdateResult,
   TranscriptSpeakerAssignmentsInput,
+  UnassignedSlpDistrict,
   UnclearVocalizationConflict,
   UnclearVocalizationLabelInput,
   UnclearVocalizationReview,
@@ -3277,6 +3285,452 @@ export const useCompleteSlpOnboarding = <TError = ErrorType<void>,
         TContext
       > => {
       return useMutation(getCompleteSlpOnboardingMutationOptions(options));
+    }
+
+export const getListSchoolDistrictsUrl = () => {
+
+
+
+
+  return `/api/admin/school-districts`
+}
+
+/**
+ * @summary List school districts and association counts for ChildLed owners
+ */
+export const listSchoolDistricts = async ( options?: Parameters<typeof customFetch>[1]): Promise<SchoolDistrictSummary[]> => {
+
+  return customFetch<SchoolDistrictSummary[]>(getListSchoolDistrictsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListSchoolDistrictsQueryKey = () => {
+    return [
+    `/api/admin/school-districts`
+    ] as const;
+    }
+
+
+export const getListSchoolDistrictsQueryOptions = <TData = Awaited<ReturnType<typeof listSchoolDistricts>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSchoolDistricts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListSchoolDistrictsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listSchoolDistricts>>> = ({ signal }) => listSchoolDistricts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listSchoolDistricts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListSchoolDistrictsQueryResult = NonNullable<Awaited<ReturnType<typeof listSchoolDistricts>>>
+export type ListSchoolDistrictsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List school districts and association counts for ChildLed owners
+ */
+
+export function useListSchoolDistricts<TData = Awaited<ReturnType<typeof listSchoolDistricts>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listSchoolDistricts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListSchoolDistrictsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getCreateSchoolDistrictUrl = () => {
+
+
+
+
+  return `/api/admin/school-districts`
+}
+
+/**
+ * @summary Create an approved school district
+ */
+export const createSchoolDistrict = async (schoolDistrictInput: SchoolDistrictInput, options?: Parameters<typeof customFetch>[1]): Promise<SchoolDistrict> => {
+
+  return customFetch<SchoolDistrict>(getCreateSchoolDistrictUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(schoolDistrictInput)
+  }
+);}
+
+
+
+
+
+export const getCreateSchoolDistrictMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSchoolDistrict>>, TError,{data: BodyType<SchoolDistrictInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof createSchoolDistrict>>, TError,{data: BodyType<SchoolDistrictInput>}, TContext> => {
+
+const mutationKey = ['createSchoolDistrict'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof createSchoolDistrict>>, {data: BodyType<SchoolDistrictInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  createSchoolDistrict(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type CreateSchoolDistrictMutationResult = NonNullable<Awaited<ReturnType<typeof createSchoolDistrict>>>
+    export type CreateSchoolDistrictMutationBody = BodyType<SchoolDistrictInput>
+    export type CreateSchoolDistrictMutationError = ErrorType<void>
+
+    /**
+ * @summary Create an approved school district
+ */
+export const useCreateSchoolDistrict = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof createSchoolDistrict>>, TError,{data: BodyType<SchoolDistrictInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof createSchoolDistrict>>,
+        TError,
+        {data: BodyType<SchoolDistrictInput>},
+        TContext
+      > => {
+      return useMutation(getCreateSchoolDistrictMutationOptions(options));
+    }
+
+export const getGetSchoolDistrictUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/school-districts/${id}`
+}
+
+/**
+ * @summary Get a district roster
+ */
+export const getSchoolDistrict = async (id: number, options?: Parameters<typeof customFetch>[1]): Promise<SchoolDistrictDetail> => {
+
+  return customFetch<SchoolDistrictDetail>(getGetSchoolDistrictUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSchoolDistrictQueryKey = (id: number,) => {
+    return [
+    `/api/admin/school-districts/${id}`
+    ] as const;
+    }
+
+
+export const getGetSchoolDistrictQueryOptions = <TData = Awaited<ReturnType<typeof getSchoolDistrict>>, TError = ErrorType<void>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSchoolDistrict>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSchoolDistrictQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSchoolDistrict>>> = ({ signal }) => getSchoolDistrict(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: id !== null && id !== undefined, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSchoolDistrict>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSchoolDistrictQueryResult = NonNullable<Awaited<ReturnType<typeof getSchoolDistrict>>>
+export type GetSchoolDistrictQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get a district roster
+ */
+
+export function useGetSchoolDistrict<TData = Awaited<ReturnType<typeof getSchoolDistrict>>, TError = ErrorType<void>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSchoolDistrict>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSchoolDistrictQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getUpdateSchoolDistrictUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/school-districts/${id}`
+}
+
+/**
+ * @summary Rename or change the active state of a district
+ */
+export const updateSchoolDistrict = async (id: number,
+    schoolDistrictUpdate: SchoolDistrictUpdate, options?: Parameters<typeof customFetch>[1]): Promise<SchoolDistrict> => {
+
+  return customFetch<SchoolDistrict>(getUpdateSchoolDistrictUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(schoolDistrictUpdate)
+  }
+);}
+
+
+
+
+
+export const getUpdateSchoolDistrictMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSchoolDistrict>>, TError,{id: number;data: BodyType<SchoolDistrictUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof updateSchoolDistrict>>, TError,{id: number;data: BodyType<SchoolDistrictUpdate>}, TContext> => {
+
+const mutationKey = ['updateSchoolDistrict'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof updateSchoolDistrict>>, {id: number;data: BodyType<SchoolDistrictUpdate>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  updateSchoolDistrict(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type UpdateSchoolDistrictMutationResult = NonNullable<Awaited<ReturnType<typeof updateSchoolDistrict>>>
+    export type UpdateSchoolDistrictMutationBody = BodyType<SchoolDistrictUpdate>
+    export type UpdateSchoolDistrictMutationError = ErrorType<void>
+
+    /**
+ * @summary Rename or change the active state of a district
+ */
+export const useUpdateSchoolDistrict = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof updateSchoolDistrict>>, TError,{id: number;data: BodyType<SchoolDistrictUpdate>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof updateSchoolDistrict>>,
+        TError,
+        {id: number;data: BodyType<SchoolDistrictUpdate>},
+        TContext
+      > => {
+      return useMutation(getUpdateSchoolDistrictMutationOptions(options));
+    }
+
+export const getListUnassignedSlpDistrictsUrl = () => {
+
+
+
+
+  return `/api/admin/unassigned-slp-districts`
+}
+
+/**
+ * @summary List legacy SLP profiles needing an approved district
+ */
+export const listUnassignedSlpDistricts = async ( options?: Parameters<typeof customFetch>[1]): Promise<UnassignedSlpDistrict[]> => {
+
+  return customFetch<UnassignedSlpDistrict[]>(getListUnassignedSlpDistrictsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getListUnassignedSlpDistrictsQueryKey = () => {
+    return [
+    `/api/admin/unassigned-slp-districts`
+    ] as const;
+    }
+
+
+export const getListUnassignedSlpDistrictsQueryOptions = <TData = Awaited<ReturnType<typeof listUnassignedSlpDistricts>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listUnassignedSlpDistricts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getListUnassignedSlpDistrictsQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof listUnassignedSlpDistricts>>> = ({ signal }) => listUnassignedSlpDistricts({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof listUnassignedSlpDistricts>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type ListUnassignedSlpDistrictsQueryResult = NonNullable<Awaited<ReturnType<typeof listUnassignedSlpDistricts>>>
+export type ListUnassignedSlpDistrictsQueryError = ErrorType<void>
+
+
+/**
+ * @summary List legacy SLP profiles needing an approved district
+ */
+
+export function useListUnassignedSlpDistricts<TData = Awaited<ReturnType<typeof listUnassignedSlpDistricts>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof listUnassignedSlpDistricts>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getListUnassignedSlpDistrictsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getAssignSlpDistrictUrl = (id: number,) => {
+
+
+
+
+  return `/api/admin/slp-profiles/${id}/district`
+}
+
+/**
+ * @summary Assign an active district to an unassigned legacy SLP
+ */
+export const assignSlpDistrict = async (id: number,
+    assignSlpDistrictInput: AssignSlpDistrictInput, options?: Parameters<typeof customFetch>[1]): Promise<AssignSlpDistrictResult> => {
+
+  return customFetch<AssignSlpDistrictResult>(getAssignSlpDistrictUrl(id),
+  {
+    ...options,
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(assignSlpDistrictInput)
+  }
+);}
+
+
+
+
+
+export const getAssignSlpDistrictMutationOptions = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignSlpDistrict>>, TError,{id: number;data: BodyType<AssignSlpDistrictInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignSlpDistrict>>, TError,{id: number;data: BodyType<AssignSlpDistrictInput>}, TContext> => {
+
+const mutationKey = ['assignSlpDistrict'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignSlpDistrict>>, {id: number;data: BodyType<AssignSlpDistrictInput>}> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  assignSlpDistrict(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignSlpDistrictMutationResult = NonNullable<Awaited<ReturnType<typeof assignSlpDistrict>>>
+    export type AssignSlpDistrictMutationBody = BodyType<AssignSlpDistrictInput>
+    export type AssignSlpDistrictMutationError = ErrorType<void>
+
+    /**
+ * @summary Assign an active district to an unassigned legacy SLP
+ */
+export const useAssignSlpDistrict = <TError = ErrorType<void>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignSlpDistrict>>, TError,{id: number;data: BodyType<AssignSlpDistrictInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof assignSlpDistrict>>,
+        TError,
+        {id: number;data: BodyType<AssignSlpDistrictInput>},
+        TContext
+      > => {
+      return useMutation(getAssignSlpDistrictMutationOptions(options));
     }
 
 export const getGetCareTeamOnboardingUrl = () => {

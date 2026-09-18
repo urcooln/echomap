@@ -29,7 +29,7 @@ const emptyProfile: SlpOnboardingProfileInput = {
   lastName: "",
   professionalTitle: "Speech-Language Pathologist",
   school: "",
-  schoolDistrict: "",
+  districtId: 0,
   licensureState: "",
   licenseNumber: "",
   licenseExpirationDate: null,
@@ -71,7 +71,7 @@ export function SlpOnboardingPage({
       lastName: setup.data.profile.lastName,
       professionalTitle: setup.data.profile.professionalTitle,
       school: setup.data.profile.school,
-      schoolDistrict: setup.data.profile.schoolDistrict,
+      districtId: setup.data.profile.districtId ?? 0,
       licensureState: setup.data.profile.licensureState,
       licenseNumber: setup.data.profile.licenseNumber,
       licenseExpirationDate: setup.data.profile.licenseExpirationDate,
@@ -86,7 +86,15 @@ export function SlpOnboardingPage({
       .filter((agreement) => agreement.accepted)
       .map((agreement) => `${agreement.type}:${agreement.version}`);
     const draft = loadSlpOnboardingDraft(userId);
-    setProfile(draft?.profile ?? serverProfile);
+    const restored = draft?.profile ?? serverProfile;
+    setProfile({
+      ...restored,
+      districtId: setup.data.districts.some(
+        (district) => district.id === restored.districtId,
+      )
+        ? restored.districtId
+        : 0,
+    });
     setAccepted(
       new Set([
         ...acceptedByServer,
@@ -220,12 +228,31 @@ export function SlpOnboardingPage({
               value={profile.school}
               onChange={(value) => update("school", value)}
             />
-            <ProfileField
-              label="School district"
-              required
-              value={profile.schoolDistrict}
-              onChange={(value) => update("schoolDistrict", value)}
-            />
+            <label className="block text-sm font-semibold text-primary">
+              School district <span aria-hidden="true">*</span>
+              <select
+                className={fieldClass}
+                value={profile.districtId || ""}
+                required
+                onChange={(event) =>
+                  setProfile((current) => ({
+                    ...current,
+                    districtId: Number(event.target.value),
+                  }))
+                }
+              >
+                <option value="">Select your school district</option>
+                {setup.data.districts.map((district) => (
+                  <option key={district.id} value={district.id}>
+                    {district.name}
+                  </option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs font-normal text-muted-foreground">
+                Districts are managed by ChildLed. Contact support if yours is
+                not listed.
+              </span>
+            </label>
             <ProfileField
               label="State of SLP licensure"
               required

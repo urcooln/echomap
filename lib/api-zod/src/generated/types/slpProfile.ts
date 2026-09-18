@@ -13,6 +13,8 @@ export interface SlpProfile {
   professionalTitle: string;
   school: string;
   schoolDistrict: string;
+  /** @nullable */
+  districtId: number | null;
   licensureState: string;
   licenseNumber: string;
   /** @nullable */

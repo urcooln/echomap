@@ -1458,6 +1458,7 @@ export const GetSettingsResponse = zod.object({
   "professionalTitle": zod.string(),
   "school": zod.string(),
   "schoolDistrict": zod.string(),
+  "districtId": zod.number().nullable(),
   "licensureState": zod.string(),
   "licenseNumber": zod.string(),
   "licenseExpirationDate": zod.string().nullable(),
@@ -1517,12 +1518,17 @@ export const UpdateSettingsResponse = zod.object({
 export const GetSlpOnboardingResponse = zod.object({
   "email": zod.string(),
   "organizationName": zod.string(),
+  "districts": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string()
+})),
   "profile": zod.object({
   "firstName": zod.string(),
   "lastName": zod.string(),
   "professionalTitle": zod.string(),
   "school": zod.string(),
   "schoolDistrict": zod.string(),
+  "districtId": zod.number().nullable(),
   "licensureState": zod.string(),
   "licenseNumber": zod.string(),
   "licenseExpirationDate": zod.string().nullable(),
@@ -1554,7 +1560,6 @@ export const completeSlpOnboardingBodyProfileProfessionalTitleMax = 160;
 
 export const completeSlpOnboardingBodyProfileSchoolMax = 240;
 
-export const completeSlpOnboardingBodyProfileSchoolDistrictMax = 240;
 
 export const completeSlpOnboardingBodyProfileLicensureStateMin = 2;
 export const completeSlpOnboardingBodyProfileLicensureStateMax = 80;
@@ -1576,7 +1581,7 @@ export const CompleteSlpOnboardingBody = zod.object({
   "lastName": zod.string().min(1).max(completeSlpOnboardingBodyProfileLastNameMax),
   "professionalTitle": zod.string().min(1).max(completeSlpOnboardingBodyProfileProfessionalTitleMax),
   "school": zod.string().min(1).max(completeSlpOnboardingBodyProfileSchoolMax),
-  "schoolDistrict": zod.string().min(1).max(completeSlpOnboardingBodyProfileSchoolDistrictMax),
+  "districtId": zod.number().min(1),
   "licensureState": zod.string().min(completeSlpOnboardingBodyProfileLicensureStateMin).max(completeSlpOnboardingBodyProfileLicensureStateMax),
   "licenseNumber": zod.string().min(1).max(completeSlpOnboardingBodyProfileLicenseNumberMax),
   "licenseExpirationDate": zod.string().nullish(),
@@ -1592,6 +1597,125 @@ export const CompleteSlpOnboardingResponse = zod.object({
   "completed": zod.boolean(),
   "accountStatus": zod.enum(['active']),
   "onboardingCompletedAt": zod.coerce.date()
+})
+
+
+/**
+ * @summary List school districts and association counts for ChildLed owners
+ */
+export const ListSchoolDistrictsResponseItem = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "active": zod.boolean()
+}).and(zod.object({
+  "createdAt": zod.coerce.date(),
+  "updatedAt": zod.coerce.date(),
+  "slpCount": zod.number(),
+  "teacherCount": zod.number(),
+  "studentCount": zod.number()
+}))
+export const ListSchoolDistrictsResponse = zod.array(ListSchoolDistrictsResponseItem)
+
+
+/**
+ * @summary Create an approved school district
+ */
+export const createSchoolDistrictBodyNameMax = 160;
+
+
+
+export const CreateSchoolDistrictBody = zod.object({
+  "name": zod.string().min(1).max(createSchoolDistrictBodyNameMax)
+})
+
+export const CreateSchoolDistrictResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "active": zod.boolean()
+})
+
+
+/**
+ * @summary Get a district roster
+ */
+export const GetSchoolDistrictParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetSchoolDistrictResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "active": zod.boolean()
+}).and(zod.object({
+  "slps": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+})),
+  "teachers": zod.array(zod.object({
+  "id": zod.string(),
+  "name": zod.string()
+})),
+  "students": zod.array(zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "childLedId": zod.string()
+}))
+}))
+
+
+/**
+ * @summary Rename or change the active state of a district
+ */
+export const UpdateSchoolDistrictParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const updateSchoolDistrictBodyNameMax = 160;
+
+
+
+export const UpdateSchoolDistrictBody = zod.object({
+  "name": zod.string().min(1).max(updateSchoolDistrictBodyNameMax).optional(),
+  "active": zod.boolean().optional()
+})
+
+export const UpdateSchoolDistrictResponse = zod.object({
+  "id": zod.number(),
+  "name": zod.string(),
+  "active": zod.boolean()
+})
+
+
+/**
+ * @summary List legacy SLP profiles needing an approved district
+ */
+export const ListUnassignedSlpDistrictsResponseItem = zod.object({
+  "profileId": zod.number(),
+  "userId": zod.string(),
+  "name": zod.string(),
+  "schoolDistrict": zod.string(),
+  "organization": zod.string()
+})
+export const ListUnassignedSlpDistrictsResponse = zod.array(ListUnassignedSlpDistrictsResponseItem)
+
+
+/**
+ * @summary Assign an active district to an unassigned legacy SLP
+ */
+export const AssignSlpDistrictParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+
+
+
+export const AssignSlpDistrictBody = zod.object({
+  "districtId": zod.number().min(1)
+})
+
+export const AssignSlpDistrictResponse = zod.object({
+  "profileId": zod.number(),
+  "assignedStudentCount": zod.number()
 })
 
 

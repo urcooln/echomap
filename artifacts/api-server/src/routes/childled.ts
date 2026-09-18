@@ -97,8 +97,10 @@ import {
   betaNoticesTable,
   betaNoticeAcknowledgementsTable,
   slpProfilesTable,
+  schoolDistrictsTable,
   userAgreementAcceptancesTable,
   userNotificationPreferencesTable,
+  teacherDistrictMembershipsTable,
 } from "@workspace/db";
 import {
   evidenceSafeTranscriptText,
@@ -268,6 +270,7 @@ import {
 import {
   completeSlpOnboardingAccount,
   SlpOnboardingMembershipError,
+  SlpOnboardingDistrictError,
 } from "../lib/slp-onboarding-account";
 import {
   completeCareTeamOnboardingAccount,
@@ -7962,6 +7965,13 @@ router.get("/settings", async (req, res): Promise<void> => {
     actor.role === "SLP" && !actor.isDevelopmentDemo
       ? profileRows[0]
       : undefined;
+  const [currentDistrict] = profile?.districtId
+    ? await db
+        .select({ name: schoolDistrictsTable.name })
+        .from(schoolDistrictsTable)
+        .where(eq(schoolDistrictsTable.id, profile.districtId))
+        .limit(1)
+    : [];
   const preferences = preferenceRows[0] ?? defaultNotificationPreferences;
   res.json(
     GetSettingsResponse.parse({
@@ -7981,7 +7991,8 @@ router.get("/settings", async (req, res): Promise<void> => {
               lastName: profile.lastName,
               professionalTitle: profile.professionalTitle,
               school: profile.school,
-              schoolDistrict: profile.schoolDistrict,
+              schoolDistrict: currentDistrict?.name ?? profile.schoolDistrict,
+              districtId: profile.districtId,
               licensureState: profile.licensureState,
               licenseNumber: profile.licenseNumber,
               licenseExpirationDate: profile.licenseExpirationDate,
@@ -8074,8 +8085,8 @@ router.get("/slp-onboarding", async (req, res): Promise<void> => {
     res.status(403).json({ error: "An invited SLP account is required." });
     return;
   }
-  const [[organization], [profile], acceptances, clerkUser] = await Promise.all(
-    [
+  const [[organization], [profile], acceptances, clerkUser, districts] =
+    await Promise.all([
       db
         .select({ name: organizationsTable.name })
         .from(organizationsTable)
@@ -8104,8 +8115,15 @@ router.get("/slp-onboarding", async (req, res): Promise<void> => {
           ),
         ),
       clerkClient.users.getUser(clerkUserId),
-    ],
-  );
+      db
+        .select({
+          id: schoolDistrictsTable.id,
+          name: schoolDistrictsTable.name,
+        })
+        .from(schoolDistrictsTable)
+        .where(eq(schoolDistrictsTable.active, true))
+        .orderBy(schoolDistrictsTable.name),
+    ]);
   if (!organization) {
     res.status(403).json({ error: "The invited organization is unavailable." });
     return;
@@ -8123,6 +8141,7 @@ router.get("/slp-onboarding", async (req, res): Promise<void> => {
           (entry) => entry.verification?.status === "verified",
         )?.emailAddress ?? "",
       organizationName: organization.name,
+      districts,
       profile: {
         firstName: profile?.firstName ?? clerkUser.firstName ?? "",
         lastName: profile?.lastName ?? clerkUser.lastName ?? "",
@@ -8130,6 +8149,7 @@ router.get("/slp-onboarding", async (req, res): Promise<void> => {
           profile?.professionalTitle ?? "Speech-Language Pathologist",
         school: profile?.school ?? "",
         schoolDistrict: profile?.schoolDistrict ?? "",
+        districtId: profile?.districtId ?? null,
         licensureState: profile?.licensureState ?? "",
         licenseNumber: profile?.licenseNumber ?? "",
         licenseExpirationDate: profile?.licenseExpirationDate ?? null,
@@ -8178,7 +8198,6 @@ router.post("/slp-onboarding", async (req, res): Promise<void> => {
     profile.lastName,
     profile.professionalTitle,
     profile.school,
-    profile.schoolDistrict,
     profile.licensureState,
     profile.licenseNumber,
   ];
@@ -8207,7 +8226,7 @@ router.post("/slp-onboarding", async (req, res): Promise<void> => {
         lastName: profile.lastName,
         professionalTitle: profile.professionalTitle,
         school: profile.school,
-        schoolDistrict: profile.schoolDistrict,
+        districtId: profile.districtId,
         licensureState: profile.licensureState,
         licenseNumber: profile.licenseNumber,
         licenseExpirationDate: expiration,
@@ -8220,10 +8239,20 @@ router.post("/slp-onboarding", async (req, res): Promise<void> => {
       { err: error, userId: actor.userId },
       "Could not complete invited SLP onboarding",
     );
-    res.status(error instanceof SlpOnboardingMembershipError ? 409 : 500).json({
-      error:
-        "Your SLP account could not be activated. Your entries are unchanged; please try again.",
-    });
+    res
+      .status(
+        error instanceof SlpOnboardingDistrictError
+          ? 400
+          : error instanceof SlpOnboardingMembershipError
+            ? 409
+            : 500,
+      )
+      .json({
+        error:
+          error instanceof SlpOnboardingDistrictError
+            ? "Select an active ChildLed school district. Your entries are unchanged."
+            : "Your SLP account could not be activated. Your entries are unchanged; please try again.",
+      });
     return;
   }
   await writeSecurityAudit({
@@ -8446,6 +8475,335 @@ router.delete("/admin/role-preview", async (req, res): Promise<void> => {
     outcome: "success",
   });
   res.json(ClearRolePreviewResponse.parse(viewerResponse(owner, owner.role)));
+});
+
+const isDistrictNameCollision = (error: unknown) => {
+  let current = error;
+  while (current && typeof current === "object") {
+    const failure = current as {
+      code?: string;
+      constraint?: string;
+      cause?: unknown;
+    };
+    if (
+      failure.code === "23505" &&
+      failure.constraint === "school_districts_name_lower_unique"
+    )
+      return true;
+    if (!failure.cause || failure.cause === current) break;
+    current = failure.cause;
+  }
+  return false;
+};
+
+const requireDistrictManager = (req: Request, res: any) => {
+  const owner = requireSuperAdmin(req, res);
+  if (!owner) return null;
+  const effective = viewerFrom(req);
+  if (
+    owner.role !== "Administrator" ||
+    (effective?.previewRole &&
+      (!owner.isDevelopmentDemo || effective.role !== "Administrator"))
+  ) {
+    res
+      .status(403)
+      .json({
+        error: "ChildLed Admin access is required to manage school districts.",
+      });
+    return null;
+  }
+  return owner;
+};
+
+const districtRoster = async (districtId: number) => {
+  const [slps, teachers, students] = await Promise.all([
+    db
+      .select({ id: usersTable.id, name: usersTable.displayName })
+      .from(slpProfilesTable)
+      .innerJoin(usersTable, eq(usersTable.id, slpProfilesTable.userId))
+      .where(
+        and(
+          eq(slpProfilesTable.districtId, districtId),
+          isNull(usersTable.archivedAt),
+        ),
+      ),
+    db
+      .select({ id: usersTable.id, name: usersTable.displayName })
+      .from(teacherDistrictMembershipsTable)
+      .innerJoin(
+        usersTable,
+        eq(usersTable.id, teacherDistrictMembershipsTable.teacherUserId),
+      )
+      .where(
+        and(
+          eq(teacherDistrictMembershipsTable.districtId, districtId),
+          isNull(usersTable.archivedAt),
+        ),
+      ),
+    db
+      .select({
+        id: childProfilesTable.id,
+        name: childProfilesTable.displayName,
+        childLedId: childProfilesTable.childLedId,
+      })
+      .from(childProfilesTable)
+      .where(
+        and(
+          eq(childProfilesTable.districtId, districtId),
+          isNull(childProfilesTable.archivedAt),
+        ),
+      )
+      .orderBy(childProfilesTable.displayName),
+  ]);
+  return {
+    slps: [...new Map(slps.map((row) => [row.id, row])).values()].sort((a, b) =>
+      a.name.localeCompare(b.name),
+    ),
+    teachers: teachers.sort((a, b) => a.name.localeCompare(b.name)),
+    students,
+  };
+};
+
+router.get("/admin/school-districts", async (req, res) => {
+  if (!requireDistrictManager(req, res)) return;
+  const districts = await db
+    .select()
+    .from(schoolDistrictsTable)
+    .orderBy(schoolDistrictsTable.name);
+  const rows = await Promise.all(
+    districts.map(async (district) => {
+      const roster = await districtRoster(district.id);
+      return {
+        id: district.id,
+        name: district.name,
+        active: district.active,
+        createdAt: district.createdAt.toISOString(),
+        updatedAt: district.updatedAt.toISOString(),
+        slpCount: roster.slps.length,
+        teacherCount: roster.teachers.length,
+        studentCount: roster.students.length,
+      };
+    }),
+  );
+  res.json(rows);
+});
+
+router.get("/admin/school-districts/:id", async (req, res) => {
+  if (!requireDistrictManager(req, res)) return;
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1)
+    return res.status(400).json({ error: "Invalid district ID." });
+  const [district] = await db
+    .select()
+    .from(schoolDistrictsTable)
+    .where(eq(schoolDistrictsTable.id, id))
+    .limit(1);
+  if (!district)
+    return res.status(404).json({ error: "School district not found." });
+  const roster = await districtRoster(id);
+  return res.json({
+    id: district.id,
+    name: district.name,
+    active: district.active,
+    ...roster,
+  });
+});
+
+router.post("/admin/school-districts", async (req, res) => {
+  const actor = requireDistrictManager(req, res);
+  if (!actor) return;
+  const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+  if (!name || name.length > 160)
+    return res
+      .status(400)
+      .json({ error: "Enter a district name (up to 160 characters)." });
+  try {
+    const [district] = await db
+      .insert(schoolDistrictsTable)
+      .values({ name })
+      .returning();
+    await writeSecurityAudit({
+      actor,
+      action: "SCHOOL_DISTRICT_CREATED",
+      targetType: "school_district",
+      targetId: district.id,
+    });
+    return res
+      .status(201)
+      .json({ id: district.id, name: district.name, active: district.active });
+  } catch (error) {
+    if (isDistrictNameCollision(error))
+      return res
+        .status(409)
+        .json({ error: "A district with this name already exists." });
+    throw error;
+  }
+});
+
+router.patch("/admin/school-districts/:id", async (req, res) => {
+  const actor = requireDistrictManager(req, res);
+  if (!actor) return;
+  const id = Number(req.params.id);
+  const name =
+    typeof req.body?.name === "string" ? req.body.name.trim() : undefined;
+  const active =
+    typeof req.body?.active === "boolean" ? req.body.active : undefined;
+  if (
+    !Number.isSafeInteger(id) ||
+    id < 1 ||
+    (name === undefined && active === undefined) ||
+    (name !== undefined && (!name || name.length > 160)) ||
+    (req.body?.active !== undefined && active === undefined)
+  ) {
+    return res
+      .status(400)
+      .json({ error: "Enter a valid district name or status." });
+  }
+  try {
+    const [district] = await db
+      .update(schoolDistrictsTable)
+      .set({
+        ...(name !== undefined ? { name } : {}),
+        ...(active !== undefined ? { active } : {}),
+        updatedAt: new Date(),
+      })
+      .where(eq(schoolDistrictsTable.id, id))
+      .returning();
+    if (!district)
+      return res.status(404).json({ error: "School district not found." });
+    await writeSecurityAudit({
+      actor,
+      action: "SCHOOL_DISTRICT_UPDATED",
+      targetType: "school_district",
+      targetId: id,
+      metadata: { name, active },
+    });
+    return res.json({
+      id: district.id,
+      name: district.name,
+      active: district.active,
+    });
+  } catch (error) {
+    if (isDistrictNameCollision(error))
+      return res
+        .status(409)
+        .json({ error: "A district with this name already exists." });
+    throw error;
+  }
+});
+
+router.get("/admin/unassigned-slp-districts", async (req, res) => {
+  if (!requireDistrictManager(req, res)) return;
+  const profiles = await db
+    .select({
+      profileId: slpProfilesTable.id,
+      userId: slpProfilesTable.userId,
+      name: usersTable.displayName,
+      schoolDistrict: slpProfilesTable.schoolDistrict,
+      organization: organizationsTable.name,
+    })
+    .from(slpProfilesTable)
+    .innerJoin(usersTable, eq(usersTable.id, slpProfilesTable.userId))
+    .innerJoin(
+      organizationsTable,
+      eq(organizationsTable.id, slpProfilesTable.organizationId),
+    )
+    .where(
+      and(isNull(slpProfilesTable.districtId), isNull(usersTable.archivedAt)),
+    )
+    .orderBy(usersTable.displayName);
+  res.json(profiles);
+});
+
+router.patch("/admin/slp-profiles/:id/district", async (req, res) => {
+  const actor = requireDistrictManager(req, res);
+  if (!actor) return;
+  const profileId = Number(req.params.id);
+  const districtId = req.body?.districtId;
+  if (
+    !Number.isSafeInteger(profileId) ||
+    profileId < 1 ||
+    !Number.isSafeInteger(districtId) ||
+    districtId < 1
+  ) {
+    return res
+      .status(400)
+      .json({ error: "Select an active district for this SLP." });
+  }
+  const result = await db.transaction(async (tx) => {
+    const [district] = await tx
+      .select({ id: schoolDistrictsTable.id })
+      .from(schoolDistrictsTable)
+      .where(
+        and(
+          eq(schoolDistrictsTable.id, districtId),
+          eq(schoolDistrictsTable.active, true),
+        ),
+      )
+      .limit(1);
+    if (!district) return null;
+    const [profile] = await tx
+      .update(slpProfilesTable)
+      .set({ districtId, updatedAt: new Date() })
+      .where(
+        and(
+          eq(slpProfilesTable.id, profileId),
+          isNull(slpProfilesTable.districtId),
+        ),
+      )
+      .returning({
+        id: slpProfilesTable.id,
+        userId: slpProfilesTable.userId,
+        organizationId: slpProfilesTable.organizationId,
+      });
+    if (!profile) return null;
+    const eligibleChildren = await tx
+      .select({ childId: childCareTeamMembershipsTable.childId })
+      .from(childCareTeamMembershipsTable)
+      .innerJoin(
+        childProfilesTable,
+        eq(childProfilesTable.id, childCareTeamMembershipsTable.childId),
+      )
+      .where(
+        and(
+          eq(childCareTeamMembershipsTable.userId, profile.userId),
+          eq(childCareTeamMembershipsTable.role, "clinician"),
+          eq(childCareTeamMembershipsTable.active, true),
+          eq(childProfilesTable.organizationId, profile.organizationId),
+          isNull(childProfilesTable.districtId),
+          isNull(childProfilesTable.archivedAt),
+          sql`(SELECT count(*) FROM child_care_team_memberships other WHERE other.child_id = ${childProfilesTable.id} AND other.role = 'clinician' AND other.active = true) = 1`,
+        ),
+      );
+    if (eligibleChildren.length) {
+      await tx
+        .update(childProfilesTable)
+        .set({ districtId, updatedAt: new Date() })
+        .where(
+          inArray(
+            childProfilesTable.id,
+            eligibleChildren.map((child) => child.childId),
+          ),
+        );
+    }
+    return {
+      profileId: profile.id,
+      assignedStudentCount: eligibleChildren.length,
+    };
+  });
+  if (!result)
+    return res.status(409).json({
+      error:
+        "This SLP profile is no longer unassigned or the district is inactive.",
+    });
+  await writeSecurityAudit({
+    actor,
+    action: "SLP_DISTRICT_ASSIGNED",
+    targetType: "slp_profile",
+    targetId: profileId,
+    metadata: { districtId, assignedStudentCount: result.assignedStudentCount },
+  });
+  return res.json(result);
 });
 
 router.get("/admin/ux-testing", async (req, res): Promise<void> => {
@@ -9799,10 +10157,7 @@ router.get("/communication-goals", async (req, res) => {
 router.post("/communication-goals", async (req, res) => {
   const body = CreateCommunicationGoalBody.safeParse(req.body);
   if (!body.success)
-    return fail(
-      res,
-      "A title, goal area, and valid start date are required.",
-    );
+    return fail(res, "A title, goal area, and valid start date are required.");
   if (!requireChildAccess(req, res, body.data.childId)) return;
   const actor = requireClinician(req, res);
   if (!actor?.organizationId) return;
@@ -13135,6 +13490,32 @@ router.post("/children", async (req, res) => {
     input;
   if (actor.organizationId) {
     try {
+      const [slpDistrict] = await db
+        .select({
+          districtId: slpProfilesTable.districtId,
+          active: schoolDistrictsTable.active,
+        })
+        .from(slpProfilesTable)
+        .leftJoin(
+          schoolDistrictsTable,
+          eq(schoolDistrictsTable.id, slpProfilesTable.districtId),
+        )
+        .where(
+          and(
+            eq(slpProfilesTable.organizationId, actor.organizationId),
+            eq(slpProfilesTable.userId, actor.userId),
+          ),
+        )
+        .limit(1);
+      if (
+        !isNativeDevelopmentDemo(actor) &&
+        (!slpDistrict?.districtId || !slpDistrict.active)
+      ) {
+        return res.status(409).json({
+          error:
+            "Your SLP profile needs an active school district before you can add a student. Contact ChildLed support.",
+        });
+      }
       const legacyNames = legacyNameParts(childInput.name);
       const firstName = childInput.firstName?.trim() || legacyNames.firstName;
       const lastName = childInput.lastName?.trim() ?? legacyNames.lastName;
@@ -13155,6 +13536,7 @@ router.post("/children", async (req, res) => {
             .values({
               childLedId: generateChildLedId(),
               organizationId: actor.organizationId,
+              districtId: slpDistrict?.districtId ?? null,
               displayName,
               firstName,
               lastName,

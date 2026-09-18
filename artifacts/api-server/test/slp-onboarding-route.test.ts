@@ -10,6 +10,7 @@ import {
   organizationsTable,
   pool,
   securityAuditLogsTable,
+  schoolDistrictsTable,
   slpProfilesTable,
   userAgreementAcceptancesTable,
   usersTable,
@@ -17,7 +18,10 @@ import {
 import { provisionClerkInvitation } from "../src/lib/clerk-invitation-provisioning";
 import { hashInvitationToken } from "../src/lib/invitation-security";
 import { SLP_AGREEMENTS } from "../src/lib/slp-onboarding";
-import { completeSlpOnboardingAccount } from "../src/lib/slp-onboarding-account";
+import {
+  completeSlpOnboardingAccount,
+  SlpOnboardingDistrictError,
+} from "../src/lib/slp-onboarding-account";
 
 test.after(async () => {
   await pool.end();
@@ -76,6 +80,17 @@ test("an invited SLP is restricted until profile and agreements activate the mem
     ],
   };
   const userId = `clerk_${clerkUserId}`;
+  const [district] = await db
+    .select()
+    .from(schoolDistrictsTable)
+    .where(eq(schoolDistrictsTable.name, "Burlington County Special Services"))
+    .limit(1);
+  assert.ok(district);
+  const [inactiveDistrict] = await db
+    .insert(schoolDistrictsTable)
+    .values({ name: `Inactive district ${suffix}`, active: false })
+    .returning();
+  assert.ok(inactiveDistrict);
   try {
     const provisioned = await provisionClerkInvitation({
       clerkUser,
@@ -96,21 +111,42 @@ test("an invited SLP is restricted until profile and agreements activate the mem
     assert.equal(pendingMembership?.accountStatus, "onboarding");
     assert.equal(pendingMembership?.onboardingCompletedAt, null);
 
+    const profileInput = {
+      firstName: "Invited",
+      lastName: "Clinician",
+      professionalTitle: "Speech-Language Pathologist",
+      school: "Pilot School",
+      districtId: district.id,
+      licensureState: "Ohio",
+      licenseNumber: "SELF-REPORTED-123",
+      licenseExpirationDate: null,
+      ashaCccSlpNumber: null,
+    };
+    await assert.rejects(
+      completeSlpOnboardingAccount({
+        organizationId: organization.id,
+        userId,
+        clerkUserId,
+        profile: { ...profileInput, districtId: inactiveDistrict.id },
+      }),
+      SlpOnboardingDistrictError,
+    );
+    const [stillPending] = await db
+      .select()
+      .from(organizationMembershipsTable)
+      .where(
+        and(
+          eq(organizationMembershipsTable.organizationId, organization.id),
+          eq(organizationMembershipsTable.userId, userId),
+        ),
+      )
+      .limit(1);
+    assert.equal(stillPending?.accountStatus, "onboarding");
     await completeSlpOnboardingAccount({
       organizationId: organization.id,
       userId,
       clerkUserId,
-      profile: {
-        firstName: "Invited",
-        lastName: "Clinician",
-        professionalTitle: "Speech-Language Pathologist",
-        school: "Pilot School",
-        schoolDistrict: "Pilot District",
-        licensureState: "Ohio",
-        licenseNumber: "SELF-REPORTED-123",
-        licenseExpirationDate: null,
-        ashaCccSlpNumber: null,
-      },
+      profile: profileInput,
     });
 
     const [activeMembership] = await db
@@ -130,6 +166,8 @@ test("an invited SLP is restricted until profile and agreements activate the mem
       .from(slpProfilesTable)
       .where(eq(slpProfilesTable.userId, userId));
     assert.equal(profile?.licenseVerificationStatus, "unverified");
+    assert.equal(profile?.districtId, district.id);
+    assert.equal(profile?.schoolDistrict, district.name);
     const acceptances = await db
       .select()
       .from(userAgreementAcceptancesTable)
@@ -156,6 +194,9 @@ test("an invited SLP is restricted until profile and agreements activate the mem
     await db
       .delete(organizationsTable)
       .where(eq(organizationsTable.id, organization.id));
+    await db
+      .delete(schoolDistrictsTable)
+      .where(eq(schoolDistrictsTable.id, inactiveDistrict.id));
     if (existingControls) {
       await db
         .update(betaControlsTable)

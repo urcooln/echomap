@@ -12,6 +12,7 @@
     "db:migrate": "node tools/run-with-env.mjs artifacts/api-server/.env pnpm -C lib/db run migrate",
     "db:push": "node tools/run-with-env.mjs artifacts/api-server/.env pnpm -C lib/db run push",
     "seed:dev": "node tools/seed-dev.mjs",
+    "seed:recording-test": "node tools/run-with-env.mjs artifacts/api-server/.env pnpm -C scripts exec tsx ../artifacts/api-server/src/scripts/seed-recording-workflow-test.ts",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
   },

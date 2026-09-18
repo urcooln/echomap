@@ -27,11 +27,8 @@ export interface SlpOnboardingProfileInput {
      * @maxLength 240
      */
   school: string;
-  /**
-     * @minLength 1
-     * @maxLength 240
-     */
-  schoolDistrict: string;
+  /** @minimum 1 */
+  districtId: number;
   /**
      * @minLength 2
      * @maxLength 80

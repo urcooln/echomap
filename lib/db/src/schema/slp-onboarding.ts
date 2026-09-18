@@ -10,7 +10,11 @@ import {
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod/v4";
-import { organizationsTable, usersTable } from "./core-domain";
+import {
+  organizationsTable,
+  schoolDistrictsTable,
+  usersTable,
+} from "./core-domain";
 
 export const slpProfilesTable = pgTable(
   "slp_profiles",
@@ -27,6 +31,10 @@ export const slpProfilesTable = pgTable(
     professionalTitle: text("professional_title").notNull(),
     school: text("school").notNull(),
     schoolDistrict: text("school_district").notNull(),
+    districtId: integer("district_id").references(
+      () => schoolDistrictsTable.id,
+      { onDelete: "restrict" },
+    ),
     licensureState: text("licensure_state").notNull(),
     licenseNumber: text("license_number").notNull(),
     licenseExpirationDate: date("license_expiration_date"),
@@ -49,6 +57,7 @@ export const slpProfilesTable = pgTable(
       table.userId,
     ),
     index("slp_profiles_user_idx").on(table.userId),
+    index("slp_profiles_district_idx").on(table.districtId),
   ],
 );
 

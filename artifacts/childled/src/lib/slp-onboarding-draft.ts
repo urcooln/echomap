@@ -1,6 +1,6 @@
 import type { SlpOnboardingProfileInput } from "@workspace/api-client-react";
 
-const draftVersion = 1;
+const draftVersion = 2;
 const draftLifetimeMs = 8 * 60 * 60 * 1000;
 const draftKeyPrefix = "childled-slp-onboarding-draft:";
 
@@ -26,7 +26,7 @@ const isProfile = (value: unknown): value is SlpOnboardingProfileInput => {
     typeof profile.lastName === "string" &&
     typeof profile.professionalTitle === "string" &&
     typeof profile.school === "string" &&
-    typeof profile.schoolDistrict === "string" &&
+    typeof profile.districtId === "number" &&
     typeof profile.licensureState === "string" &&
     typeof profile.licenseNumber === "string" &&
     isNullableString(profile.licenseExpirationDate) &&

@@ -13,7 +13,7 @@ const profile = {
   lastName: "Ortiz",
   professionalTitle: "Speech-Language Pathologist",
   school: "Maple Grove",
-  schoolDistrict: "North District",
+  districtId: 1,
   licensureState: "NY",
   licenseNumber: "SLP-123",
   licenseExpirationDate: "2027-09-15",

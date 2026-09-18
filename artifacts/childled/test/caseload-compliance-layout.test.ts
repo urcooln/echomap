@@ -116,7 +116,7 @@ test("shows one service directly and expands only multi-service students", async
   assert.doesNotMatch(pageSource, /overflow-x-auto/);
 });
 
-test("keeps Add Student above four balanced Quick Actions", async () => {
+test("keeps Add Student separate while prioritizing session Quick Actions", async () => {
   const appSource = await readFile(
     new URL("../src/App.tsx", import.meta.url),
     "utf8",
@@ -133,17 +133,27 @@ test("keeps Add Student above four balanced Quick Actions", async () => {
     actionsSource,
     /onAddStudent|button-overview-quick-add-student/,
   );
-  assert.match(actionsSource, /grid-cols-2 gap-3 md:grid-cols-4/);
-  for (const label of [
-    "Record Session",
-    "Track Manually",
-    "Add Phrase",
-    "Inbox",
+  assert.match(actionsSource, /Start a Session/);
+  assert.match(actionsSource, /gold-action/);
+  assert.match(actionsSource, /mt-3 grid grid-cols-2 gap-3/);
+  for (const [testId, handler] of [
+    ["button-overview-record-session", "onRecordSession"],
+    ["button-overview-manual-session", "onManualSession"],
+    ["button-overview-add-phrase", "onAddPhrase"],
+    ["button-overview-messages", "onOpenInbox"],
   ]) {
-    assert.match(actionsSource, new RegExp(`label: "${label}"`));
+    assert.match(
+      actionsSource,
+      new RegExp(`data-testid="${testId}"[\\s\\S]*?onClick=\\{${handler}\\}`),
+    );
   }
+  assert.match(actionsSource, /badge-overview-unread-messages/);
   assert.match(overviewSource, /data-testid="button-overview-add-student"/);
   assert.match(overviewSource, /onClick=\{onAddStudent\}/);
+  assert.ok(
+    overviewSource.indexOf('data-testid="button-overview-add-student"') <
+      overviewSource.indexOf("<ClinicianQuickActions"),
+  );
 });
 
 test("caseload actions show distinct, accessible service and profile icons", async () => {

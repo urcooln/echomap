@@ -7,11 +7,13 @@
  */
 import type { SlpAgreement } from './slpAgreement';
 import type { SlpOnboardingAccountStatus } from './slpOnboardingAccountStatus';
+import type { SlpOnboardingDistrictsItem } from './slpOnboardingDistrictsItem';
 import type { SlpProfile } from './slpProfile';
 
 export interface SlpOnboarding {
   email: string;
   organizationName: string;
+  districts: SlpOnboardingDistrictsItem[];
   profile: SlpProfile;
   agreements: SlpAgreement[];
   accountStatus: SlpOnboardingAccountStatus;

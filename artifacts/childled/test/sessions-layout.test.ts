@@ -13,8 +13,20 @@ test('lets the full Session Hub scroll while preserving active workflow controls
   const heroStart = appSource.lastIndexOf('<section', heroTestId);
   const heroEnd = appSource.indexOf('>', heroTestId);
   const heroOpeningTag = appSource.slice(heroStart, heroEnd + 1);
+  const heroSource = appSource.slice(
+    heroStart,
+    appSource.indexOf('data-testid="sessions-weekly-snapshot"', heroStart),
+  );
 
   assert.doesNotMatch(heroOpeningTag, /\b(?:sticky|fixed)\b/);
+  assert.match(heroSource, /Session workspace/);
+  assert.match(heroSource, /data-testid="select-session-child"/);
+  assert.match(heroSource, /data-testid="select-session-service"/);
+  assert.match(heroSource, /data-testid="button-start-recording"/);
+  assert.match(heroSource, /data-testid="button-start-manual-session"/);
+  assert.match(heroSource, /data-testid="session-workspace-summary"/);
+  assert.match(heroSource, /Select the service this session should count toward/);
+  assert.doesNotMatch(heroSource, /Session Ready/);
   assert.match(
     appSource,
     /data-testid="recording-workflow-progress"/,

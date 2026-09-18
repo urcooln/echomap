@@ -184,9 +184,23 @@ test("AI session-note endpoint enforces evidence boundaries and safe documentati
   });
   const success = await createTranscript({
     label: "success",
-    segments: [{ text: "help me" }],
-    reviewedSegmentIndexes: [0],
+    segments: [
+      { text: "help me" },
+      { text: "child phrase with no working meaning" },
+      { text: "adult instruction not said by the child" },
+    ],
+    reviewedSegmentIndexes: [0, 1, 2],
   });
+  const successSegments = await db.select({ id: transcriptSpeakerSegmentsTable.id })
+    .from(transcriptSpeakerSegmentsTable)
+    .where(eq(transcriptSpeakerSegmentsTable.transcriptId, success.transcriptId))
+    .orderBy(transcriptSpeakerSegmentsTable.position);
+  await db.update(transcriptChildUtteranceReviewsTable)
+    .set({ meaning: null })
+    .where(eq(transcriptChildUtteranceReviewsTable.segmentId, successSegments[1]!.id));
+  await db.update(transcriptChildUtteranceReviewsTable)
+    .set({ disposition: "not_child", meaning: null })
+    .where(eq(transcriptChildUtteranceReviewsTable.segmentId, successSegments[2]!.id));
 
   let currentActor: ResolvedCareTeamActor | undefined;
   const clinician: ResolvedCareTeamActor = {
@@ -214,6 +228,7 @@ test("AI session-note endpoint enforces evidence boundaries and safe documentati
 
   let providerMode: ProviderMode = "success";
   let providerCalls = 0;
+  let providerEvidence: Array<{ utterance: string }> = [];
   const originalCreate = openai.chat.completions.create;
   (openai.chat.completions as typeof openai.chat.completions & {
     create: (params: any) => Promise<any>;
@@ -227,6 +242,7 @@ test("AI session-note endpoint enforces evidence boundaries and safe documentati
     }
     const userMessage = params.messages[1]?.content;
     const evidence = JSON.parse(userMessage).reviewedChildUtterances;
+    providerEvidence = evidence;
     return {
       choices: [{
         message: {
@@ -389,6 +405,9 @@ test("AI session-note endpoint enforces evidence boundaries and safe documentati
       .where(eq(clinicalDocumentationTable.id, standardDraft.id)))[0]?.generationSource, "clinician_input");
     assert.equal(contentHasSafetyLabels(aiDraft.content), true);
     assert.match(aiDraft.content.sessionSummary, /Evidence used: 1 meaning-backed/);
+    assert.deepEqual(providerEvidence.map((item) => item.utterance), ["help me"]);
+    assert.match(aiDraft.content.observedLanguage, /help me/);
+    assert.doesNotMatch(JSON.stringify(aiDraft.content), /child phrase with no working meaning|adult instruction not said by the child/);
 
     const callsAfterSuccess = providerCalls;
     const reopenedAuditsBefore = await auditsFor("AI_SESSION_NOTE_DRAFT_REOPENED");

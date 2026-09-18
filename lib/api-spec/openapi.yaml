@@ -890,6 +890,113 @@ paths:
         "403": { description: Invited SLP account required }
         "409": { description: SLP membership is no longer eligible for setup }
         "500": { description: Account activation could not be completed }
+  /admin/school-districts:
+    get:
+      operationId: listSchoolDistricts
+      tags: [security]
+      summary: List school districts and association counts for ChildLed owners
+      responses:
+        "200":
+          description: District summaries
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/SchoolDistrictSummary" }
+        "403": { description: ChildLed owner access required }
+    post:
+      operationId: createSchoolDistrict
+      tags: [security]
+      summary: Create an approved school district
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SchoolDistrictInput" }
+      responses:
+        "201":
+          description: Created district
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchoolDistrict" }
+        "400": { description: Invalid name }
+        "403": { description: ChildLed owner access required }
+        "409": { description: Duplicate district name }
+  /admin/school-districts/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: number }
+    get:
+      operationId: getSchoolDistrict
+      tags: [security]
+      summary: Get a district roster
+      responses:
+        "200":
+          description: District roster
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchoolDistrictDetail" }
+        "403": { description: ChildLed owner access required }
+        "404": { description: District not found }
+    patch:
+      operationId: updateSchoolDistrict
+      tags: [security]
+      summary: Rename or change the active state of a district
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SchoolDistrictUpdate" }
+      responses:
+        "200":
+          description: Updated district
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SchoolDistrict" }
+        "400": { description: Invalid change }
+        "403": { description: ChildLed owner access required }
+        "404": { description: District not found }
+        "409": { description: Duplicate district name }
+  /admin/unassigned-slp-districts:
+    get:
+      operationId: listUnassignedSlpDistricts
+      tags: [security]
+      summary: List legacy SLP profiles needing an approved district
+      responses:
+        "200":
+          description: Unassigned SLP profiles
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/UnassignedSlpDistrict" }
+        "403": { description: ChildLed owner access required }
+  /admin/slp-profiles/{id}/district:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: number }
+    patch:
+      operationId: assignSlpDistrict
+      tags: [security]
+      summary: Assign an active district to an unassigned legacy SLP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignSlpDistrictInput" }
+      responses:
+        "200":
+          description: Profile and unambiguous student associations updated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AssignSlpDistrictResult" }
+        "400": { description: Invalid district ID }
+        "403": { description: ChildLed owner access required }
+        "409": { description: Already assigned or inactive district }
   /care-team-onboarding:
     get:
       operationId: getCareTeamOnboarding
@@ -3630,6 +3737,7 @@ components:
           professionalTitle,
           school,
           schoolDistrict,
+          districtId,
           licensureState,
           licenseNumber,
           licenseExpirationDate,
@@ -3642,6 +3750,7 @@ components:
         professionalTitle: { type: string }
         school: { type: string }
         schoolDistrict: { type: string }
+        districtId: { type: [number, "null"] }
         licensureState: { type: string }
         licenseNumber: { type: string }
         licenseExpirationDate: { type: [string, "null"] }
@@ -3721,6 +3830,82 @@ components:
           items: { $ref: "#/components/schemas/SettingsInvitation" }
         notificationPreferences:
           { $ref: "#/components/schemas/NotificationPreferences" }
+    SchoolDistrict:
+      type: object
+      required: [id, name, active]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        active: { type: boolean }
+    SchoolDistrictSummary:
+      allOf:
+        - { $ref: "#/components/schemas/SchoolDistrict" }
+        - type: object
+          required: [createdAt, updatedAt, slpCount, teacherCount, studentCount]
+          properties:
+            createdAt: { type: string, format: date-time }
+            updatedAt: { type: string, format: date-time }
+            slpCount: { type: number }
+            teacherCount: { type: number }
+            studentCount: { type: number }
+    SchoolDistrictPerson:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string }
+        name: { type: string }
+    SchoolDistrictStudent:
+      type: object
+      required: [id, name, childLedId]
+      properties:
+        id: { type: number }
+        name: { type: string }
+        childLedId: { type: string }
+    SchoolDistrictDetail:
+      allOf:
+        - { $ref: "#/components/schemas/SchoolDistrict" }
+        - type: object
+          required: [slps, teachers, students]
+          properties:
+            slps:
+              type: array
+              items: { $ref: "#/components/schemas/SchoolDistrictPerson" }
+            teachers:
+              type: array
+              items: { $ref: "#/components/schemas/SchoolDistrictPerson" }
+            students:
+              type: array
+              items: { $ref: "#/components/schemas/SchoolDistrictStudent" }
+    SchoolDistrictInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+    SchoolDistrictUpdate:
+      type: object
+      properties:
+        name: { type: string, minLength: 1, maxLength: 160 }
+        active: { type: boolean }
+    UnassignedSlpDistrict:
+      type: object
+      required: [profileId, userId, name, schoolDistrict, organization]
+      properties:
+        profileId: { type: number }
+        userId: { type: string }
+        name: { type: string }
+        schoolDistrict: { type: string }
+        organization: { type: string }
+    AssignSlpDistrictInput:
+      type: object
+      required: [districtId]
+      properties:
+        districtId: { type: number, minimum: 1 }
+    AssignSlpDistrictResult:
+      type: object
+      required: [profileId, assignedStudentCount]
+      properties:
+        profileId: { type: number }
+        assignedStudentCount: { type: number }
     SlpAgreement:
       type: object
       required: [type, version, title, statement, documentPath, accepted]
@@ -3738,6 +3923,7 @@ components:
         [
           email,
           organizationName,
+          districts,
           profile,
           agreements,
           accountStatus,
@@ -3746,6 +3932,14 @@ components:
       properties:
         email: { type: string }
         organizationName: { type: string }
+        districts:
+          type: array
+          items:
+            type: object
+            required: [id, name]
+            properties:
+              id: { type: number }
+              name: { type: string }
         profile: { $ref: "#/components/schemas/SlpProfile" }
         agreements:
           type: array
@@ -3760,7 +3954,7 @@ components:
           lastName,
           professionalTitle,
           school,
-          schoolDistrict,
+          districtId,
           licensureState,
           licenseNumber,
         ]
@@ -3769,7 +3963,7 @@ components:
         lastName: { type: string, minLength: 1, maxLength: 120 }
         professionalTitle: { type: string, minLength: 1, maxLength: 160 }
         school: { type: string, minLength: 1, maxLength: 240 }
-        schoolDistrict: { type: string, minLength: 1, maxLength: 240 }
+        districtId: { type: number, minimum: 1 }
         licensureState: { type: string, minLength: 2, maxLength: 80 }
         licenseNumber: { type: string, minLength: 1, maxLength: 120 }
         licenseExpirationDate: { type: [string, "null"] }
@@ -6454,7 +6648,8 @@ components:
         disposition:
           { $ref: "#/components/schemas/ProvisionalPhraseDisposition" }
         workingMeaning: { type: ["string", "null"] }
-        attributionLabel: { type: string, enum: [Child-language review pending] }
+        attributionLabel:
+          { type: string, enum: [Child-language review pending] }
         sourceLabel: { type: string, enum: [Completed transcript] }
         evidenceLabel: { type: string, enum: [Not clinical evidence] }
         updatedAt: { type: string, format: date-time }

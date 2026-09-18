@@ -17,7 +17,9 @@ export const roleOverviewPath = (role?: string | null) => {
 };
 
 export const isRoleOverviewPath = (path: string) =>
-  Object.values(roleOverviewPaths).includes(path as (typeof roleOverviewPaths)[keyof typeof roleOverviewPaths]);
+  Object.values(roleOverviewPaths).includes(
+    path as (typeof roleOverviewPaths)[keyof typeof roleOverviewPaths],
+  );
 
 const clinicalOnlyPaths = new Set([
   '/session',
@@ -42,6 +44,7 @@ export const isRoleRestrictedPath = ({
   isAdmin = false,
   isSuperAdmin = false,
   isRolePreview = false,
+  isDevelopmentDemo = false,
   isNativeDevelopmentDemo = false,
 }: {
   path: string;
@@ -49,6 +52,7 @@ export const isRoleRestrictedPath = ({
   isAdmin?: boolean;
   isSuperAdmin?: boolean;
   isRolePreview?: boolean;
+  isDevelopmentDemo?: boolean;
   isNativeDevelopmentDemo?: boolean;
 }) => {
   const roleHome = roleOverviewPath(role);
@@ -62,6 +66,10 @@ export const isRoleRestrictedPath = ({
     (path === '/teacher-resources' && role !== 'Teacher') ||
     (path === '/students' && role !== 'Teacher') ||
     (administratorPaths.has(path) && !isAdmin) ||
+    ((path === '/school-districts' || path.startsWith('/school-districts/')) &&
+      (!isSuperAdmin ||
+        role !== 'Administrator' ||
+        (isRolePreview && !isDevelopmentDemo))) ||
     (path === '/ux-testing' && (!isSuperAdmin || isRolePreview))
   );
 };

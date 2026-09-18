@@ -81,6 +81,8 @@ export interface SlpProfile {
   professionalTitle: string;
   school: string;
   schoolDistrict: string;
+  /** @nullable */
+  districtId: number | null;
   licensureState: string;
   licenseNumber: string;
   /** @nullable */
@@ -152,6 +154,72 @@ export interface UserSettings {
   notificationPreferences: NotificationPreferences;
 }
 
+export interface SchoolDistrict {
+  id: number;
+  name: string;
+  active: boolean;
+}
+
+export type SchoolDistrictSummary = SchoolDistrict & {
+  createdAt: string;
+  updatedAt: string;
+  slpCount: number;
+  teacherCount: number;
+  studentCount: number;
+};
+
+export interface SchoolDistrictPerson {
+  id: string;
+  name: string;
+}
+
+export interface SchoolDistrictStudent {
+  id: number;
+  name: string;
+  childLedId: string;
+}
+
+export type SchoolDistrictDetail = SchoolDistrict & {
+  slps: SchoolDistrictPerson[];
+  teachers: SchoolDistrictPerson[];
+  students: SchoolDistrictStudent[];
+};
+
+export interface SchoolDistrictInput {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  name: string;
+}
+
+export interface SchoolDistrictUpdate {
+  /**
+     * @minLength 1
+     * @maxLength 160
+     */
+  name?: string;
+  active?: boolean;
+}
+
+export interface UnassignedSlpDistrict {
+  profileId: number;
+  userId: string;
+  name: string;
+  schoolDistrict: string;
+  organization: string;
+}
+
+export interface AssignSlpDistrictInput {
+  /** @minimum 1 */
+  districtId: number;
+}
+
+export interface AssignSlpDistrictResult {
+  profileId: number;
+  assignedStudentCount: number;
+}
+
 export interface SlpAgreement {
   type: string;
   version: string;
@@ -162,6 +230,11 @@ export interface SlpAgreement {
   /** @nullable */
   acceptedAt?: string | null;
 }
+
+export type SlpOnboardingDistrictsItem = {
+  id: number;
+  name: string;
+};
 
 export type SlpOnboardingAccountStatus = typeof SlpOnboardingAccountStatus[keyof typeof SlpOnboardingAccountStatus];
 
@@ -174,6 +247,7 @@ export const SlpOnboardingAccountStatus = {
 export interface SlpOnboarding {
   email: string;
   organizationName: string;
+  districts: SlpOnboardingDistrictsItem[];
   profile: SlpProfile;
   agreements: SlpAgreement[];
   accountStatus: SlpOnboardingAccountStatus;
@@ -201,11 +275,8 @@ export interface SlpOnboardingProfileInput {
      * @maxLength 240
      */
   school: string;
-  /**
-     * @minLength 1
-     * @maxLength 240
-     */
-  schoolDistrict: string;
+  /** @minimum 1 */
+  districtId: number;
   /**
      * @minLength 2
      * @maxLength 80

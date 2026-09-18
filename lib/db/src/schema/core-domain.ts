@@ -58,6 +58,27 @@ export const organizationsTable = pgTable(
   (table) => [uniqueIndex("organizations_slug_unique").on(table.slug)],
 );
 
+export const schoolDistrictsTable = pgTable(
+  "school_districts",
+  {
+    id: serial("id").primaryKey(),
+    name: text("name").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
+  },
+  (table) => [
+    uniqueIndex("school_districts_name_lower_unique").on(
+      sql`lower(${table.name})`,
+    ),
+  ],
+);
+
 export const usersTable = pgTable(
   "users",
   {
@@ -130,6 +151,29 @@ export const organizationMembershipsTable = pgTable(
   ],
 );
 
+export const teacherDistrictMembershipsTable = pgTable(
+  "teacher_district_memberships",
+  {
+    id: serial("id").primaryKey(),
+    teacherUserId: text("teacher_user_id")
+      .notNull()
+      .references(() => usersTable.id, { onDelete: "restrict" }),
+    districtId: integer("district_id")
+      .notNull()
+      .references(() => schoolDistrictsTable.id, { onDelete: "restrict" }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("teacher_district_memberships_user_district_unique").on(
+      table.teacherUserId,
+      table.districtId,
+    ),
+    index("teacher_district_memberships_district_idx").on(table.districtId),
+  ],
+);
+
 export const childProfilesTable = pgTable(
   "child_profiles",
   {
@@ -138,6 +182,10 @@ export const childProfilesTable = pgTable(
     organizationId: integer("organization_id")
       .notNull()
       .references(() => organizationsTable.id, { onDelete: "restrict" }),
+    districtId: integer("district_id").references(
+      () => schoolDistrictsTable.id,
+      { onDelete: "restrict" },
+    ),
     displayName: text("display_name").notNull(),
     firstName: text("first_name").notNull().default(""),
     lastName: text("last_name").notNull().default(""),

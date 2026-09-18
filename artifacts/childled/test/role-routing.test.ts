@@ -126,6 +126,62 @@ describe('role-specific route authorization', () => {
       false,
     );
   });
+
+  test('school district pages stay limited to a real ChildLed owner', () => {
+    for (const path of ['/school-districts', '/school-districts/42']) {
+      for (const role of ['SLP', 'Teacher', 'Parent']) {
+        assert.equal(
+          isRoleRestrictedPath({ path, role }),
+          true,
+          `${role} ${path}`,
+        );
+      }
+      assert.equal(
+        isRoleRestrictedPath({ path, role: 'Administrator', isAdmin: true }),
+        true,
+      );
+      assert.equal(
+        isRoleRestrictedPath({
+          path,
+          role: 'Administrator',
+          isAdmin: true,
+          isSuperAdmin: true,
+        }),
+        false,
+      );
+      assert.equal(
+        isRoleRestrictedPath({
+          path,
+          role: 'Administrator',
+          isAdmin: true,
+          isSuperAdmin: true,
+          isRolePreview: true,
+        }),
+        true,
+      );
+      assert.equal(
+        isRoleRestrictedPath({
+          path,
+          role: 'Administrator',
+          isAdmin: true,
+          isSuperAdmin: true,
+          isRolePreview: true,
+          isDevelopmentDemo: true,
+        }),
+        false,
+      );
+      assert.equal(
+        isRoleRestrictedPath({
+          path,
+          role: 'SLP',
+          isSuperAdmin: true,
+          isRolePreview: true,
+          isDevelopmentDemo: true,
+        }),
+        true,
+      );
+    }
+  });
 });
 
 describe('protected login return paths', () => {
@@ -145,7 +201,10 @@ describe('protected login return paths', () => {
     assert.equal(authReturnPathFor('/family-overview?childId=42'), undefined);
     assert.equal(authReturnPathFor('/sign-in'), undefined);
     assert.equal(authReturnPathFor('//outside.example/children'), undefined);
-    assert.equal(authReturnPathFor('https://outside.example/children'), undefined);
+    assert.equal(
+      authReturnPathFor('https://outside.example/children'),
+      undefined,
+    );
   });
 
   test('logout clears a pending deep link before the next login', () => {
