@@ -123,6 +123,7 @@ import {
   getListClinicalKnowledgeSourcesQueryKey,
   getListClinicalKnowledgeInsightsQueryKey,
   getGetSessionTranscriptionDraftQueryKey,
+  getGetSessionRecordingAllowanceQueryKey,
   getGetSessionTranscriptionDraftQueryOptions,
   getListChildPhraseInboxQueryKey,
   getListCommunicationGoalsQueryKey,
@@ -159,6 +160,7 @@ import {
   useGetRecurringLanguagePatternDetail,
   useGetRecurringLanguagePatterns,
   useGetSessionTranscriptionDraft,
+  useGetSessionRecordingAllowance,
   useGetSessionRecordingDetail,
   useGetSessionsDashboard,
   useListChildren,
@@ -11681,6 +11683,18 @@ function SessionRecorderPage({
       },
     },
   );
+  const recordingAllowanceQuery = useGetSessionRecordingAllowance({
+    query: {
+      queryKey: [
+        ...getGetSessionRecordingAllowanceQueryKey(),
+        user?.id,
+        childId,
+      ],
+      retry: false,
+      staleTime: 0,
+      refetchOnWindowFocus: true,
+    },
+  });
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const mediaStream = useRef<MediaStream | null>(null);
   const reviewAudio = useRef<HTMLAudioElement | null>(null);
@@ -11707,6 +11721,8 @@ function SessionRecorderPage({
     Partial<Record<"clinician" | "caregiver", boolean>>
   >({});
   const recordingStartedAt = useRef<number | null>(null);
+  const recordedBeforeCurrentSegmentMs = useRef(0);
+  const recordingAllowanceAtStart = useRef<number | null>(null);
   const workflowHeaderRef = useRef<HTMLElement | null>(null);
   const captureFailed = useRef(false);
   const timerRef = useRef<number | null>(null);
@@ -11728,6 +11744,7 @@ function SessionRecorderPage({
   const [audioBlob, setAudioBlob] = useState<Blob>();
   const [audioUrl, setAudioUrl] = useState<string>();
   const [audioError, setAudioError] = useState("");
+  const [stoppedAtAllowance, setStoppedAtAllowance] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [deleteError, setDeleteError] = useState("");
   const [audioPreparationPending, setAudioPreparationPending] = useState(false);
@@ -11878,6 +11895,13 @@ function SessionRecorderPage({
   }, [nlaGuideOpen]);
 
   const formattedTime = `${String(Math.floor(elapsed / 60)).padStart(2, "0")}:${String(elapsed % 60).padStart(2, "0")}`;
+  const allowance = recordingAllowanceQuery.data;
+  const allowanceRemainingSeconds = allowance?.remainingSeconds === null || allowance?.remainingSeconds === undefined
+    ? null
+    : Math.max(0, allowance.remainingSeconds - (recording ? elapsed : 0));
+  const formatAllowanceTime = (seconds: number) =>
+    `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const recordingLimitReached = allowance?.unlimited === false && allowanceRemainingSeconds === 0;
   const effectiveServiceRequirementId =
     transcription?.serviceRequirementId ?? serviceRequirementId;
   const effectiveMakeupForSessionId =
@@ -13189,6 +13213,8 @@ function SessionRecorderPage({
       const message = errorMessageFor(error);
       setTranscriptionStatus("error");
       setTranscriptionError(message);
+    } finally {
+      void recordingAllowanceQuery.refetch();
     }
   };
   const prepareAudioForReview = (
@@ -13217,11 +13243,13 @@ function SessionRecorderPage({
     transcriptionRun.current += 1;
     if (timerRef.current) window.clearInterval(timerRef.current);
     recordingStartedAt.current = null;
+    recordedBeforeCurrentSegmentMs.current = 0;
     mediaRecorder.current = null;
     mediaStream.current?.getTracks().forEach((track) => track.stop());
     mediaStream.current = null;
     setRecording(false);
     setPaused(false);
+    setStoppedAtAllowance(false);
     setAudioError(message);
     setTranscriptionStatus("error");
     setTranscriptionError(message);
@@ -13255,8 +13283,26 @@ function SessionRecorderPage({
       return;
     }
     setAudioError("");
+    setStoppedAtAllowance(false);
     setSaveError("");
     setFinalizePreparing(false);
+    const allowanceResult = await recordingAllowanceQuery.refetch();
+    if (allowanceResult.isError || !allowanceResult.data) {
+      setAudioError(
+        "Recording availability could not be checked. Please try again. Manual session tracking is still available.",
+      );
+      return;
+    }
+    const availableSeconds = allowanceResult.data.remainingSeconds;
+    if (!allowanceResult.data.unlimited && (!availableSeconds || availableSeconds <= 0)) {
+      setAudioError(
+        "Weekly recording limit reached. Recording becomes available again after Monday's reset.",
+      );
+      return;
+    }
+    recordingAllowanceAtStart.current = allowanceResult.data.unlimited
+      ? null
+      : availableSeconds;
     if (
       !window.isSecureContext ||
       !navigator.mediaDevices?.getUserMedia ||
@@ -13303,17 +13349,22 @@ function SessionRecorderPage({
       mediaStream.current = stream;
       mediaRecorder.current = recorder;
       recorder.start(1000);
+      recordedBeforeCurrentSegmentMs.current = 0;
       recordingStartedAt.current = Date.now();
       setElapsed(0);
       setRecording(true);
       setPaused(false);
       setStage("capture");
       timerRef.current = window.setInterval(() => {
-        if (recordingStartedAt.current)
-          setElapsed(
-            Math.floor((Date.now() - recordingStartedAt.current) / 1000),
-          );
-      }, 1000);
+        if (recordingStartedAt.current === null) return;
+        const recordedMs = recordedBeforeCurrentSegmentMs.current + Date.now() - recordingStartedAt.current;
+        setElapsed(Math.floor(recordedMs / 1000));
+        const available = recordingAllowanceAtStart.current;
+        if (available !== null && recordedMs >= Math.max(250, available * 1000 - 750)) {
+          setStoppedAtAllowance(true);
+          finishRecording();
+        }
+      }, 250);
     } catch (error: any) {
       const name = error?.name;
       reportCaptureFailure(
@@ -13397,7 +13448,12 @@ function SessionRecorderPage({
     if (recorder && recorder.state !== "inactive") recorder.stop();
     mediaRecorder.current = null;
     if (timerRef.current) window.clearInterval(timerRef.current);
+    if (recordingStartedAt.current !== null) {
+      recordedBeforeCurrentSegmentMs.current += Date.now() - recordingStartedAt.current;
+      setElapsed(Math.floor(recordedBeforeCurrentSegmentMs.current / 1000));
+    }
     recordingStartedAt.current = null;
+    recordingAllowanceAtStart.current = null;
     setRecording(false);
     setPaused(false);
   };
@@ -13407,16 +13463,25 @@ function SessionRecorderPage({
     if (recorder.state === "recording") {
       recorder.pause();
       if (timerRef.current) window.clearInterval(timerRef.current);
+      if (recordingStartedAt.current !== null) {
+        recordedBeforeCurrentSegmentMs.current += Date.now() - recordingStartedAt.current;
+        setElapsed(Math.floor(recordedBeforeCurrentSegmentMs.current / 1000));
+        recordingStartedAt.current = null;
+      }
       setPaused(true);
     } else if (recorder.state === "paused") {
       recorder.resume();
-      recordingStartedAt.current = Date.now() - elapsed * 1000;
+      recordingStartedAt.current = Date.now();
       timerRef.current = window.setInterval(() => {
-        if (recordingStartedAt.current)
-          setElapsed(
-            Math.floor((Date.now() - recordingStartedAt.current) / 1000),
-          );
-      }, 1000);
+        if (recordingStartedAt.current === null) return;
+        const recordedMs = recordedBeforeCurrentSegmentMs.current + Date.now() - recordingStartedAt.current;
+        setElapsed(Math.floor(recordedMs / 1000));
+        const available = recordingAllowanceAtStart.current;
+        if (available !== null && recordedMs >= Math.max(250, available * 1000 - 750)) {
+          setStoppedAtAllowance(true);
+          finishRecording();
+        }
+      }, 250);
       setPaused(false);
     }
   };
@@ -16298,6 +16363,11 @@ function SessionRecorderPage({
     return (
       <div className="mx-auto max-w-4xl space-y-5 pb-8">
         {workflowProgress}
+        {stoppedAtAllowance && (
+          <p role="status" className="rounded-xl border border-border bg-secondary/40 p-3 text-sm text-foreground">
+            Recording stopped at your weekly allowance. Your audio is being prepared for review.
+          </p>
+        )}
         <section
           role="status"
           aria-live="polite"
@@ -16347,6 +16417,11 @@ function SessionRecorderPage({
     return (
       <div className="mx-auto max-w-4xl space-y-5 pb-32">
         {workflowProgress}
+        {stage === "review" && stoppedAtAllowance && (
+          <p role="status" className="rounded-xl border border-border bg-secondary/40 p-3 text-sm text-foreground">
+            Recording stopped at your weekly allowance. Continue reviewing the captured session.
+          </p>
+        )}
         <SectionHeading
           eyebrow={
             stage === "review"
@@ -17029,6 +17104,31 @@ function SessionRecorderPage({
               )}
             </p>
           </div>
+          <div className="mb-5 text-center text-sm text-primary-foreground/80" data-testid="recording-allowance">
+            {recordingAllowanceQuery.isPending ? (
+              <p>Checking weekly recording allowance...</p>
+            ) : recordingAllowanceQuery.isError ? (
+              <p>Recording allowance is unavailable. Try again shortly.</p>
+            ) : allowance?.unlimited ? (
+              <p>Recording allowance: Unlimited</p>
+            ) : allowance && allowanceRemainingSeconds !== null && allowance.limitSeconds !== null ? (
+              <>
+                <p className="font-semibold">
+                  Weekly recording allowance: {formatAllowanceTime(allowanceRemainingSeconds)} of {formatAllowanceTime(allowance.limitSeconds)} remaining
+                </p>
+                <p className="mt-1 text-xs text-primary-foreground/70">
+                  Resets Monday at 12:00 AM ({allowance.timeZone})
+                </p>
+                {recordingLimitReached ? (
+                  <p role="status" className="mt-2 font-semibold text-accent">Weekly recording limit reached. Manual sessions remain available.</p>
+                ) : allowanceRemainingSeconds <= 300 ? (
+                  <p role="status" className="mt-2 font-semibold text-accent">5 minutes or less of recording time remain this week.</p>
+                ) : allowanceRemainingSeconds <= 900 ? (
+                  <p role="status" className="mt-2">15 minutes or less of recording time remain this week.</p>
+                ) : null}
+              </>
+            ) : null}
+          </div>
           <div className="flex flex-wrap justify-center gap-3">
             {!recording ? (
               <>
@@ -17036,17 +17136,19 @@ function SessionRecorderPage({
                   className="min-h-12 w-full sm:w-auto"
                   variant="warm"
                   onClick={startRecording}
+                  disabled={recordingLimitReached || recordingAllowanceQuery.isPending || recordingAllowanceQuery.isError}
                   data-testid="button-start-recording"
                 >
                   <Mic size={17} />
                   {audioBlob ? "Record again" : "Start recording"}
                 </Button>
-                <label className="inline-flex min-h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-primary-foreground/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:bg-primary-foreground/10 focus-ring sm:w-auto">
+                <label className={`inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-xl border border-primary-foreground/20 bg-transparent px-4 py-2.5 text-sm font-semibold text-primary-foreground focus-ring sm:w-auto ${recordingLimitReached || recordingAllowanceQuery.isPending || recordingAllowanceQuery.isError ? "cursor-not-allowed opacity-50" : "cursor-pointer hover:bg-primary-foreground/10"}`}>
                   <Volume2 size={16} /> Use audio file
                   <input
                     data-testid="input-session-audio-file"
                     className="sr-only"
                     type="file"
+                    disabled={recordingLimitReached || recordingAllowanceQuery.isPending || recordingAllowanceQuery.isError}
                     accept="audio/webm,audio/mp4,audio/ogg,audio/mpeg,audio/wav,audio/x-m4a"
                     onChange={(event) => replaceAudio(event.target.files?.[0])}
                   />
@@ -17081,6 +17183,11 @@ function SessionRecorderPage({
           {audioError && (
             <p className="mt-5 rounded-xl bg-destructive/20 p-3 text-center text-xs leading-5 text-primary-foreground">
               {audioError}
+            </p>
+          )}
+          {stoppedAtAllowance && (
+            <p role="status" className="mt-4 text-center text-xs text-primary-foreground/80">
+              Recording stopped at your weekly allowance. Your audio is being prepared for review.
             </p>
           )}
         </section>

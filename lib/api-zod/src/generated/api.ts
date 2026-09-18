@@ -5500,6 +5500,23 @@ export const GetSessionAudioLimitsResponse = zod.object({
 
 
 /**
+ * @summary Get the authenticated SLP's current weekly recording allowance
+ */
+export const getSessionRecordingAllowanceResponseUsedSecondsMin = 0;
+
+
+
+export const GetSessionRecordingAllowanceResponse = zod.object({
+  "unlimited": zod.boolean(),
+  "limitSeconds": zod.number().nullable(),
+  "usedSeconds": zod.number().min(getSessionRecordingAllowanceResponseUsedSecondsMin),
+  "remainingSeconds": zod.number().nullable(),
+  "resetAt": zod.coerce.date().nullable(),
+  "timeZone": zod.string()
+})
+
+
+/**
  * @summary Transcribe and segment a private therapy recording
  */
 export const TranscribeSessionAudioQueryParams = zod.object({

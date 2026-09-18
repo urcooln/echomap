@@ -214,6 +214,7 @@ import type {
   SessionCalibration,
   SessionCalibrationCompletionRequest,
   SessionInput,
+  SessionRecordingAllowance,
   SessionRecordingDetail,
   SessionRecordingPreparation,
   SessionRecordingPreparationRequest,
@@ -10220,6 +10221,83 @@ export function useGetSessionAudioLimits<TData = Awaited<ReturnType<typeof getSe
  ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
 
   const queryOptions = getGetSessionAudioLimitsQueryOptions(options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export const getGetSessionRecordingAllowanceUrl = () => {
+
+
+
+
+  return `/api/sessions/recording-allowance`
+}
+
+/**
+ * @summary Get the authenticated SLP's current weekly recording allowance
+ */
+export const getSessionRecordingAllowance = async ( options?: Parameters<typeof customFetch>[1]): Promise<SessionRecordingAllowance> => {
+
+  return customFetch<SessionRecordingAllowance>(getGetSessionRecordingAllowanceUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetSessionRecordingAllowanceQueryKey = () => {
+    return [
+    `/api/sessions/recording-allowance`
+    ] as const;
+    }
+
+
+export const getGetSessionRecordingAllowanceQueryOptions = <TData = Awaited<ReturnType<typeof getSessionRecordingAllowance>>, TError = ErrorType<void>>( options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSessionRecordingAllowance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetSessionRecordingAllowanceQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getSessionRecordingAllowance>>> = ({ signal }) => getSessionRecordingAllowance({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getSessionRecordingAllowance>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetSessionRecordingAllowanceQueryResult = NonNullable<Awaited<ReturnType<typeof getSessionRecordingAllowance>>>
+export type GetSessionRecordingAllowanceQueryError = ErrorType<void>
+
+
+/**
+ * @summary Get the authenticated SLP's current weekly recording allowance
+ */
+
+export function useGetSessionRecordingAllowance<TData = Awaited<ReturnType<typeof getSessionRecordingAllowance>>, TError = ErrorType<void>>(
+  options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getSessionRecordingAllowance>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetSessionRecordingAllowanceQueryOptions(options)
 
   const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
 

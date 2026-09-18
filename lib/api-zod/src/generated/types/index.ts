@@ -363,6 +363,7 @@ export * from './sessionNoteChild';
 export * from './sessionProcessingStage';
 export * from './sessionProcessingStageStage';
 export * from './sessionProcessingStageStatus';
+export * from './sessionRecordingAllowance';
 export * from './sessionRecordingDetail';
 export * from './sessionRecordingPreparation';
 export * from './sessionRecordingPreparationRequest';

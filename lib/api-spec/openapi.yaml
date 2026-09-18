@@ -2782,6 +2782,20 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SessionAudioLimits"
+  /sessions/recording-allowance:
+    get:
+      operationId: getSessionRecordingAllowance
+      tags: [sessions]
+      summary: Get the authenticated SLP's current weekly recording allowance
+      responses:
+        "200":
+          description: Current recording usage and next reset
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionRecordingAllowance"
+        "401": { description: Authentication required }
+        "403": { description: SLP access required }
   /sessions/transcription:
     post:
       operationId: transcribeSessionAudio
@@ -6394,6 +6408,16 @@ components:
         supportedContentTypes:
           type: array
           items: { type: string }
+    SessionRecordingAllowance:
+      type: object
+      required: [unlimited, limitSeconds, usedSeconds, remainingSeconds, resetAt, timeZone]
+      properties:
+        unlimited: { type: boolean }
+        limitSeconds: { type: [number, "null"] }
+        usedSeconds: { type: number, minimum: 0 }
+        remainingSeconds: { type: [number, "null"] }
+        resetAt: { type: [string, "null"], format: date-time }
+        timeZone: { type: string }
     RecordingDiagnosticError:
       type: object
       required: [error]

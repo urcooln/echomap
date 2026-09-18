@@ -189,6 +189,14 @@ import {
   TRANSCRIPTION_MODEL,
   TRANSCRIPTION_PROVIDER,
 } from "../lib/recording-pipeline";
+import { probeRecordingDurationMilliseconds } from "../lib/recording-duration";
+import {
+  consumeRecordingUsage,
+  hasUnlimitedRecording,
+  recordingAllowanceFor,
+  releaseRecordingUsage,
+  reserveRecordingUsage,
+} from "../lib/slp-recording-allowance";
 import {
   buildKnowledgeInsightDrafts,
   CLINICAL_INSIGHTS_ENGINE_VERSION,
@@ -1619,6 +1627,22 @@ const canUseClinicalTools = (actor: CareTeamActor | null) =>
     actor &&
     (canManageClinicalData(actor.role) || isNativeDevelopmentDemo(actor)),
   );
+
+const hasRecordingAllowance = async (
+  actor: CareTeamActor,
+  res: any,
+) => {
+  const allowance = await recordingAllowanceFor(actor);
+  if (!allowance.unlimited && allowance.remainingSeconds <= 0) {
+    res.status(429).json({
+      error: "Your weekly recording allowance is used. Recording resets Monday.",
+      code: "WEEKLY_RECORDING_LIMIT_REACHED",
+      resetAt: allowance.resetAt,
+    });
+    return false;
+  }
+  return true;
+};
 
 const requireFamilyLearningAccess = (
   req: Request,
@@ -20359,6 +20383,12 @@ router.get("/sessions/audio/limits", async (_req, res) => {
   });
 });
 
+router.get("/sessions/recording-allowance", async (req, res) => {
+  const actor = requireClinician(req, res);
+  if (!actor) return;
+  return res.json(await recordingAllowanceFor(actor));
+});
+
 type CalibrationMediaDetails = {
   sourceContainer: string | null;
   sourceAudioCodec: string | null;
@@ -20595,6 +20625,7 @@ router.post("/sessions/preparation", async (req, res) => {
     return res
       .status(403)
       .json({ error: "Only an SLP can prepare a therapy recording." });
+  if (!(await hasRecordingAllowance(actor, res))) return;
   const expiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
   const [preparation] = await db
     .insert(sessionRecordingPreparationsTable)
@@ -20652,6 +20683,7 @@ router.post("/sessions/audio/upload-url", async (req, res) => {
   );
   if (!contentType) return fail(res, "This recording format is not supported.");
   const purpose = parsed.data.purpose ?? "session_recording";
+  if (purpose === "session_recording" && !(await hasRecordingAllowance(actor, res))) return;
   const calibrationRole = parsed.data.calibrationRole ?? null;
   const durationMilliseconds = parsed.data.durationMilliseconds ?? null;
   if (purpose === "speaker_calibration") {
@@ -21166,6 +21198,7 @@ router.post("/sessions/audio", async (req, res) => {
       "Speaker calibration recordings must use the private upload flow.",
     );
   }
+  if (!(await hasRecordingAllowance(actor, res))) return;
   if (!parsed.data.consentConfirmed) {
     return fail(
       res,
@@ -21923,10 +21956,43 @@ router.post("/sessions/transcription", async (req, res) => {
       .where(eq(sessionTranscriptsTable.id, transcript.id));
   }
 
+  let reservedQuota = false;
   try {
     const audioData = await (productionAudio
       ? persistedAudioObjectStore(productionAudio).get(audio.fileName)
       : audioObjectStore.get(audio.fileName));
+    const verifiedDurationMilliseconds = await probeRecordingDurationMilliseconds(
+      audioData,
+      audio.contentType,
+    );
+    if (productionAudio) {
+      await db
+        .update(sessionAudioObjectsTable)
+        .set({ durationMilliseconds: verifiedDurationMilliseconds })
+        .where(eq(sessionAudioObjectsTable.id, productionAudio.id));
+    }
+    const reservation = await reserveRecordingUsage({
+      actor,
+      audioId: audio.id,
+      durationMilliseconds: verifiedDurationMilliseconds,
+    });
+    if (reservation.status === "limit_reached") {
+      await db
+        .update(sessionTranscriptsTable)
+        .set({ status: "failed", errorMessage: "Weekly recording allowance reached." })
+        .where(eq(sessionTranscriptsTable.id, transcript.id));
+      return res.status(429).json({
+        error: `This recording exceeds your remaining ${reservation.remainingSeconds} seconds this week. The recording is preserved, but was not processed.`,
+        code: "WEEKLY_RECORDING_LIMIT_REACHED",
+      });
+    }
+    if (reservation.status === "in_progress") {
+      return res.status(409).json({
+        error: "This recording is already being processed. Please wait for its transcript.",
+        code: "RECORDING_ALREADY_PROCESSING",
+      });
+    }
+    reservedQuota = reservation.status === "reserved" && !hasUnlimitedRecording(actor);
     const knownPhrases = [
       ...new Set(
         (
@@ -22004,6 +22070,7 @@ router.post("/sessions/transcription", async (req, res) => {
         transcript.id,
         result.rawTranscript,
       );
+      if (reservedQuota) await consumeRecordingUsage(transaction, audio.id);
       return (
         await transaction
           .update(sessionTranscriptsTable)
@@ -22027,6 +22094,7 @@ router.post("/sessions/transcription", async (req, res) => {
     if (!completedTranscript) {
       throw new Error("The completed transcript could not be persisted.");
     }
+    reservedQuota = false;
     req.log.info(
       {
         transcriptId: transcript.id,
@@ -22056,6 +22124,7 @@ router.post("/sessions/transcription", async (req, res) => {
     res.status(existing ? 200 : 201).json(response);
     return;
   } catch (error) {
+    if (reservedQuota) await releaseRecordingUsage(audio.id);
     const failure = safeTranscriptionFailure(error);
     req.log.error(
       {
@@ -23536,6 +23605,43 @@ router.post("/sessions", async (req, res) => {
         });
       }
     }
+    let sessionReservedQuota = false;
+    if (audio && !transcript) {
+      try {
+        const audioData = await persistedAudioObjectStore(audio).get(audio.objectKey);
+        const verifiedDurationMilliseconds = await probeRecordingDurationMilliseconds(
+          audioData,
+          audio.contentType,
+        );
+        await db
+          .update(sessionAudioObjectsTable)
+          .set({ durationMilliseconds: verifiedDurationMilliseconds })
+          .where(eq(sessionAudioObjectsTable.id, audio.id));
+        const reservation = await reserveRecordingUsage({
+          actor,
+          audioId: audio.id,
+          durationMilliseconds: verifiedDurationMilliseconds,
+        });
+        if (reservation.status === "limit_reached") {
+          return res.status(429).json({
+            error: `This recording exceeds your remaining ${reservation.remainingSeconds} seconds this week. The session was not saved.`,
+            code: "WEEKLY_RECORDING_LIMIT_REACHED",
+          });
+        }
+        if (reservation.status === "in_progress") {
+          return res.status(409).json({
+            error: "This recording is already being processed. Please retry after it finishes.",
+            code: "RECORDING_ALREADY_PROCESSING",
+          });
+        }
+        sessionReservedQuota = reservation.status === "reserved" && !hasUnlimitedRecording(actor);
+      } catch (error) {
+        req.log.error({ err: error, audioId: audio.id }, "Could not verify session recording duration");
+        return res.status(422).json({
+          error: "The recording could not be verified. Your session has not been saved; please retry with a valid recording.",
+        });
+      }
+    }
     const saved = await db
       .transaction(async (transaction) => {
         if (transcript) {
@@ -24007,6 +24113,7 @@ router.post("/sessions", async (req, res) => {
               "This recording was attached while the session was being saved.",
             );
           }
+          if (sessionReservedQuota) await consumeRecordingUsage(transaction, audio.id);
         }
         if (preparedUnclearClips.length) {
           await transaction.insert(sessionAudioObjectsTable).values(
@@ -24076,6 +24183,7 @@ router.post("/sessions", async (req, res) => {
         };
       })
       .catch(async (error) => {
+        if (sessionReservedQuota && audio) await releaseRecordingUsage(audio.id);
         await Promise.allSettled(
           preparedUnclearClips.map((clip) =>
             objectStoreForStorageDriver(clip.storageDriver).delete(

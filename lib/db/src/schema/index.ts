@@ -45,3 +45,4 @@ export * from "./beta-access";
 export * from "./slp-onboarding";
 export * from "./user-settings";
 export * from "./student-transfers";
+export * from "./slp-recording-usage";

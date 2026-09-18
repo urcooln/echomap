@@ -2823,6 +2823,19 @@ export interface SessionAudioLimits {
   supportedContentTypes: string[];
 }
 
+export interface SessionRecordingAllowance {
+  unlimited: boolean;
+  /** @nullable */
+  limitSeconds: number | null;
+  /** @minimum 0 */
+  usedSeconds: number;
+  /** @nullable */
+  remainingSeconds: number | null;
+  /** @nullable */
+  resetAt: string | null;
+  timeZone: string;
+}
+
 export type RecordingDiagnosticErrorCode = typeof RecordingDiagnosticErrorCode[keyof typeof RecordingDiagnosticErrorCode];
 
 
